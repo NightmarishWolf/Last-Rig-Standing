@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last Rig Standing — Naval Strategy</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">LAST RIG <span>STANDING</span></div>
+    <div id="turn-info" class="turn-info"></div>
+    <div class="top-actions">
+      <button id="btn-help" class="ghost">Rules</button>
+      <button id="btn-menu" class="ghost">Menu</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="board-wrap">
+      <canvas id="board"></canvas>
+      <div id="status" class="status"></div>
+    </section>
+    <aside id="panel" class="panel"></aside>
+  </main>
+
+  <!-- Full-screen overlays -->
+  <div id="overlay" class="overlay hidden"><div class="overlay-card" id="overlay-card"></div></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
