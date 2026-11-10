@@ -4,13 +4,12 @@
 // JSON object (`state`). Every change goes through applyAction().
 // That is what makes online play easy later: send the action to
 // Firebase/Supabase, and every client runs applyAction() on it.
+//
+// Supports 2–4 players and several map sizes.
 // ============================================================
-import { SHIPS, RIG, DEPOSITS, MARKET, START, TIER_RIGS } from './data/ships.js';
+import { SHIPS, RIG, DEPOSITS, MARKET, START, TIER_RIGS, MAP_SIZES, PLAYER_NAMES } from './data/ships.js';
 
-export const W = 30;
-export const H = 18;
-export const HOME_WIDTH = 9;   // columns of home waters per side
-export const SPAWN_WIDTH = 3;  // columns where new ships appear
+export const SPAWN_DEPTH = 3; // how deep the spawn strip is
 
 // ---------- random numbers (seeded, so games can be replayed/synced) ----------
 function rand(state) {
@@ -39,25 +38,60 @@ export function dist(cellsA, cellsB) {
     }
   return best;
 }
-const inBounds = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
-export const isLand = (st, x, y) => st.land[y * W + x] === 1;
-export function zoneOf(x) {
-  if (x < HOME_WIDTH) return 0;
-  if (x >= W - HOME_WIDTH) return 1;
+export const inBounds = (st, x, y) => x >= 0 && y >= 0 && x < st.W && y < st.H;
+export const isLand = (st, x, y) => st.land[y * st.W + x] === 1;
+const inRect = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+export function zoneOf(st, x, y) {
+  for (let p = 0; p < st.players.length; p++) if (inRect(st.players[p].home, x, y)) return p;
   return 'middle';
 }
-export const inSpawn = (p, x) => (p === 0 ? x < SPAWN_WIDTH : x >= W - SPAWN_WIDTH);
+export const inSpawn = (st, p, x, y) => inRect(st.players[p].spawn, x, y);
+
+// Home waters and spawn strips for each player count.
+function layoutHomes(W, H, n) {
+  const homes = [];
+  if (n === 2) {
+    const hw = Math.round(W * 0.3);
+    homes.push({ home: { x0: 0, y0: 0, x1: hw - 1, y1: H - 1 }, spawn: { x0: 0, y0: 0, x1: SPAWN_DEPTH - 1, y1: H - 1 } });
+    homes.push({ home: { x0: W - hw, y0: 0, x1: W - 1, y1: H - 1 }, spawn: { x0: W - SPAWN_DEPTH, y0: 0, x1: W - 1, y1: H - 1 } });
+    return homes;
+  }
+  const hw = Math.round(W * 0.3), hh = Math.max(7, Math.round(H * 0.42));
+  const corner = (left, top) => {
+    const x0 = left ? 0 : W - hw, y0 = top ? 0 : H - hh;
+    const home = { x0, y0, x1: x0 + hw - 1, y1: y0 + hh - 1 };
+    const spawn = left ? { x0: 0, y0, x1: SPAWN_DEPTH - 1, y1: home.y1 } : { x0: W - SPAWN_DEPTH, y0, x1: W - 1, y1: home.y1 };
+    return { home, spawn };
+  };
+  homes.push(corner(true, true), corner(false, true));
+  if (n === 3) {
+    const x0 = Math.round((W - hw) / 2), y0 = H - hh;
+    homes.push({ home: { x0, y0, x1: x0 + hw - 1, y1: H - 1 }, spawn: { x0, y0: H - SPAWN_DEPTH, x1: x0 + hw - 1, y1: H - 1 } });
+  } else {
+    homes.push(corner(false, false), corner(true, false)); // clockwise turn order
+  }
+  return homes;
+}
 
 // ---------- new game ----------
-export function newGame(seed = Math.floor(Math.random() * 1e9)) {
+// opts: { size: 'standard', players: 2, seats: ['human', 'human', ...], seed }
+export function newGame(opts = {}) {
+  const size = MAP_SIZES[opts.size] ? opts.size : 'standard';
+  const n = Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
+  const { w: W, h: H } = MAP_SIZES[size];
+  const seed = opts.seed ?? Math.floor(Math.random() * 1e9);
+  const layout = layoutHomes(W, H, n);
   const st = {
-    version: 1, seed, rng: seed, turnCount: 1, current: 0,
+    version: 2, seed, rng: seed, size, W, H,
+    turnCount: 1, round: 1, current: 0,
     phase: 'playing', winner: null, nextId: 1,
     land: new Array(W * H).fill(0),
     deposits: [], ships: [], rigs: [], mines: [], wrecks: [],
     market: { price: MARKET.basePrice },
-    players: [0, 1].map(() => ({
-      money: START.money, oil: START.oil, known: {},
+    players: layout.map((l, i) => ({
+      name: PLAYER_NAMES[i], seat: (opts.seats && opts.seats[i]) || 'human', out: false,
+      home: l.home, spawn: l.spawn,
+      money: START.money, oil: START.oil, known: {}, prevTurn: 0,
       shots: [], incoming: [], flashes: [], spoofs: [], scans: [],
       reveals: { ships: [], rigs: [] }, log: [],
     })),
@@ -68,54 +102,68 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)) {
 }
 
 function generateMap(st) {
+  const { W, H } = st;
+  const nearHome = (x, y) => st.players.some(pl => x >= pl.home.x0 - 1 && x <= pl.home.x1 + 1 && y >= pl.home.y0 - 1 && y <= pl.home.y1 + 1);
   // Islands only in No Man's Sea
-  const islands = randInt(st, 6, 9);
+  const islands = Math.round((W * H) / 70) + randInt(st, -1, 2);
   for (let i = 0; i < islands; i++) {
-    let x = randInt(st, HOME_WIDTH + 1, W - HOME_WIDTH - 2);
-    let y = randInt(st, 1, H - 2);
+    let x, y, tries = 0;
+    do { x = randInt(st, 1, W - 2); y = randInt(st, 1, H - 2); } while (nearHome(x, y) && ++tries < 200);
+    if (tries >= 200) continue;
     const size = randInt(st, 2, 6);
     for (let k = 0; k < size; k++) {
-      st.land[y * W + x] = 1;
+      if (!nearHome(x, y)) st.land[y * W + x] = 1;
       const d = randInt(st, 0, 3);
-      x = Math.min(W - HOME_WIDTH - 2, Math.max(HOME_WIDTH + 1, x + [1, -1, 0, 0][d]));
+      x = Math.min(W - 2, Math.max(1, x + [1, -1, 0, 0][d]));
       y = Math.min(H - 2, Math.max(1, y + [0, 0, 1, -1][d]));
     }
   }
-  const placeDeposit = (type, xMin, xMax) => {
-    for (let tries = 0; tries < 500; tries++) {
-      const x = randInt(st, xMin, xMax), y = randInt(st, 0, H - 1);
-      if (isLand(st, x, y)) continue;
-      if (st.deposits.some(d => Math.max(Math.abs(d.x - x), Math.abs(d.y - y)) < 3)) continue;
+  // Deposits prefer 3 squares of spacing, but squeeze closer if a home is cramped,
+  // so every player always gets the exact same set.
+  const placeDeposit = (type, ok) => {
+    for (let tries = 0; tries < 3000; tries++) {
+      const x = randInt(st, 0, W - 1), y = randInt(st, 0, H - 1);
+      if (!ok(x, y) || isLand(st, x, y)) continue;
+      const spacing = tries < 1500 ? 3 : tries < 2500 ? 2 : 1;
+      if (st.deposits.some(d => Math.max(Math.abs(d.x - x), Math.abs(d.y - y)) < spacing)) continue;
       const dep = { id: 'd' + st.nextId++, x, y, type, reserves: DEPOSITS[type].reserves };
       st.deposits.push(dep);
       return dep;
     }
     return null;
   };
-  // Equal home deposits for both sides (same types, independent positions)
-  const homeSet = ['medium', 'small', 'small', 'small', 'medium'];
-  [0, 1].forEach(p => {
-    const xMin = p === 0 ? SPAWN_WIDTH : W - HOME_WIDTH;
-    const xMax = p === 0 ? HOME_WIDTH - 1 : W - SPAWN_WIDTH - 1;
+  // Equal home deposits for every player (same types, independent positions)
+  const homeSet = ['medium', 'small', 'small', 'small', 'medium', ...MAP_SIZES[st.size].extraHome];
+  st.players.forEach((pl, p) => {
     homeSet.forEach((t, i) => {
-      const dep = placeDeposit(t, xMin, xMax);
+      const dep = placeDeposit(t, (x, y) => inRect(pl.home, x, y) && !inRect(pl.spawn, x, y));
       if (i === 0 && dep) {
-        // starting rig on the first medium deposit
-        st.players[p].known[dep.id] = true;
+        pl.known[dep.id] = true; // starting rig on the first medium deposit
         st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: RIG.hp, depId: dep.id });
       }
     });
   });
-  // No Man's Sea: random count, always at least 2 rich
-  const extra = randInt(st, 3, 5);
+  // No Man's Sea: scales with map size and player count, always at least 2 rich
+  const middleCells = W * H - st.players.reduce((t, pl) => t + (pl.home.x1 - pl.home.x0 + 1) * (pl.home.y1 - pl.home.y0 + 1), 0);
+  const count = Math.max(4, Math.round(middleCells / 45) + randInt(st, -1, 1) + (st.players.length - 2));
   const midTypes = ['rich', 'rich'];
-  for (let i = 0; i < extra; i++) midTypes.push(rand(st) < 0.45 ? 'rich' : 'medium');
-  midTypes.forEach(t => placeDeposit(t, HOME_WIDTH, W - HOME_WIDTH - 1));
+  while (midTypes.length < count) midTypes.push(rand(st) < 0.45 ? 'rich' : 'medium');
+  midTypes.forEach(t => placeDeposit(t, (x, y) => zoneOf(st, x, y) === 'middle'));
 
-  // Starting fleets: 2 patrol boats each
-  [0, 1].forEach(p => {
-    const x = p === 0 ? 0 : W - 2;
-    [5, 12].forEach(y => addShip(st, p, 'patrol', x, y, 0, true));
+  // Starting fleets: 2 patrol boats each, spread out in the spawn strip
+  st.players.forEach((pl, p) => {
+    const spots = [];
+    for (let y = pl.spawn.y0; y <= pl.spawn.y1; y++)
+      for (let x = pl.spawn.x0; x <= pl.spawn.x1; x++) {
+        const cells = cellsOf('patrol', x, y, 0);
+        if (cells.every(([a, b]) => inSpawn(st, p, a, b) && !isLand(st, a, b))) spots.push([x, y]);
+      }
+    // prefer the outer edge of the spawn strip
+    const horizontal = pl.spawn.x1 - pl.spawn.x0 > pl.spawn.y1 - pl.spawn.y0;
+    const outerX = pl.spawn.x0 === 0 ? 0 : st.W - 2;
+    const edge = spots.filter(([x, y]) => (horizontal ? y === pl.spawn.y1 : x === outerX));
+    const pool = edge.length >= 2 ? edge : spots;
+    [Math.floor(pool.length * 0.25), Math.floor(pool.length * 0.75)].forEach(i => addShip(st, p, 'patrol', pool[i][0], pool[i][1], 0, true));
   });
 }
 
@@ -131,11 +179,13 @@ function addShip(st, owner, type, x, y, rot, ready = false) {
 }
 
 // ---------- helpers ----------
-const enemyOf = p => 1 - p;
 export const rigsOwned = (st, p) => st.rigs.filter(r => r.owner === p).length;
 export const rigCost = (st, p) => RIG.baseCost + RIG.costPerRig * rigsOwned(st, p);
 export const tierUnlocked = (st, p, tier) => rigsOwned(st, p) >= TIER_RIGS[tier];
+export const alivePlayers = st => st.players.map((_, i) => i).filter(i => !st.players[i].out);
+const others = (st, p) => alivePlayers(st).filter(i => i !== p);
 const passives = s => SHIPS[s.type].passives || {};
+const pname = (st, p) => st.players[p].name;
 const log = (st, p, text) => {
   st.players[p].log.unshift({ turn: st.turnCount, text });
   st.players[p].log.length = Math.min(st.players[p].log.length, 80);
@@ -192,7 +242,7 @@ export function visibility(st, p) {
 // (you can plan a move through fog); they are discovered on contact.
 export function placementOk(st, owner, cells, ignoreId, vis) {
   for (const [x, y] of cells) {
-    if (!inBounds(x, y) || isLand(st, x, y)) return false;
+    if (!inBounds(st, x, y) || isLand(st, x, y)) return false;
     const s = shipAt(st, x, y, o => o.id !== ignoreId && (o.owner === owner || vis.ships.has(o.id)));
     if (s) return false;
     const r = rigAt(st, x, y);
@@ -209,11 +259,13 @@ function hiddenBlocker(st, owner, cells, ignoreId) {
   }
   return null;
 }
+function revealBlocker(st, p, blk) {
+  st.players[p].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+}
 
 // ---------- movement ----------
 export function reachable(st, ship) {
   const res = new Map();
-  const def = SHIPS[ship.type];
   if (ship.acted && !passives(ship).hitAndRun) return res;
   let maxSteps = ship.movesLeft;
   const oil = st.players[ship.owner].oil;
@@ -236,7 +288,6 @@ export function reachable(st, ship) {
     }
   }
   res.delete(key(ship.x, ship.y));
-  void def;
   return res;
 }
 
@@ -248,13 +299,13 @@ function doMove(st, a) {
   if (!target) return fail('Cannot reach that spot.');
   const path = [];
   for (let n = target; n && n.prev; n = map.get(n.prev)) path.unshift(n);
-  const p = ship.owner, cost1 = moveCost(st, ship, path.length);
+  const p = ship.owner, fullCost = moveCost(st, ship, path.length);
   let steps = 0;
   for (const step of path) {
     const cells = cellsOf(ship.type, step.x, step.y, ship.rot);
     const blk = hiddenBlocker(st, p, cells, ship.id);
     if (blk) {
-      st.players[p].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+      revealBlocker(st, p, blk);
       log(st, p, `${SHIPS[ship.type].name} ran into an unseen enemy ${blk.kind === 'ship' ? 'contact' : 'rig'} and stopped.`);
       break;
     }
@@ -265,14 +316,14 @@ function doMove(st, a) {
       const dmg = Math.max(0, mine.dmg - (passives(ship).armor || 0));
       ship.hp -= dmg;
       log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`);
-      log(st, enemyOf(p), `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
-      if (ship.hp <= 0) sink(st, ship, enemyOf(p));
+      if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
+      if (ship.hp <= 0) sink(st, ship);
       break;
     }
   }
-  const cost = steps === path.length ? cost1 : moveCost(st, ship, steps);
-  st.players[p].oil -= cost;
+  st.players[p].oil -= steps === path.length ? fullCost : moveCost(st, ship, steps);
   ship.movesLeft -= steps;
+  checkWin(st);
   return ok();
 }
 
@@ -285,19 +336,15 @@ function doRotate(st, a) {
   if (st.players[ship.owner].oil < cost) return fail('Not enough oil.');
   const rot = (ship.rot + 1) % 4;
   // rotate around the ship's middle so it doesn't jump sideways
-  const old = shipCells(ship);
-  const cx = Math.round(old.reduce((t, c) => t + c[0], 0) / old.length);
-  const cy = Math.round(old.reduce((t, c) => t + c[1], 0) / old.length);
-  const raw = cellsOf(ship.type, 0, 0, rot);
-  const rcx = Math.round(raw.reduce((t, c) => t + c[0], 0) / raw.length);
-  const rcy = Math.round(raw.reduce((t, c) => t + c[1], 0) / raw.length);
+  const centre = cs => [Math.round(cs.reduce((t, c) => t + c[0], 0) / cs.length), Math.round(cs.reduce((t, c) => t + c[1], 0) / cs.length)];
+  const [cx, cy] = centre(shipCells(ship));
+  const [rcx, rcy] = centre(cellsOf(ship.type, 0, 0, rot));
   const nx = cx - rcx, ny = cy - rcy;
   const cells = cellsOf(ship.type, nx, ny, rot);
-  const vis = visibility(st, ship.owner);
-  if (!placementOk(st, ship.owner, cells, ship.id, vis)) return fail('No room to turn here.');
+  if (!placementOk(st, ship.owner, cells, ship.id, visibility(st, ship.owner))) return fail('No room to turn here.');
   const blk = hiddenBlocker(st, ship.owner, cells, ship.id);
   if (blk) {
-    st.players[ship.owner].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+    revealBlocker(st, ship.owner, blk);
     log(st, ship.owner, 'Turn blocked by an unseen enemy contact!');
     return ok();
   }
@@ -343,7 +390,7 @@ function doAct(st, a) {
   const p = ship.owner;
   const { x, y } = a;
   if (act.kind !== 'survey') {
-    if (!inBounds(x, y)) return fail('Out of bounds.');
+    if (!inBounds(st, x, y)) return fail('Out of bounds.');
     if (dist(cells, [[x, y]]) > actionRange(st, ship, act)) return fail('Out of range.');
   }
   const firstUse = !ship.acted || ship.activeAction !== act.id;
@@ -389,7 +436,7 @@ function doAct(st, a) {
     }
     case 'spoof': {
       spend(ship, act);
-      st.players[enemyOf(p)].spoofs.push({ x, y, turn: st.turnCount });
+      for (const o of others(st, p)) st.players[o].spoofs.push({ x, y, turn: st.turnCount, owner: p });
       log(st, p, `Fake contact broadcast at ${coord(x, y)}.`);
       break;
     }
@@ -409,42 +456,50 @@ function doAct(st, a) {
 }
 
 function addFlash(st, ship) {
-  // Firing gives away your rough position for the enemy's next turn.
+  // Firing gives away your rough position to everyone else for their next turn.
   const cells = shipCells(ship);
   const [cx, cy] = cells[Math.floor(cells.length / 2)];
   const ox = randInt(st, -1, 1), oy = randInt(st, -1, 1);
-  st.players[enemyOf(ship.owner)].flashes.push({ x: cx + ox - 2, y: cy + oy - 2, w: 5, h: 5, turn: st.turnCount });
+  for (const o of others(st, ship.owner))
+    st.players[o].flashes.push({ x: cx + ox - 2, y: cy + oy - 2, w: 5, h: 5, turn: st.turnCount, owner: ship.owner });
 }
 
 function resolveShot(st, ship, act, tx, ty) {
-  const p = ship.owner, e = enemyOf(p);
+  const p = ship.owner;
   const me = st.players[p];
   const record = r => me.shots.push({ x: tx, y: ty, r, turn: st.turnCount });
-  st.players[e].incoming.push({ x: tx, y: ty, turn: st.turnCount });
+  // whoever owns the waters, plus whoever gets hit, sees the splash
+  const notify = new Set();
+  const zone = zoneOf(st, tx, ty);
+  if (zone !== 'middle' && zone !== p) notify.add(zone);
 
   if (act.air) {
-    const fr = st.ships.find(s => s.owner === e && passives(s).airDefense && !s.adUsed &&
+    const fr = st.ships.find(s => s.owner !== p && passives(s).airDefense && !s.adUsed &&
       dist(shipCells(s), [[tx, ty]]) <= passives(s).airDefense);
     if (fr) {
       fr.adUsed = true;
       record('intercepted');
       log(st, p, `${act.name} was intercepted by enemy air defense!`);
-      log(st, e, `Your Frigate intercepted an incoming ${act.name.toLowerCase()}.`);
+      log(st, fr.owner, `Your Frigate intercepted an incoming ${act.name.toLowerCase()} from ${pname(st, p)}.`);
+      notify.add(fr.owner);
+      notify.forEach(o => st.players[o].incoming.push({ x: tx, y: ty, turn: st.turnCount }));
       return;
     }
   }
   const squares = [];
   const r = act.area === 3 ? 1 : 0;
   for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
-    if (inBounds(tx + dx, ty + dy)) squares.push([tx + dx, ty + dy]);
+    if (inBounds(st, tx + dx, ty + dy)) squares.push([tx + dx, ty + dy]);
 
   const hitShips = new Set();
   let anyHit = false, sunkName = null;
   for (const [x, y] of squares) {
-    let target = shipAt(st, x, y, s => s.owner === e);
+    let target = shipAt(st, x, y, s => s.owner !== p);
     if (target && act.subsOnly && !passives(target).submerged) target = null;
     if (target && !hitShips.has(target.id)) {
       hitShips.add(target.id);
+      const e = target.owner;
+      notify.add(e);
       // corvette screen
       const tc = shipCells(target);
       const cv = st.ships.find(s => s.owner === e && s.id !== target.id && passives(s).screen && !s.screenUsed &&
@@ -453,58 +508,62 @@ function resolveShot(st, ship, act, tx, ty) {
       const dmg = Math.max(0, act.dmg - (passives(target).armor || 0));
       target.hp -= dmg;
       anyHit = true;
-      log(st, e, `Your ${SHIPS[target.type].name} was hit for ${dmg} damage (${Math.max(0, target.hp)}/${SHIPS[target.type].hp} HP).`);
-      if (target.hp <= 0) { sunkName = SHIPS[target.type].name; sink(st, target, p); }
+      log(st, e, `Your ${SHIPS[target.type].name} was hit for ${dmg} damage by ${pname(st, p)} (${Math.max(0, target.hp)}/${SHIPS[target.type].hp} HP).`);
+      if (target.hp <= 0) { sunkName = SHIPS[target.type].name; sink(st, target); }
       continue;
     }
     if (!act.subsOnly) {
       const rig = rigAt(st, x, y);
-      if (rig && rig.owner === e) {
+      if (rig && rig.owner !== p) {
+        const e = rig.owner;
+        notify.add(e);
         rig.hp -= act.dmg * (act.rigMult || 1);
         anyHit = true;
         if (rig.hp <= 0) {
           st.rigs = st.rigs.filter(o => o !== rig);
-          log(st, p, `You destroyed an enemy oil rig at ${coord(x, y)}!`);
-          log(st, e, `Your oil rig at ${coord(x, y)} was destroyed!`);
+          log(st, p, `You destroyed ${pname(st, e)}'s oil rig at ${coord(x, y)}!`);
+          log(st, e, `Your oil rig at ${coord(x, y)} was destroyed by ${pname(st, p)}!`);
           sunkName = sunkName || 'rig';
         } else {
-          log(st, e, `Your oil rig at ${coord(x, y)} was hit!`);
+          log(st, e, `Your oil rig at ${coord(x, y)} was hit by ${pname(st, p)}!`);
         }
       }
     }
   }
+  notify.forEach(o => st.players[o].incoming.push({ x: tx, y: ty, turn: st.turnCount }));
   record(sunkName ? 'sunk' : anyHit ? 'hit' : 'miss');
   if (sunkName && sunkName !== 'rig') log(st, p, `You sank an enemy ${sunkName}!`);
   else if (anyHit && !sunkName) log(st, p, `${act.name}: HIT at ${coord(tx, ty)}!`);
   else if (!anyHit) log(st, p, `${act.name}: miss at ${coord(tx, ty)}.`);
 }
 
-function sink(st, ship, by) {
+function sink(st, ship) {
   st.ships = st.ships.filter(s => s !== ship);
   st.wrecks.push({ id: 'w' + st.nextId++, cells: shipCells(ship), type: ship.type, value: SHIPS[ship.type].cost });
   log(st, ship.owner, `Your ${SHIPS[ship.type].name} was sunk!`);
-  void by;
 }
 
 function doScan(st, ship, act, tx, ty) {
-  const p = ship.owner, e = enemyOf(p);
+  const p = ship.owner;
   const lo = -Math.floor((act.size - 1) / 2), hi = lo + act.size - 1;
   const box = [];
   for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++)
-    if (inBounds(tx + dx, ty + dy)) box.push([tx + dx, ty + dy]);
-  const jammers = st.ships.filter(s => s.owner === e && passives(s).jam);
+    if (inBounds(st, tx + dx, ty + dy)) box.push([tx + dx, ty + dy]);
+  const jammers = st.ships.filter(s => s.owner !== p && passives(s).jam);
   const jammed = ([x, y]) => jammers.some(j => dist(shipCells(j), [[x, y]]) <= passives(j).jam);
   const clear = box.filter(c => !jammed(c));
   const jam = box.filter(c => jammed(c));
   const rev = st.players[p].reveals;
   let found = 0;
-  for (const s of st.ships) {
-    if (s.owner !== e || passives(s).submerged) continue;
-    if (dist(shipCells(s), clear) === 0 && !rev.ships.includes(s.id)) { rev.ships.push(s.id); found++; }
-  }
-  for (const r of st.rigs) {
-    if (r.owner !== e) continue;
-    if (clear.some(([x, y]) => x === r.x && y === r.y) && !rev.rigs.includes(r.id)) { rev.rigs.push(r.id); found++; }
+  if (clear.length) {
+    for (const s of st.ships) {
+      if (s.owner === p || passives(s).submerged) continue;
+      if (dist(shipCells(s), clear) === 0 && !rev.ships.includes(s.id)) { rev.ships.push(s.id); found++; }
+    }
+    for (const r of st.rigs) {
+      if (r.owner === p) continue;
+      if (clear.some(([x, y]) => x === r.x && y === r.y) && !rev.rigs.includes(r.id)) { rev.rigs.push(r.id); found++; }
+    }
   }
   st.players[p].scans.push({ cells: box, jammed: jam, turn: st.turnCount });
   log(st, p, `${act.name}: ${found ? found + ' contact' + (found > 1 ? 's' : '') + ' found' : 'nothing found'}${jam.length ? ' (signal jammed in part of the area)' : ''}.`);
@@ -519,12 +578,11 @@ function doBuyShip(st, a) {
   const lim = def.passives?.limit;
   if (lim && st.ships.filter(s => s.owner === p && s.type === a.ship).length >= lim) return fail(`Limit ${lim}.`);
   const cells = cellsOf(a.ship, a.x, a.y, a.rot);
-  if (!cells.every(([x]) => inSpawn(p, x))) return fail('New ships must be placed in your spawn zone (your back 3 columns).');
-  const vis = visibility(st, p);
-  if (!placementOk(st, p, cells, null, vis)) return fail('That spot is blocked.');
+  if (!cells.every(([x, y]) => inSpawn(st, p, x, y))) return fail('New ships must be placed in your spawn zone.');
+  if (!placementOk(st, p, cells, null, visibility(st, p))) return fail('That spot is blocked.');
   const blk = hiddenBlocker(st, p, cells, null);
   if (blk) {
-    st.players[p].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+    revealBlocker(st, p, blk);
     log(st, p, 'Launch blocked: an enemy is lurking in your spawn zone!');
     return ok();
   }
@@ -550,7 +608,7 @@ function doBuyRig(st, a) {
   if (why) return fail(why);
   const blk = hiddenBlocker(st, p, [[a.x, a.y]], null);
   if (blk) {
-    st.players[p].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+    revealBlocker(st, p, blk);
     log(st, p, blk.kind === 'rig' ? 'This deposit is already claimed by an enemy rig!' : 'An unseen enemy is sitting on this deposit!');
     return ok();
   }
@@ -579,14 +637,17 @@ function doSell(st, a) {
 // ---------- turns ----------
 function startTurn(st, p, first = false) {
   const me = st.players[p];
-  const keep = o => o.turn >= st.turnCount - 1;
-  me.incoming = me.incoming.filter(keep);
-  me.flashes = me.flashes.filter(keep);
-  me.spoofs = me.spoofs.filter(keep);
+  // keep only what happened since this player's last turn
+  const since = o => o.turn > me.prevTurn;
+  me.incoming = me.incoming.filter(since);
+  me.flashes = me.flashes.filter(since);
+  me.spoofs = me.spoofs.filter(since);
   me.scans = [];
-  me.shots = me.shots.filter(o => o.turn >= st.turnCount - 4);
+  me.shots = me.shots.filter(o => o.turn >= st.turnCount - 4 * st.players.length);
   me.reveals = { ships: [], rigs: [] };
-  st.market.price = Math.min(MARKET.basePrice, st.market.price + MARKET.recoverPerTurn);
+  me.prevTurn = st.turnCount;
+  // the market recovers by MARKET.recoverPerTurn each full round
+  st.market.price = Math.min(MARKET.basePrice, st.market.price + MARKET.recoverPerTurn * 2 / alivePlayers(st).length);
 
   let produced = 0;
   for (const r of st.rigs.filter(r => r.owner === p)) {
@@ -605,7 +666,7 @@ function startTurn(st, p, first = false) {
   me.oil += produced;
   for (const s of st.ships.filter(s => s.owner === p && passives(s).upkeep)) {
     if (me.money >= passives(s).upkeep) me.money -= passives(s).upkeep;
-    else { s.hp -= 1; log(st, p, `Couldn't pay upkeep — ${SHIPS[s.type].name} loses 1 HP.`); if (s.hp <= 0) sink(st, s, enemyOf(p)); }
+    else { s.hp -= 1; log(st, p, `Couldn't pay upkeep — ${SHIPS[s.type].name} loses 1 HP.`); if (s.hp <= 0) sink(st, s); }
   }
   for (const s of st.ships.filter(s => s.owner === p)) {
     s.acted = false; s.shotsLeft = 0; s.activeAction = null; s.freeUsed = {};
@@ -614,23 +675,51 @@ function startTurn(st, p, first = false) {
     s.movesLeft = SHIPS[s.type].move + commandBonus(st, s);
   }
   const dry = st.rigs.filter(r => r.owner === p && st.deposits.find(d => d.id === r.depId).reserves === 0).length;
-  if (!first) log(st, p, `Turn ${Math.ceil(st.turnCount / 2)}: rigs produced ${produced} oil.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
+  if (!first) log(st, p, `Round ${st.round}: rigs produced ${produced} oil.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
   else log(st, p, 'Your fleet is ready. Survey for oil, build rigs, and outlast the enemy.');
   checkWin(st);
 }
 
+function eliminate(st, p, reason) {
+  const pl = st.players[p];
+  if (pl.out) return;
+  pl.out = true;
+  // whatever is left sinks and becomes salvage for everyone else
+  for (const s of st.ships.filter(s => s.owner === p)) {
+    st.ships = st.ships.filter(o => o !== s);
+    st.wrecks.push({ id: 'w' + st.nextId++, cells: shipCells(s), type: s.type, value: SHIPS[s.type].cost });
+  }
+  st.rigs = st.rigs.filter(r => r.owner !== p);
+  st.mines = st.mines.filter(m => m.owner !== p);
+  for (const o of alivePlayers(st)) log(st, o, `${pl.name} ${reason}.`);
+}
+
 function checkWin(st) {
   if (st.phase !== 'playing') return;
-  for (const p of [0, 1]) {
+  for (const p of alivePlayers(st)) {
     const alive = st.ships.some(s => s.owner === p) || st.rigs.some(r => r.owner === p) || st.players[p].money >= 60;
-    if (!alive) { st.phase = 'over'; st.winner = enemyOf(p); }
+    if (!alive) eliminate(st, p, 'has been wiped out');
   }
+  const left = alivePlayers(st);
+  if (left.length <= 1) { st.phase = 'over'; st.winner = left[0] ?? null; }
+}
+
+function nextTurn(st) {
+  const n = st.players.length;
+  let p = st.current;
+  do {
+    p = (p + 1) % n;
+    if (p === 0) st.round++;
+  } while (st.players[p].out);
+  st.turnCount++;
+  st.current = p;
+  startTurn(st, p, st.round === 1);
 }
 
 // ---------- entry point ----------
 const ok = () => ({ ok: true });
 const fail = error => ({ ok: false, error });
-export const coord = (x, y) => `${String.fromCharCode(65 + (y % 26))}${x + 1}`;
+export const coord = (x, y) => `${y < 26 ? String.fromCharCode(65 + y) : 'A' + String.fromCharCode(39 + y)}${x + 1}`;
 
 export function applyAction(st, a) {
   if (st.phase !== 'playing') return fail('Game over.');
@@ -641,14 +730,12 @@ export function applyAction(st, a) {
     case 'buyShip': return doBuyShip(st, a);
     case 'buyRig': return doBuyRig(st, a);
     case 'sell': return doSell(st, a);
-    case 'endTurn': {
-      st.turnCount++;
-      st.current = enemyOf(st.current);
-      startTurn(st, st.current);
-      return ok();
-    }
+    case 'endTurn': nextTurn(st); return ok();
     case 'surrender': {
-      st.phase = 'over'; st.winner = enemyOf(st.current);
+      const p = st.current;
+      eliminate(st, p, 'has surrendered');
+      checkWin(st);
+      if (st.phase === 'playing') nextTurn(st);
       return ok();
     }
   }
@@ -665,7 +752,7 @@ export function getView(st, p) {
     myShips: st.ships.filter(s => s.owner === p),
     myRigs: st.rigs.filter(r => r.owner === p),
     myMines: st.mines.filter(m => m.owner === p),
-    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, cells: shipCells(s) })),
+    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s) })),
     enemyRigs: st.rigs.filter(r => r.owner !== p && vis.rigs.has(r.id)),
     deposits: st.deposits.filter(d => me.known[d.id]),
     wrecks: st.wrecks,

@@ -3,7 +3,7 @@
 // and turns clicks into engine actions.
 // ============================================================
 import * as E from './engine.js';
-import { SHIPS, RIG, DEPOSITS, PASSIVE_TEXT, TIER_RIGS } from './data/ships.js';
+import { SHIPS, RIG, DEPOSITS, PASSIVE_TEXT, TIER_RIGS, PLAYER_COLORS } from './data/ships.js';
 
 const CODES = {
   patrol: 'PB', survey: 'SV', corvette: 'CO', hydrofoil: 'HF', decoy: 'DB', minelayer: 'ML',
@@ -16,7 +16,8 @@ const COL = {
   land: '#b9a46c', landEdge: '#8d7a4a', mine: '#2bb3a3', mineDark: '#17675e', enemy: '#e25555',
   oil: '#f0a531', wreck: '#5a6571', text: '#e4edf5', muted: '#8aa3b8',
 };
-const PNAME = ['Player 1', 'Player 2'];
+const pcol = p => PLAYER_COLORS[p];
+const pname = p => st.players[p].name;
 
 let st, hooks;
 let mode = { kind: 'idle' };
@@ -60,8 +61,8 @@ function resize() {
   const wrap = canvas.parentElement;
   const avail = Math.max(300, wrap.clientWidth);
   const maxH = window.innerHeight - 150;
-  cell = Math.max(16, Math.min(40, Math.floor(Math.min((avail - MARGIN) / E.W, (maxH - MARGIN) / E.H))));
-  const w = cell * E.W + MARGIN, h = cell * E.H + MARGIN;
+  cell = Math.max(12, Math.min(40, Math.floor(Math.min((avail - MARGIN) / st.W, (maxH - MARGIN) / st.H))));
+  const w = cell * st.W + MARGIN, h = cell * st.H + MARGIN;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr; canvas.height = h * dpr;
   canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
@@ -71,7 +72,7 @@ function cellFromEvent(e) {
   const r = canvas.getBoundingClientRect();
   const x = Math.floor((e.clientX - r.left - MARGIN) / cell);
   const y = Math.floor((e.clientY - r.top - MARGIN) / cell);
-  return x >= 0 && y >= 0 && x < E.W && y < E.H ? { x, y } : null;
+  return x >= 0 && y >= 0 && x < st.W && y < st.H ? { x, y } : null;
 }
 const px = x => MARGIN + x * cell;
 const py = y => MARGIN + y * cell;
@@ -95,30 +96,36 @@ function draw() {
   const v = E.getView(st, p);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // water zones
-  for (let x = 0; x < E.W; x++) {
-    const z = E.zoneOf(x);
-    ctx.fillStyle = z === 'middle' ? COL.middle : z === p ? COL.homeMine : COL.homeEnemy;
-    ctx.fillRect(px(x), py(0), cell, cell * E.H);
-  }
-  // spawn zone tint
-  ctx.fillStyle = 'rgba(43,179,163,0.07)';
-  const sx = p === 0 ? 0 : E.W - E.SPAWN_WIDTH;
-  ctx.fillRect(px(sx), py(0), cell * E.SPAWN_WIDTH, cell * E.H);
+  // water: No Man's Sea, then each home tinted in its owner's colour
+  ctx.fillStyle = COL.middle; ctx.fillRect(px(0), py(0), cell * st.W, cell * st.H);
+  st.players.forEach((pl, i) => {
+    const h = pl.home;
+    ctx.fillStyle = i === p ? COL.homeMine : COL.homeEnemy;
+    ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
+    ctx.globalAlpha = i === p ? 0.07 : 0.05; ctx.fillStyle = pcol(i);
+    ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
+    ctx.globalAlpha = 1;
+  });
+  // my spawn zone
+  { const sp = st.players[p].spawn; ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(px(sp.x0), py(sp.y0), cell * (sp.x1 - sp.x0 + 1), cell * (sp.y1 - sp.y0 + 1)); }
   // grid
   ctx.strokeStyle = COL.grid; ctx.lineWidth = 1;
-  for (let x = 0; x <= E.W; x++) { ctx.beginPath(); ctx.moveTo(px(x) + .5, py(0)); ctx.lineTo(px(x) + .5, py(E.H)); ctx.stroke(); }
-  for (let y = 0; y <= E.H; y++) { ctx.beginPath(); ctx.moveTo(px(0), py(y) + .5); ctx.lineTo(px(E.W), py(y) + .5); ctx.stroke(); }
-  // zone borders
-  ctx.strokeStyle = 'rgba(240,165,49,0.35)'; ctx.setLineDash([6, 6]);
-  [E.HOME_WIDTH, E.W - E.HOME_WIDTH].forEach(x => { ctx.beginPath(); ctx.moveTo(px(x), py(0)); ctx.lineTo(px(x), py(E.H)); ctx.stroke(); });
-  ctx.setLineDash([]);
+  for (let x = 0; x <= st.W; x++) { ctx.beginPath(); ctx.moveTo(px(x) + .5, py(0)); ctx.lineTo(px(x) + .5, py(st.H)); ctx.stroke(); }
+  for (let y = 0; y <= st.H; y++) { ctx.beginPath(); ctx.moveTo(px(0), py(y) + .5); ctx.lineTo(px(st.W), py(y) + .5); ctx.stroke(); }
+  // home borders in each owner's colour
+  ctx.setLineDash([6, 6]);
+  st.players.forEach((pl, i) => {
+    const h = pl.home; ctx.strokeStyle = pcol(i); ctx.globalAlpha = pl.out ? 0.15 : 0.55;
+    ctx.strokeRect(px(h.x0) + 1, py(h.y0) + 1, cell * (h.x1 - h.x0 + 1) - 2, cell * (h.y1 - h.y0 + 1) - 2);
+  });
+  ctx.globalAlpha = 1; ctx.setLineDash([]);
   // axis labels
   ctx.fillStyle = COL.muted; ctx.font = `${Math.max(9, cell * 0.36)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let x = 0; x < E.W; x++) ctx.fillText(String(x + 1), px(x) + cell / 2, MARGIN / 2);
-  for (let y = 0; y < E.H; y++) ctx.fillText(String.fromCharCode(65 + y), MARGIN / 2, py(y) + cell / 2);
+  for (let x = 0; x < st.W; x++) if (cell >= 18 || x % 2 === 0) ctx.fillText(String(x + 1), px(x) + cell / 2, MARGIN / 2);
+  for (let y = 0; y < st.H; y++) ctx.fillText(E.coord(0, y).replace(/\d+$/, ''), MARGIN / 2, py(y) + cell / 2);
   // land
-  for (let y = 0; y < E.H; y++) for (let x = 0; x < E.W; x++) if (E.isLand(st, x, y)) {
+  for (let y = 0; y < st.H; y++) for (let x = 0; x < st.W; x++) if (E.isLand(st, x, y)) {
     ctx.fillStyle = COL.land; roundRect(px(x) + 1, py(y) + 1, cell - 2, cell - 2, 4); ctx.fill();
   }
   // scans this turn
@@ -130,7 +137,7 @@ function draw() {
   for (const f of v.me.flashes) {
     ctx.strokeStyle = 'rgba(255,140,60,0.8)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2;
     ctx.strokeRect(px(Math.max(0, f.x)) + 1, py(Math.max(0, f.y)) + 1,
-      cell * (Math.min(E.W, f.x + f.w) - Math.max(0, f.x)) - 2, cell * (Math.min(E.H, f.y + f.h) - Math.max(0, f.y)) - 2);
+      cell * (Math.min(st.W, f.x + f.w) - Math.max(0, f.x)) - 2, cell * (Math.min(st.H, f.y + f.h) - Math.max(0, f.y)) - 2);
     ctx.setLineDash([]); ctx.lineWidth = 1;
   }
   // deposits
@@ -160,12 +167,12 @@ function draw() {
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(cx - Math.cos(a) * cell * .28, cy - Math.sin(a) * cell * .28); ctx.lineTo(cx + Math.cos(a) * cell * .28, cy + Math.sin(a) * cell * .28); ctx.stroke(); }
   }
   // rigs
-  v.myRigs.forEach(r => drawRig(r, COL.mine));
-  v.enemyRigs.forEach(r => drawRig(r, COL.enemy));
+  v.myRigs.forEach(r => drawRig(r, pcol(p)));
+  v.enemyRigs.forEach(r => drawRig(r, pcol(r.owner)));
   // ships
-  for (const s of v.myShips) drawHull(E.shipCells(s), COL.mine, s.id === selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
-  for (const s of v.enemyShips) drawHull(s.cells, COL.enemy, false, 1, '?');
-  for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], COL.enemy, false, 1, '?');
+  for (const s of v.myShips) drawHull(E.shipCells(s), pcol(p), s.id === selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+  for (const s of v.enemyShips) drawHull(s.cells, pcol(s.owner), false, 1, '?', undefined, true);
+  for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
   // my shot markers
   for (const s of v.me.shots) {
     const age = st.turnCount - s.turn;
@@ -206,7 +213,7 @@ function drawModeOverlay() {
     const range = E.actionRange(st, s, act);
     const cells = E.shipCells(s);
     ctx.fillStyle = 'rgba(240,165,49,0.09)';
-    for (let y = 0; y < E.H; y++) for (let x = 0; x < E.W; x++) if (E.dist(cells, [[x, y]]) <= range) ctx.fillRect(px(x), py(y), cell, cell);
+    for (let y = 0; y < st.H; y++) for (let x = 0; x < st.W; x++) if (E.dist(cells, [[x, y]]) <= range) ctx.fillRect(px(x), py(y), cell, cell);
     if (hover && E.dist(cells, [[hover.x, hover.y]]) <= range) {
       let lo = 0, hi = 0;
       if (act.kind === 'scan') { lo = -Math.floor((act.size - 1) / 2); hi = lo + act.size - 1; }
@@ -219,7 +226,7 @@ function drawModeOverlay() {
   if (mode.kind === 'placeShip' && hover) {
     const [ox, oy] = centerOffset(mode.ship, mode.rot);
     const cells = E.cellsOf(mode.ship, hover.x - ox, hover.y - oy, mode.rot);
-    const okSpot = cells.every(([x, y]) => E.inSpawn(me(), x) && y >= 0 && y < E.H) &&
+    const okSpot = cells.every(([x, y]) => E.inSpawn(st, me(), x, y)) &&
       E.placementOk(st, me(), cells, null, E.visibility(st, me()));
     ghost(cells, okSpot ? 'rgba(43,179,163,0.6)' : 'rgba(226,85,85,0.6)');
   }
@@ -233,7 +240,7 @@ function drawModeOverlay() {
   }
 }
 
-function drawHull(cells, color, sel, alpha, label, hpFrac) {
+function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
   const set = new Set(cells.map(c => c[0] + ',' + c[1]));
@@ -243,13 +250,18 @@ function drawHull(cells, color, sel, alpha, label, hpFrac) {
     if (set.has((x + 1) + ',' + y)) ctx.fillRect(px(x) + cell - ins - 1, py(y) + ins, ins * 2 + 2, cell - ins * 2);
     if (set.has(x + ',' + (y + 1))) ctx.fillRect(px(x) + ins, py(y) + cell - ins - 1, cell - ins * 2, ins * 2 + 2);
   }
+  if (enemy) {
+    ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2;
+    for (const [x, y] of cells) { roundRect(px(x) + ins - 1, py(y) + ins - 1, cell - ins * 2 + 2, cell - ins * 2 + 2, 4); ctx.stroke(); }
+    ctx.lineWidth = 1;
+  }
   if (sel) {
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
     for (const [x, y] of cells) { roundRect(px(x) + ins - 1, py(y) + ins - 1, cell - ins * 2 + 2, cell - ins * 2 + 2, 4); ctx.stroke(); }
     ctx.lineWidth = 1;
   }
   const mid = cells[Math.floor(cells.length / 2)];
-  ctx.fillStyle = '#04201d'; if (color === COL.enemy) ctx.fillStyle = '#3a0c0c';
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.font = `bold ${Math.max(9, cell * 0.34)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(label, px(mid[0]) + cell / 2, py(mid[1]) + cell / 2 + 1);
   if (hpFrac !== undefined && hpFrac < 1) {
@@ -264,7 +276,7 @@ function drawHull(cells, color, sel, alpha, label, hpFrac) {
 }
 function drawRig(r, color) {
   const x0 = px(r.x), y0 = py(r.y), u = cell / 10;
-  ctx.fillStyle = color === COL.mine ? '#0b3431' : '#3a1414';
+  ctx.fillStyle = '#0a1a26';
   roundRect(x0 + 2, y0 + 2, cell - 4, cell - 4, 3); ctx.fill();
   ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
   // platform deck + legs
@@ -282,7 +294,7 @@ function drawRig(r, color) {
 }
 function ghost(cells, color) {
   ctx.fillStyle = color;
-  for (const [x, y] of cells) if (x >= 0 && y >= 0 && x < E.W && y < E.H) { roundRect(px(x) + 2, py(y) + 2, cell - 4, cell - 4, 4); ctx.fill(); }
+  for (const [x, y] of cells) if (x >= 0 && y >= 0 && x < st.W && y < st.H) { roundRect(px(x) + 2, py(y) + 2, cell - 4, cell - 4, 4); ctx.fill(); }
 }
 function hatch(x, y, color) {
   ctx.save(); ctx.beginPath(); ctx.rect(px(x), py(y), cell, cell); ctx.clip();
@@ -357,7 +369,7 @@ function onPanelClick(e) {
   if (d.rig) mode = mode.kind === 'placeRig' ? { kind: 'idle' } : { kind: 'placeRig' };
   if (d.sell) dispatch({ type: 'sell', amount: d.sell === 'all' ? st.players[me()].oil : Number(d.sell) });
   if (d.end) {
-    if (!confirm(`End ${PNAME[me()]}'s turn?`)) return;
+    if (!confirm(`End ${pname(me())}'s turn?`)) return;
     dispatch({ type: 'endTurn' });
     selectedId = null; mode = { kind: 'idle' };
     if (st.phase === 'playing') hooks.handoff(st);
@@ -370,7 +382,7 @@ function onPanelClick(e) {
 function renderTop() {
   const p = me();
   document.getElementById('turn-info').innerHTML =
-    `<b style="color:${p === 0 ? '#5fd3c6' : '#f6b26b'}">${PNAME[p]}</b> · Round ${Math.ceil(st.turnCount / 2)} · Your home is on the <b>${p === 0 ? 'left' : 'right'}</b>`;
+    `<b style="color:${pcol(p)}">${pname(p)}</b> · Round ${st.round} · Your home waters have the <b style="color:${pcol(p)}">${['teal', 'orange', 'purple', 'gold'][p]}</b> dashed border`;
 }
 function renderPanel() {
   const p = me(), pl = st.players[p];
@@ -378,6 +390,10 @@ function renderPanel() {
   const tier = rigs >= TIER_RIGS[3] ? 3 : rigs >= TIER_RIGS[2] ? 2 : 1;
   const s = selected();
   let html = `
+  <div class="card">
+    <h3>Admirals</h3>
+    <div class="row" style="margin-top:0">${st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ' (CPU)' : ''}${o.out ? ' · out' : ''}</span>`).join('')}</div>
+  </div>
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
@@ -427,7 +443,7 @@ function renderPanel() {
     </div>`;
   }
 
-  html += `<div class="card"><h3>Shipyard</h3><div class="small muted">New ships launch in your back 3 columns and are ready next turn. Press R to turn while placing.</div>`;
+  html += `<div class="card"><h3>Shipyard</h3><div class="small muted">New ships launch in your spawn zone (the lighter strip at your map edge) and are ready next turn. Press R to turn while placing.</div>`;
   for (const t of [1, 2, 3]) {
     const unlocked = E.tierUnlocked(st, p, t);
     html += `<div class="shop-tier"><div class="tier-head"><span>Tier ${t}</span><span>${unlocked ? 'Unlocked' : `Needs ${TIER_RIGS[t]} rigs`}</span></div>`;
@@ -478,10 +494,10 @@ function updateStatus() {
   } else if (mode.kind === 'target' && s) {
     const a = SHIPS[s.type].actions.find(x => x.id === mode.actionId);
     t = `<b>${a.name}</b>: click a target in the highlighted range. Right-click or Esc to cancel.`;
-  } else if (mode.kind === 'placeShip') t = `Place your <b>${SHIPS[mode.ship].name}</b> in your spawn zone (back 3 columns). R to turn, Esc to cancel.`;
+  } else if (mode.kind === 'placeShip') t = `Place your <b>${SHIPS[mode.ship].name}</b> in your spawn zone (the lighter strip at your edge). R to turn, Esc to cancel.`;
   else if (mode.kind === 'placeRig') t = 'Click a discovered deposit (green outline) next to one of your ships to build a rig.';
-  else t = 'Click one of your ships to select it. Teal = yours, red = enemy contacts, S/M/R = small/medium/rich oil.';
-  if (hover) t += ` <span class="muted">· ${E.coord(hover.x, hover.y)} · ${E.zoneOf(hover.x) === 'middle' ? "No Man's Sea" : E.zoneOf(hover.x) === me() ? 'Your waters' : 'Enemy waters'}</span>`;
+  else t = 'Click one of your ships to select it. Red-outlined "?" = enemy contacts (coloured by owner). S/M/R = small/medium/rich oil.';
+  if (hover) t += ` <span class="muted">· ${E.coord(hover.x, hover.y)} · ${(z => z === 'middle' ? "No Man's Sea" : z === me() ? 'Your waters' : pname(z) + "'s waters")(E.zoneOf(st, hover.x, hover.y))}</span>`;
   el.innerHTML = t;
 }
 
@@ -501,31 +517,31 @@ export function showOverlay(html, bind) {
 export function showRules() {
   showOverlay(`<div class="rules">
     <h2>How to play Last Rig Standing</h2>
-    <p>Two admirals, one sea. Oil moves your ships and pays for your war. Run your enemy out of ships, rigs and money to win.</p>
+    <p>Two to four admirals, one sea. Oil moves your ships and pays for your war. A player who runs out of ships, rigs and money is out. Last rig standing wins.</p>
     <h4>Your turn</h4>
     <ul>
       <li>Each ship can <b>move</b> (up to its Move, paying oil per square) and take <b>one action</b> (attack, scan, survey…). Once a ship attacks it can't move, unless it has Hit and Run.</li>
       <li>Turning a ship 90° costs one square of movement. Press <b>R</b>.</li>
-      <li>Buy ships in the Shipyard. They launch in your back 3 columns and are ready next turn.</li>
+      <li>Buy ships in the Shipyard. They launch in your spawn zone (the lighter strip at your edge of the map) and are ready next turn.</li>
       <li>Sell oil for money. Selling a lot at once drops the price; it recovers each turn.</li>
     </ul>
     <h4>Oil</h4>
     <ul>
       <li>Deposits are hidden and move every game. Use <b>Survey</b> to find them. S/M/R = small/medium/rich.</li>
-      <li>Both home waters have equal deposits. No Man's Sea (middle) has the richest ones.</li>
+      <li>Every player's home waters have the same deposits. No Man's Sea (the open water between homes) has the richest ones.</li>
       <li>Build a rig on a discovered deposit next to one of your ships. Rigs produce oil each turn until the deposit runs dry.</li>
       <li>Owning 3 rigs unlocks Tier 2 ships. 5 rigs unlocks Tier 3.</li>
     </ul>
     <h4>Fog of war</h4>
     <ul>
-      <li>You only see enemies near your ships and rigs, or revealed by scans. Enemy ships show as red "?" contacts.</li>
+      <li>You only see enemies near your ships and rigs, or revealed by scans. Enemy ships show as red-outlined "?" contacts in their owner's colour.</li>
       <li>You can fire at any square in range, even blind. White dot = miss, red X = hit, blue slash = intercepted.</li>
-      <li>Firing reveals your rough position: the enemy sees an orange dashed box near you next turn. Orange circles show where enemy shots landed.</li>
+      <li>Firing reveals your rough position: everyone else sees an orange dashed box near you on their next turn. Orange circles show enemy shots that landed in your waters or hit your stuff.</li>
       <li>Submarines are only seen when adjacent or by destroyer sonar. Jammers blank out scans (purple hatching). Decoys and spoofs fake contacts.</li>
       <li>Moving into an unseen enemy stops your ship and reveals it. Mines are invisible to the enemy.</li>
     </ul>
     <h4>Wrecks</h4>
-    <p>Sunk ships leave wrecks. A Salvage Ship can recover half their value, from either side.</p>
+    <p>Sunk ships leave wrecks. A Salvage Ship can recover half their value, from any side. When a player is knocked out, their whole fleet becomes wrecks.</p>
     <div class="row" style="margin-top:16px"><button class="primary" data-close>Got it</button></div>
   </div>`, (card, close) => card.querySelector('[data-close]').onclick = close);
 }
