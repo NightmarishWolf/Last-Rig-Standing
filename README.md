@@ -24,7 +24,8 @@ To test on your own computer, the browser needs a local server (modules don't lo
 | `js/data/ships.js` | **All balance numbers**: ships, costs, deposits, oil market, starting money, tier unlocks, map sizes, player colours |
 | `js/engine.js` | Game rules. Pure logic, no graphics. Every change goes through `applyAction(state, action)` |
 | `js/ui.js` | Draws the board and side panel, turns clicks into actions |
-| `js/main.js` | Menu, saving, pass-the-device screens |
+| `js/main.js` | Menu, saving, new-game setup, pass-the-device screens |
+| `js/tutorial.js` | The guided tutorial: its hand-built map and the list of steps (edit the text here) |
 
 The game auto-saves in the browser after every action (Menu → Continue).
 

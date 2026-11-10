@@ -44,7 +44,12 @@ export function initUI(state, h) {
   resize();
 }
 export function setState(state) { st = state; selectedId = null; mode = { kind: 'idle' }; refresh(); }
-export function refresh() { reachCache = null; resize(); draw(); renderPanel(); updateStatus(); renderTop(); }
+export function refresh() {
+  reachCache = null; renderPanel(); renderTop();
+  if (hooks.afterRender?.(st, { selectedId, mode })) { renderPanel(); hooks.afterRender?.(st, { selectedId, mode }); }
+  resize(); draw(); updateStatus();
+}
+export const redraw = () => draw();
 
 // ---------- dispatch ----------
 function dispatch(action) {
@@ -60,7 +65,8 @@ function dispatch(action) {
 function resize() {
   const wrap = canvas.parentElement;
   const avail = Math.max(300, wrap.clientWidth);
-  const maxH = window.innerHeight - 150;
+  const coach = document.getElementById('coach');
+  const maxH = window.innerHeight - 150 - (coach && !coach.classList.contains('hidden') ? coach.offsetHeight + 10 : 0);
   cell = Math.max(12, Math.min(40, Math.floor(Math.min((avail - MARGIN) / st.W, (maxH - MARGIN) / st.H))));
   const w = cell * st.W + MARGIN, h = cell * st.H + MARGIN;
   const dpr = window.devicePixelRatio || 1;
@@ -190,6 +196,28 @@ function draw() {
     ctx.globalAlpha = 1; ctx.lineWidth = 1;
   }
   drawModeOverlay();
+  drawMarkers();
+}
+
+// tutorial markers: glowing boxes with a label
+function drawMarkers() {
+  const list = hooks.markers?.() || [];
+  if (!list.length) return;
+  const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 260);
+  for (const m of list) {
+    const x = px(m.x0), y = py(m.y0), w = cell * (m.x1 - m.x0 + 1), h = cell * (m.y1 - m.y0 + 1);
+    ctx.strokeStyle = `rgba(255,214,102,${pulse})`; ctx.lineWidth = 3;
+    roundRect(x - 2, y - 2, w + 4, h + 4, 6); ctx.stroke(); ctx.lineWidth = 1;
+    if (m.label) {
+      ctx.font = `bold ${Math.max(11, cell * 0.4)}px system-ui`;
+      const tw = ctx.measureText(m.label).width + 12, th = Math.max(16, cell * 0.6);
+      const lx = Math.min(Math.max(MARGIN, x + w / 2 - tw / 2), MARGIN + cell * st.W - tw);
+      const ly = y - th - 6 < MARGIN ? y + h + 6 : y - th - 6;
+      ctx.fillStyle = '#ffd666'; roundRect(lx, ly, tw, th, 4); ctx.fill();
+      ctx.fillStyle = '#2a1e00'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(m.label, lx + tw / 2, ly + th / 2 + 1);
+    }
+  }
 }
 
 function drawModeOverlay() {

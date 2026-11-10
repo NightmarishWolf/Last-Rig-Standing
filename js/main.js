@@ -6,13 +6,15 @@
 // ============================================================
 import * as E from './engine.js';
 import { MAP_SIZES, PLAYER_COLORS } from './data/ships.js';
-import { initUI, setState, refresh, showOverlay, showRules } from './ui.js';
+import { initUI, setState, refresh, redraw, showOverlay, showRules } from './ui.js';
+import { newTutorialGame, createTutorial } from './tutorial.js';
 
 const SAVE_KEY = 'last-rig-standing-save-v2';
 let state = null;
 const setup = { size: 'standard', players: 2 };
 
 function save(st) {
+  if (st.tutorial) return; // never overwrite the real save with the tutorial
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(st)); } catch { /* storage full or blocked */ }
 }
 function load() {
@@ -22,18 +24,20 @@ function load() {
 function showMenu() {
   const saved = load();
   const canContinue = saved && saved.phase === 'playing';
-  const inGame = state && state.phase === 'playing' && canContinue;
+  const inGame = state && !state.tutorial && state.phase === 'playing' && canContinue;
   showOverlay(`
     <h1>LAST RIG <span style="color:var(--oil)">STANDING</span></h1>
     <p class="muted">A naval war of attrition. Find oil, build rigs, grow your fleet, and outlast everyone else.</p>
     <div class="row" style="margin-top:16px">
       ${canContinue ? `<button class="primary big" data-continue>Continue (${saved.players.length} players, round ${saved.round})</button>` : ''}
       <button class="${canContinue ? '' : 'primary'} big" data-new>New game</button>
+      <button class="big" data-tutorial>Tutorial</button>
       <button class="big ghost" data-rules>Rules</button>
       ${inGame ? `<button class="big danger" data-surrender>Surrender (${state.players[state.current].name})</button>` : ''}
     </div>`, (card, close) => {
     card.querySelector('[data-new]').onclick = () => showSetup(canContinue);
     card.querySelector('[data-rules]').onclick = () => showRules();
+    card.querySelector('[data-tutorial]').onclick = () => { close(); startTutorial(); };
     const c = card.querySelector('[data-continue]');
     if (c) c.onclick = () => { close(); state = saved; setState(state); handoff(state); };
     const sur = card.querySelector('[data-surrender]');
@@ -82,7 +86,25 @@ function showSetup(overwriting) {
   });
 }
 
+function startTutorial() {
+  tutorial.reset();
+  state = newTutorialGame();
+  setState(state);
+}
+function exitTutorial() {
+  tutorial.hide();
+  state = load() || E.newGame(setup);
+  setState(state);
+  showMenu();
+}
+
 function handoff(st) {
+  if (st.tutorial) {
+    // the enemy does nothing in the tutorial: skip straight back to the player
+    while (st.phase === 'playing' && st.current !== 0) E.applyAction(st, { type: 'endTurn' });
+    refresh();
+    return;
+  }
   const p = st.current, pl = st.players[p];
   showOverlay(`
     <h2><span style="color:${PLAYER_COLORS[p]}">${pl.name}</span>'s turn</h2>
@@ -92,6 +114,24 @@ function handoff(st) {
 }
 
 function gameOver(st) {
+  if (st.tutorial) {
+    showOverlay(`
+      <h2>Tutorial complete!</h2>
+      <p>You sank the enemy's last ship, and with no rigs or money left, they're out. That's how you win: be the <b>last rig standing</b>.</p>
+      <p class="muted">You learned to move, survey, build rigs, sell oil, buy ships, scout and attack. In a real game:</p>
+      <ul class="muted">
+        <li>Enemies shoot back, and firing reveals your rough position.</li>
+        <li>Own 3 rigs to unlock Tier 2 ships, 5 rigs for Tier 3.</li>
+        <li>The best oil is in No Man's Sea, so you'll have to fight for it.</li>
+        <li>Check <b>Rules</b> any time for the details.</li>
+      </ul>
+      <div class="row" style="margin-top:16px"><button class="primary big" data-new>Start a real game</button><button class="big ghost" data-menu>Back to menu</button></div>`,
+    (card, close) => {
+      card.querySelector('[data-new]').onclick = () => { tutorial.hide(); showSetup(!!(load() && load().phase === 'playing')); };
+      card.querySelector('[data-menu]').onclick = () => { close(); exitTutorial(); };
+    });
+    return;
+  }
   const w = st.winner;
   showOverlay(`
     <h2>${w === null ? 'Nobody' : `<span style="color:${PLAYER_COLORS[w]}">${st.players[w].name}</span>`} wins!</h2>
@@ -100,7 +140,19 @@ function gameOver(st) {
   (card) => card.querySelector('[data-new]').onclick = () => showSetup(false));
 }
 
+const tutorial = createTutorial({
+  refresh: () => refresh(),
+  restart: () => startTutorial(),
+  exit: () => exitTutorial(),
+});
+
 state = load() || E.newGame(setup);
-initUI(state, { save, handoff, gameOver, showMenu });
+initUI(state, {
+  save, handoff, gameOver, showMenu,
+  afterRender: (st, ui) => tutorial.afterRender(st, ui),
+  markers: () => (state.tutorial ? tutorial.markers() : []),
+});
+// keep tutorial markers glowing
+(function tick() { if (state.tutorial) redraw(); requestAnimationFrame(tick); })();
 setState(state);
 showMenu();

@@ -106,6 +106,13 @@ export const SHIPS = {
     actions: [],
   },
 
+  // Tutorial only (tier 0 never shows in the shipyard): an unarmed practice target.
+  target: {
+    name: 'Target Barge', tier: 0, cost: 0, hp: 1, oil: 1, move: 0, sight: 1,
+    shape: [[0, 0], [1, 0], [2, 0]],
+    actions: [],
+  },
+
   // ---------- Tier 2 ----------
   destroyer: {
     name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 2, move: 3, sight: 2,
