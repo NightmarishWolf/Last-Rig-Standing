@@ -243,6 +243,7 @@ export function visibility(st, p) {
 export function placementOk(st, owner, cells, ignoreId, vis) {
   for (const [x, y] of cells) {
     if (!inBounds(st, x, y) || isLand(st, x, y)) return false;
+    if (st.blocked && st.blocked.includes(x + ',' + y)) return false;
     const s = shipAt(st, x, y, o => o.id !== ignoreId && (o.owner === owner || vis.ships.has(o.id)));
     if (s) return false;
     const r = rigAt(st, x, y);

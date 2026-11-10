@@ -63,10 +63,12 @@ function dispatch(action) {
 
 // ---------- geometry ----------
 function resize() {
-  const wrap = canvas.parentElement;
-  const avail = Math.max(300, wrap.clientWidth);
-  const coach = document.getElementById('coach');
-  const maxH = window.innerHeight - 150 - (coach && !coach.classList.contains('hidden') ? coach.offsetHeight + 10 : 0);
+  // Size from the window (not the page layout) so the board never changes size
+  // when the panel, coach box or scrollbar changes.
+  const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const avail = Math.max(300, vw <= 1000 ? vw - 32 : vw - 340 - 48);
+  const COACH_SPACE = st && st.tutorial ? 172 + 10 : 0; // fixed coach height + gap (see .coach in style.css)
+  const maxH = vh - 150 - COACH_SPACE;
   cell = Math.max(12, Math.min(40, Math.floor(Math.min((avail - MARGIN) / st.W, (maxH - MARGIN) / st.H))));
   const w = cell * st.W + MARGIN, h = cell * st.H + MARGIN;
   const dpr = window.devicePixelRatio || 1;

@@ -40,6 +40,7 @@ export function newTutorialGame() {
     ship(TARGET, 1, 'target', 8, 5),
   ];
   st.mines = []; st.wrecks = [];
+  st.blocked = ['5,9']; // ships can't park on the deposit, so the rig always has room
   const [me, foe] = st.players;
   me.name = 'You'; foe.name = 'Enemy';
   me.money = 400; me.oil = 15; me.known = { d_tut_home: true };
@@ -79,7 +80,7 @@ export const STEPS = [
   {
     title: 'Move',
     text: `The light teal area shows everywhere this ship can reach. Our scouts report <b>oil signs</b> near the glowing marker.<br>
-      Move your Patrol Boat so it's <b>right next to the marker</b>. Hover to preview the cost, click to move.`,
+      Move your Patrol Boat so it's <b>right next to the marker</b> (you can't sail onto it). Hover to preview the cost, click to move.`,
     markers: [{ x0: 5, y0: 9, x1: 5, y1: 9, label: 'Oil signs?' }],
     check: st => pb(st).some(s => E.dist(E.shipCells(s), [[5, 9]]) <= 1),
   },
@@ -158,11 +159,11 @@ export function createTutorial(hooks) {
     el.classList.remove('hidden');
     el.innerHTML = `
       <div class="coach-head"><span>Tutorial · step ${step + 1} of ${STEPS.length}</span>
-        <span><button class="ghost small-btn" data-tut="restart">Restart</button> <button class="ghost small-btn" data-tut="exit">Exit</button></span></div>
+        <span>${s.next ? '<button class="primary small-btn" data-tut="next">Next →</button> ' : ''}<button class="ghost small-btn" data-tut="restart">Restart</button> <button class="ghost small-btn" data-tut="exit">Exit</button></span></div>
       <div class="coach-title">${s.title}</div>
       <div class="coach-text">${s.text}</div>
       ${flash ? `<div class="coach-flash">${flash}</div>` : ''}
-      ${s.next ? '<div class="row"><button class="primary" data-tut="next">Next</button></div>' : ''}`;
+`;
     el.querySelectorAll('[data-tut]').forEach(b => b.onclick = () => {
       const k = b.dataset.tut;
       if (k === 'next') { step++; flash = ''; hooks.refresh(); }
