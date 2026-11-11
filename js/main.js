@@ -11,7 +11,8 @@ import { newTutorialGame, createTutorial } from './tutorial.js';
 
 const SAVE_KEY = 'last-rig-standing-save-v2';
 let state = null;
-const setup = { size: 'standard', players: 2, turnTimer: 90 };
+let sessionActive = false; // true once a player has revealed their fleet this session
+const setup = { size: 'standard', players: 2, turnTimer: 90, domination: true };
 const TIMER_OPTIONS = [0, 60, 90, 120, 180];
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -61,7 +62,7 @@ function load() {
 function showMenu() {
   const saved = load();
   const canContinue = saved && saved.phase === 'playing';
-  const inGame = state && !state.tutorial && state.phase === 'playing' && canContinue;
+  const inGame = sessionActive && state && !state.tutorial && state.phase === 'playing' && canContinue;
   showOverlay(`
     <h1>LAST RIG <span style="color:var(--oil)">STANDING</span></h1>
     <p class="muted">A naval war of attrition. Find oil, build rigs, grow your fleet, and outlast everyone else.</p>
@@ -108,6 +109,13 @@ function showSetup(overwriting) {
       </div>
     </div>
     <div class="setup-group">
+      <div class="label">Domination victory</div>
+      <div class="seg">
+        <button data-dom="1" class="${setup.domination ? 'on' : ''}">On<small>Hold half of No Man's Sea for 5 rounds to win</small></button>
+        <button data-dom="0" class="${!setup.domination ? 'on' : ''}">Off<small>Win only by knocking everyone out</small></button>
+      </div>
+    </div>
+    <div class="setup-group">
       <div class="label">Players</div>
       <div class="seg">${[2, 3, 4].map(n => `
         <button data-players="${n}" class="${setup.players === n ? 'on' : ''}" ${n > max ? 'disabled' : ''}>${n} players</button>`).join('')}
@@ -121,13 +129,14 @@ function showSetup(overwriting) {
       <button class="big ghost" data-back>Back</button>
     </div>`, (card, close) => {
     card.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { setup.size = b.dataset.size; showSetup(overwriting); });
+    card.querySelectorAll('[data-dom]').forEach(b => b.onclick = () => { setup.domination = b.dataset.dom === '1'; showSetup(overwriting); });
     card.querySelectorAll('[data-timer]').forEach(b => b.onclick = () => { setup.turnTimer = Number(b.dataset.timer); showSetup(overwriting); });
     card.querySelectorAll('[data-players]').forEach(b => b.onclick = () => { setup.players = Number(b.dataset.players); showSetup(overwriting); });
     card.querySelector('[data-back]').onclick = showMenu;
     card.querySelector('[data-start]').onclick = () => {
       const start = () => {
         close();
-        state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer });
+        state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, domination: setup.domination });
         save(state); setState(state); handoff(state);
       };
       if (overwriting) showConfirm('Start a new game?', 'Your saved game will be lost.', 'Start new game', start, () => showSetup(overwriting));
@@ -137,7 +146,7 @@ function showSetup(overwriting) {
 }
 
 function startTutorial() {
-  stopTimer();
+  stopTimer(); sessionActive = false;
   tutorial.reset();
   state = newTutorialGame();
   setState(state);
@@ -165,7 +174,7 @@ function handoff(st, reason) {
     ${st.turnTimer ? `<p class="muted small">You'll have ${fmt(st.turnTimer)} once you reveal your fleet.</p>` : ''}
     <p class="muted">Pass the device to <b style="color:var(--text)">${pl.name}</b>. Everyone else, look away!</p>
     <div class="row" style="margin-top:16px"><button class="primary big" data-go>I'm ${pl.name}, show my fleet</button></div>`,
-  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); refresh(); startTimer(); });
+  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); sessionActive = true; refresh(); startTimer(); });
 }
 
 function gameOver(st) {
@@ -191,7 +200,7 @@ function gameOver(st) {
   const w = st.winner;
   showOverlay(`
     <h2>${w === null ? 'Nobody' : `<span style="color:${PLAYER_COLORS[w]}">${st.players[w].name}</span>`} wins!</h2>
-    <p class="muted">${w === null ? 'Every fleet went down.' : `${st.players[w].name} is the last rig standing after ${st.round} rounds.`}</p>
+    <p class="muted">${w === null ? 'Every fleet went down.' : st.winReason === 'domination' ? `${st.players[w].name} held No Man's Sea for 5 rounds straight. Domination victory in round ${st.round}.` : `${st.players[w].name} is the last rig standing after ${st.round} rounds.`}</p>
     <div class="row" style="margin-top:16px"><button class="primary big" data-new>New game</button></div>`,
   (card) => card.querySelector('[data-new]').onclick = () => showSetup(false));
 }

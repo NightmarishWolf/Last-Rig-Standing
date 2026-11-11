@@ -3,7 +3,11 @@
 A naval strategy game of attrition: find hidden oil, build rigs, grow your fleet, and outlast your opponent.
 2–4 players on one screen (hot-seat), four map sizes from Small (24×14) to Huge (52×30).
 With 2 players, homes are on the left and right; with 3–4, homes sit in the corners (and bottom-middle for 3).
-A player with no ships, no rigs and less than $60 is knocked out. Last player left wins.
+A player with no ships, no rigs and less than $60 is knocked out. Last player left wins, or (optional) hold half of
+No Man's Sea's deposits for 5 rounds for a Domination victory.
+
+Economy: every deposit starts with a random amount of oil (small at home, large in No Man's Sea), ships cost upkeep
+every turn, you can store at most 60 oil, and forward ports built on island coasts let you launch new ships near the front.
 
 ## Put it on GitHub Pages
 
@@ -21,7 +25,7 @@ To test on your own computer, the browser needs a local server (modules don't lo
 
 | File | What it does |
 |---|---|
-| `js/data/ships.js` | **All balance numbers**: ships, costs, deposits, oil market, starting money, tier unlocks, map sizes, player colours |
+| `js/data/ships.js` | **All balance numbers**: ships, costs, deposits, oil market, starting money, tier unlocks, map sizes, player colours, upkeep, oil cap, domination |
 | `js/engine.js` | Game rules. Pure logic, no graphics. Every change goes through `applyAction(state, action)` |
 | `js/ui.js` | Draws the board and side panel, turns clicks into actions |
 | `js/main.js` | Menu, saving, new-game setup, pass-the-device screens |

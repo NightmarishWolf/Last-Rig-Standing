@@ -3,7 +3,7 @@
 // and turns clicks into engine actions.
 // ============================================================
 import * as E from './engine.js';
-import { SHIPS, RIG, DEPOSITS, PASSIVE_TEXT, TIER_RIGS, PLAYER_COLORS } from './data/ships.js';
+import { SHIPS, RIG, PORT, DEPOSITS, PASSIVE_TEXT, TIER_RIGS, PLAYER_COLORS, ECONOMY, DOMINATION } from './data/ships.js';
 
 const CODES = {
   patrol: 'PB', survey: 'SV', corvette: 'CO', hydrofoil: 'HF', decoy: 'DB', minelayer: 'ML',
@@ -209,6 +209,8 @@ function draw() {
   // rigs
   v.myRigs.forEach(r => drawRig(r, pcol(p)));
   v.enemyRigs.forEach(r => drawRig(r, pcol(r.owner)));
+  v.myPorts.forEach(o => drawPort(o, pcol(p)));
+  v.enemyPorts.forEach(o => drawPort(o, pcol(o.owner)));
   // ships
   for (const s of v.myShips) drawHull(E.shipCells(s), pcol(p), s.id === selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
   for (const s of v.enemyShips) drawHull(s.cells, pcol(s.owner), false, 1, '?', undefined, true);
@@ -231,6 +233,51 @@ function draw() {
   }
   drawModeOverlay();
   drawMarkers();
+  drawOilTooltip(v);
+}
+
+// Hovering an oil spot or rig shows how much oil is left, e.g. "18/35 oil left".
+function oilInfo(v, x, y) {
+  const dep = v.deposits.find(d => d.x === x && d.y === y);
+  const myRig = v.myRigs.find(r => r.x === x && r.y === y);
+  const enemyRig = v.enemyRigs.find(r => r.x === x && r.y === y);
+  const port = [...v.myPorts, ...v.enemyPorts].find(o => o.x === x && o.y === y);
+  if (port) return [
+    { t: port.owner === me() ? 'Your forward port' : `${pname(port.owner)}'s forward port`, c: pcol(port.owner) },
+    { t: `HP ${port.hp}/${PORT.hp}`, c: '#ffffff', big: true },
+    { t: `Launches ships within ${PORT.range} squares`, c: '#9fb3c6' },
+  ];
+  if (!dep && !myRig && !enemyRig) return null;
+  const lines = [];
+  if (myRig) lines.push({ t: `Your oil rig · HP ${myRig.hp}/${RIG.hp}`, c: pcol(me()) });
+  else if (enemyRig) lines.push({ t: `${pname(enemyRig.owner)}'s oil rig`, c: pcol(enemyRig.owner) });
+  if (dep) {
+    const info = DEPOSITS[dep.type], max = dep.max ?? dep.reserves;
+    lines.push({ t: `${info.name} deposit`, c: '#f0a531' });
+    lines.push({ t: dep.reserves > 0 ? `${dep.reserves}/${max} oil left` : `Dry (0/${max})`, c: dep.reserves > 0 ? '#ffffff' : '#9aa5b1', big: true });
+    if (dep.reserves > 0) lines.push({ t: `Pumps ${info.rate}/turn · about ${Math.ceil(dep.reserves / info.rate)} turns left`, c: '#9fb3c6' });
+    if (!myRig && !enemyRig && dep.reserves > 0) lines.push({ t: 'No rig yet', c: '#9fb3c6' });
+  } else lines.push({ t: 'Deposit not surveyed', c: '#9fb3c6' });
+  return lines;
+}
+function drawOilTooltip(v) {
+  if (!hover || mode.kind === 'target') return;
+  const lines = oilInfo(v, hover.x, hover.y);
+  if (!lines) return;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  const fs = 12, lh = 17;
+  const w = 12 + Math.max(...lines.map(l => { ctx.font = `${l.big ? 'bold 14px' : fs + 'px'} system-ui`; return ctx.measureText(l.t).width; })) + 12;
+  const h = 10 + lines.reduce((t, l) => t + (l.big ? lh + 3 : lh), 0) + 6;
+  let x = px(hover.x) + cell + 6, y = py(hover.y) - 4;
+  if (x + w > MARGIN + st.W * cell) x = px(hover.x) - w - 6;
+  if (y + h > MARGIN + st.H * cell) y = MARGIN + st.H * cell - h;
+  ctx.fillStyle = 'rgba(8, 18, 28, 0.95)'; roundRect(x, y, w, h, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(240,165,49,0.7)'; ctx.lineWidth = 1; roundRect(x, y, w, h, 6); ctx.stroke();
+  let ty = y + 8;
+  for (const l of lines) {
+    ctx.font = `${l.big ? 'bold 14px' : fs + 'px'} system-ui`; ctx.fillStyle = l.c;
+    ctx.fillText(l.t, x + 12, ty); ty += l.big ? lh + 3 : lh;
+  }
 }
 
 // ---------- fog of war ----------
@@ -246,6 +293,7 @@ function visionSet(v) {
   };
   for (const s of v.myShips) mark(E.shipCells(s), SHIPS[s.type].sight);
   for (const r of v.myRigs) mark([[r.x, r.y]], RIG.sight);
+  for (const o of v.myPorts) mark([[o.x, o.y]], PORT.sight);
   return seen;
 }
 function drawFog(v) {
@@ -339,12 +387,46 @@ function drawModeOverlay() {
       ctx.lineWidth = 1;
     }
   }
+  if (mode.kind === 'placeShip') {
+    // where ships can launch: your spawn strip plus the area around forward rigs
+    const zone = new Set();
+    const sp = st.players[me()].spawn;
+    for (let y = sp.y0; y <= sp.y1; y++) for (let x = sp.x0; x <= sp.x1; x++) zone.add(x + ',' + y);
+    for (const r of E.forwardPorts(st, me()))
+      for (let dy = -PORT.range; dy <= PORT.range; dy++) for (let dx = -PORT.range; dx <= PORT.range; dx++)
+        if (r.x + dx >= 0 && r.y + dy >= 0 && r.x + dx < st.W && r.y + dy < st.H && !E.isLand(st, r.x + dx, r.y + dy)) zone.add((r.x + dx) + ',' + (r.y + dy));
+    ctx.fillStyle = 'rgba(43,179,163,0.14)';
+    for (const k of zone) { const [x, y] = k.split(',').map(Number); ctx.fillRect(px(x), py(y), cell, cell); }
+    outlineArea(zone, 'rgba(95,211,198,0.8)', 1.5, [4, 3]);
+  }
   if (mode.kind === 'placeShip' && hover) {
     const [ox, oy] = centerOffset(mode.ship, mode.rot);
     const cells = E.cellsOf(mode.ship, hover.x - ox, hover.y - oy, mode.rot);
-    const okSpot = cells.every(([x, y]) => E.inSpawn(st, me(), x, y)) &&
+    const okSpot = E.inLaunchZone(st, me(), cells) &&
       E.placementOk(st, me(), cells, null, E.visibility(st, me()));
     ghost(cells, okSpot ? 'rgba(43,179,163,0.6)' : 'rgba(226,85,85,0.6)');
+  }
+  if (mode.kind === 'placePort') {
+    // every coast square you can build on right now
+    for (let y = 0; y < st.H; y++) for (let x = 0; x < st.W; x++) {
+      if (!E.isCoast(st, x, y)) continue;
+      const okHere = !E.portBuildProblem(st, me(), x, y);
+      ctx.strokeStyle = okHere ? '#7fd17a' : 'rgba(255,255,255,0.25)'; ctx.lineWidth = okHere ? 2.5 : 1;
+      if (okHere) { ctx.fillStyle = 'rgba(127,209,122,0.35)'; roundRect(px(x) + 2, py(y) + 2, cell - 4, cell - 4, 4); ctx.fill(); }
+      roundRect(px(x) + 2, py(y) + 2, cell - 4, cell - 4, 4); ctx.stroke(); ctx.lineWidth = 1;
+    }
+    if (hover) {
+      const okSpot = !E.portBuildProblem(st, me(), hover.x, hover.y);
+      ctx.globalAlpha = 0.8; drawPort({ x: hover.x, y: hover.y, hp: PORT.hp }, okSpot ? pcol(me()) : '#e25555'); ctx.globalAlpha = 1;
+      if (okSpot) {
+        const z = new Set();
+        for (let dy = -PORT.range; dy <= PORT.range; dy++) for (let dx = -PORT.range; dx <= PORT.range; dx++) {
+          const x = hover.x + dx, y = hover.y + dy;
+          if (x >= 0 && y >= 0 && x < st.W && y < st.H && !E.isLand(st, x, y)) z.add(x + ',' + y);
+        }
+        outlineArea(z, 'rgba(95,211,198,0.9)', 1.5, [4, 3]);
+      }
+    }
   }
   if (mode.kind === 'placeRig') {
     // every deposit you can build on right now: solid green square
@@ -417,6 +499,22 @@ function drawRig(r, color) {
   ctx.stroke(); ctx.lineWidth = 1;
   if (r.hp < RIG.hp) { ctx.fillStyle = '#ff4d4d'; ctx.fillRect(x0 + 4, y0 + cell - 5, (cell - 8) * r.hp / RIG.hp, 3); }
 }
+// forward port: an anchor on a coast square
+function drawPort(o, color) {
+  const x0 = px(o.x), y0 = py(o.y), u = cell / 10;
+  ctx.fillStyle = '#0a1a26'; roundRect(x0 + 2, y0 + 2, cell - 4, cell - 4, 4); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = Math.max(1.2, u * 0.75); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(x0 + u * 5, y0 + u * 2.6, u * 0.9, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x0 + u * 5, y0 + u * 3.5); ctx.lineTo(x0 + u * 5, y0 + u * 8);
+  ctx.moveTo(x0 + u * 3.4, y0 + u * 4.6); ctx.lineTo(x0 + u * 6.6, y0 + u * 4.6);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(x0 + u * 5, y0 + u * 5.6, u * 2.5, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+  ctx.lineCap = 'butt'; ctx.lineWidth = 1;
+  if (o.hp < PORT.hp) { ctx.fillStyle = '#ff4d4d'; ctx.fillRect(x0 + 4, y0 + cell - 6, (cell - 8) * o.hp / PORT.hp, 3); }
+}
+
 function ghost(cells, color) {
   ctx.fillStyle = color;
   for (const [x, y] of cells) if (x >= 0 && y >= 0 && x < st.W && y < st.H) { roundRect(px(x) + 2, py(y) + 2, cell - 4, cell - 4, 4); ctx.fill(); }
@@ -439,6 +537,11 @@ function onBoardClick(c) {
   if (mode.kind === 'placeShip') {
     const [ox, oy] = centerOffset(mode.ship, mode.rot);
     const r = dispatch({ type: 'buyShip', ship: mode.ship, x: c.x - ox, y: c.y - oy, rot: mode.rot });
+    if (r.ok) mode = { kind: 'idle' };
+    return refresh();
+  }
+  if (mode.kind === 'placePort') {
+    const r = dispatch({ type: 'buyPort', x: c.x, y: c.y });
     if (r.ok) mode = { kind: 'idle' };
     return refresh();
   }
@@ -467,7 +570,7 @@ function onBoardClick(c) {
   }
 }
 function cancelMode() {
-  if (mode.kind === 'target' || mode.kind === 'placeShip' || mode.kind === 'placeRig') mode = selected() ? { kind: 'move' } : { kind: 'idle' };
+  if (mode.kind === 'target' || mode.kind === 'placeShip' || mode.kind === 'placeRig' || mode.kind === 'placePort') mode = selected() ? { kind: 'move' } : { kind: 'idle' };
   else { selectedId = null; mode = { kind: 'idle' }; }
   refresh();
 }
@@ -492,6 +595,7 @@ function onPanelClick(e) {
   if (d.rotate) dispatch({ type: 'rotate', shipId: selectedId });
   if (d.buy) { mode = { kind: 'placeShip', ship: d.buy, rot: 1 }; selectedId = null; }
   if (d.rig) mode = mode.kind === 'placeRig' ? { kind: 'idle' } : { kind: 'placeRig' };
+  if (d.port) mode = mode.kind === 'placePort' ? { kind: 'idle' } : { kind: 'placePort' };
   if (d.sell) dispatch({ type: 'sell', amount: d.sell === 'all' ? st.players[me()].oil : Number(d.sell) });
   if (d.end) return endTurnNow();
   if (d.deselect) { selectedId = null; mode = { kind: 'idle' }; }
@@ -512,16 +616,19 @@ function renderPanel() {
   let html = `
   <div class="card">
     <h3>Admirals</h3>
-    <div class="row" style="margin-top:0">${st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ' (CPU)' : ''}${o.out ? ' · out' : ''}</span>`).join('')}</div>
+    <div class="row" style="margin-top:0">${st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ' (CPU)' : ''}${o.out ? ' · out' : ''}${st.domination && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">domination ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('')}</div>
+    ${st.domination ? `<div class="small muted" style="margin-top:6px">Domination: hold rigs on ${E.dominationNeed(st)} of ${E.middleDeposits(st).length} No Man's Sea deposits for ${DOMINATION.rounds} rounds to win. You hold ${E.middleRigs(st, p)}.</div>` : ''}
   </div>
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
       <div class="stat"><span>Money</span><span class="v money">$${pl.money}</span></div>
-      <div class="stat"><span>Oil</span><span class="v oil">${pl.oil}</span></div>
+      <div class="stat"><span>Oil</span><span class="v oil" title="Storage cap: oil pumped past ${ECONOMY.oilCap} spills">${pl.oil}/${ECONOMY.oilCap}</span></div>
       <div class="stat"><span>Oil price</span><span class="v">$${st.market.price.toFixed(2)}</span></div>
       <div class="stat"><span>Rigs</span><span class="v">${rigs}</span></div>
       <div class="stat"><span>Fleet</span><span class="v">${st.ships.filter(x => x.owner === p).length} ships</span></div>
+      <div class="stat"><span>Upkeep</span><span class="v" style="color:#f09595">−$${E.upkeepTotal(st, p)}/turn</span></div>
+      <div class="stat"><span>Oil/turn</span><span class="v oil">+${st.rigs.filter(r => r.owner === p).reduce((t, r) => { const d = st.deposits.find(d => d.id === r.depId); return t + Math.min(DEPOSITS[d.type].rate, d.reserves); }, 0)}</span></div>
       <div class="stat"><span>Tier</span><span class="v">${tier}</span></div>
     </div>
     <div class="small muted" style="margin-top:6px">Sell oil (price drops as you sell, recovers each turn):</div>
@@ -531,6 +638,7 @@ function renderPanel() {
     </div>
     <div class="row">
       <button data-rig="1" class="${mode.kind === 'placeRig' ? 'active' : ''}" ${pl.money < E.rigCost(st, p) ? 'disabled' : ''}>Build rig ($${E.rigCost(st, p)})</button>
+      <button data-port="1" class="${mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>
       <button data-end="1" class="primary" style="margin-left:auto">End turn</button>
     </div>
   </div>`;
@@ -547,6 +655,7 @@ function renderPanel() {
         <div class="stat"><span>Moves left</span><span class="v">${canMove ? s.movesLeft : 0}</span></div>
         <div class="stat"><span>Oil/square</span><span class="v oil">${def.oil}${E.moveCost(st, s, 2) < def.oil * 2 ? ' (½)' : ''}</span></div>
         <div class="stat"><span>Sight</span><span class="v">${def.sight}</span></div>
+        <div class="stat"><span>Upkeep</span><span class="v">$${E.upkeepOf(s.type)}/turn</span></div>
       </div>
       ${pas ? `<ul class="small muted" style="padding-left:18px;margin:8px 0 0">${pas}</ul>` : ''}
       ${def.actions.map(a => {
@@ -563,7 +672,7 @@ function renderPanel() {
     </div>`;
   }
 
-  html += `<div class="card"><h3>Shipyard</h3><div class="small muted">New ships launch in your spawn zone (the lighter strip at your map edge) and are ready next turn. Press R to turn while placing.</div>`;
+  html += `<div class="card"><h3>Shipyard</h3><div class="small muted">New ships launch in your spawn zone (the lighter strip at your map edge) or within ${PORT.range} squares of one of your forward ports. Ready next turn. Press R to turn while placing.</div>`;
   for (const t of [1, 2, 3]) {
     const unlocked = E.tierUnlocked(st, p, t);
     html += `<div class="shop-tier"><div class="tier-head"><span>Tier ${t}</span><span>${unlocked ? 'Unlocked' : `Needs ${TIER_RIGS[t]} rigs`}</span></div>`;
@@ -572,7 +681,7 @@ function renderPanel() {
       const tip = [describeShip(def), ...Object.entries(def.passives || {}).map(([pk, pv]) => PASSIVE_TEXT[pk]?.(pv))].filter(Boolean).join('\n');
       html += `<div class="shop-item ${unlocked ? '' : 'locked'}" title="${tip.replace(/"/g, '&quot;')}">
         ${shapeSvg(def.shape)}
-        <div><div class="name">${def.name}</div><div class="meta">HP ${def.hp} · Move ${def.move} · ${def.oil} oil/sq · Sight ${def.sight}</div></div>
+        <div><div class="name">${def.name}</div><div class="meta">HP ${def.hp} · Move ${def.move} · ${def.oil} oil/sq · Sight ${def.sight} · Upkeep $${E.upkeepOf(k)}</div></div>
         <button data-buy="${k}" class="${mode.kind === 'placeShip' && mode.ship === k ? 'active' : ''}" ${!unlocked || !afford ? 'disabled' : ''}>$${def.cost}</button>
       </div>`;
     }
@@ -614,7 +723,12 @@ function updateStatus() {
   } else if (mode.kind === 'target' && s) {
     const a = SHIPS[s.type].actions.find(x => x.id === mode.actionId);
     t = `<b>${a.name}</b>: click a target in the highlighted range. Right-click or Esc to cancel.`;
-  } else if (mode.kind === 'placeShip') t = `Place your <b>${SHIPS[mode.ship].name}</b> in your spawn zone (the lighter strip at your edge). R to turn, Esc to cancel.`;
+  } else if (mode.kind === 'placeShip') t = `Place your <b>${SHIPS[mode.ship].name}</b> in the outlined launch zone: your spawn strip, or near one of your forward ports. R to turn, Esc to cancel.`;
+  else if (mode.kind === 'placePort') {
+    const why = hover && E.portBuildProblem(st, me(), hover.x, hover.y);
+    t = hover && !why ? `Click to build a forward port here for <b class="money">$${E.portCost(st, me())}</b>. Ships can launch inside the dashed area.`
+      : `Click a <b style="color:#7fd17a">highlighted island coast</b> next to one of your ships to build a port.${why ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
+  }
   else if (mode.kind === 'placeRig') {
     const any = E.getView(st, me()).deposits.some(d => !E.rigBuildProblem(st, me(), d.x, d.y));
     const why = hover && E.rigBuildProblem(st, me(), hover.x, hover.y);
@@ -623,6 +737,8 @@ function updateStatus() {
       : `Click a <b style="color:#7fd17a">highlighted deposit</b> to build a rig.${why && hover ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
   }
   else t = 'Click one of your ships to select it. Red-outlined "?" = enemy contacts (coloured by owner). S/M/R = small/medium/rich oil.';
+  const oil = hover && oilInfo(E.getView(st, me()), hover.x, hover.y);
+  if (oil && mode.kind !== 'target') t = oil.map(l => l.t).join(' · ');
   if (hover) t += ` <span class="muted">· ${E.coord(hover.x, hover.y)}${(st.players[me()].surveyed || {})[hover.x + ',' + hover.y] ? ' · <span style="color:#a9d77a">surveyed</span>' : ''} · ${(z => z === 'middle' ? "No Man's Sea" : z === me() ? 'Your waters' : pname(z) + "'s waters")(E.zoneOf(st, hover.x, hover.y))}</span>`;
   el.innerHTML = t;
 }
@@ -658,11 +774,15 @@ export function showRules() {
       <li>Turning a ship 90° costs one square of movement. Press <b>R</b>.</li>
       <li>Buy ships in the Shipyard. They launch in your spawn zone (the lighter strip at your edge of the map) and are ready next turn.</li>
       <li>Sell oil for money. Selling a lot at once drops the price; it recovers each turn.</li>
+      <li><b>Upkeep:</b> every ship costs 5% of its price in money each turn. Ships you can't pay for lose 1 HP. Big idle fleets drain you.</li>
+      <li><b>Storage:</b> you can hold ${ECONOMY.oilCap} oil. Anything pumped past that spills, so use it or sell it.</li>
+      <li><b>Forward ports:</b> build one on an <b>island coast</b> (island land touching water) with one of your ships right next to it. New ships can then launch within ${PORT.range} squares of the port. Ports have ${PORT.hp} HP, see ${PORT.sight} squares, and can be shot.</li>
     </ul>
     <h4>Oil</h4>
     <ul>
       <li>Deposits are hidden and move every game. Use <b>Survey</b> to find them. S/M/R = small/medium/rich. Water you've surveyed turns <b style="color:#a9d77a">green</b>, so you know where you've already looked.</li>
-      <li>Every player's home waters have the same deposits. No Man's Sea (the open water between homes) has the richest ones.</li>
+      <li>Every deposit starts with a random amount of oil. Hover over a deposit or rig to see what's left (e.g. 18/35). Rigs pump the same rate until the deposit runs dry.</li>
+      <li>Home deposits are small and run dry within a few rounds (every player's home gets the exact same amounts). No Man's Sea deposits hold several times more, so sooner or later you have to go fight for them.</li>
       <li>Build a rig on a discovered deposit next to one of your ships. Rigs produce oil each turn until the deposit runs dry.</li>
       <li>Owning 3 rigs unlocks Tier 2 ships. 5 rigs unlocks Tier 3.</li>
     </ul>
@@ -675,6 +795,8 @@ export function showRules() {
       <li>Submarines are only seen when adjacent or by destroyer sonar. Jammers blank out scans (purple hatching). Decoys and spoofs fake contacts.</li>
       <li>Moving into an unseen enemy stops your ship and reveals it. Mines are invisible to the enemy.</li>
     </ul>
+    <h4>Winning</h4>
+    <p>Knock everyone else out (no ships, no rigs, under $60), or, if Domination is on, hold rigs on at least half of No Man's Sea's deposits for ${DOMINATION.rounds} rounds in a row.</p>
     <h4>Wrecks</h4>
     <p>Sunk ships leave wrecks. A Salvage Ship can recover half their value, from any side. When a player is knocked out, their whole fleet becomes wrecks.</p>
     <div class="row" style="margin-top:16px"><button class="primary" data-close>Got it</button></div>

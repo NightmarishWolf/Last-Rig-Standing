@@ -20,18 +20,33 @@
 
 export const TIER_RIGS = { 1: 0, 2: 3, 3: 5 };
 
+// Forward port: built on the coast of an island (a land square touching water),
+// with one of your ships next to it. New ships can launch within `range` squares of it.
+export const PORT = {
+  name: 'Forward Port',
+  baseCost: 300,
+  costPerPort: 100, // each port you already own adds this to the price
+  hp: 4,
+  sight: 2,
+  range: 2,
+};
+
 export const RIG = {
   name: 'Oil Rig',
-  baseCost: 200,
-  costPerRig: 50, // each rig you already own adds this to the price
+  baseCost: 100,
+  costPerRig: 25, // each rig you already own adds this to the price (you start with 1, so your first new rig is $125)
   hp: 2,
   sight: 1,
 };
 
+// rate: oil a rig pumps per turn (the same everywhere).
+// home / middle: [min, max] oil a deposit starts with, picked at random each game.
+// Home deposits are small and run dry; No Man's Sea deposits last much longer.
+// (Every player's home gets the exact same amounts, so it stays fair.)
 export const DEPOSITS = {
-  small: { rate: 2, reserves: 30, label: 'S' },
-  medium: { rate: 3, reserves: 45, label: 'M' },
-  rich: { rate: 5, reserves: 70, label: 'R' },
+  small:  { rate: 2, label: 'S', name: 'Small',  home: [16, 26], middle: [40, 70] },
+  medium: { rate: 3, label: 'M', name: 'Medium', home: [24, 40], middle: [60, 100] },
+  rich:   { rate: 5, label: 'R', name: 'Rich',   home: [40, 60], middle: [100, 160] },
 };
 
 export const MARKET = {
@@ -42,6 +57,15 @@ export const MARKET = {
 };
 
 export const START = { money: 400, oil: 12 };
+
+export const ECONOMY = {
+  upkeepRate: 0.05,  // every ship costs this share of its price in money, every turn
+  oilCap: 60,        // max oil you can store; anything pumped past this spills
+};
+
+// Domination victory (optional, chosen on the new-game screen):
+// own rigs on at least `share` of No Man's Sea's deposits for `rounds` rounds in a row.
+export const DOMINATION = { share: 0.5, rounds: 5 };
 
 // Map sizes offered on the new-game screen.
 // extraHome: deposits added to every player's home waters on bigger maps.
@@ -90,12 +114,12 @@ export const SHIPS = {
     actions: [],
   },
   minelayer: {
-    name: 'Minelayer', tier: 1, cost: 200, hp: 2, oil: 2, move: 3, sight: 2,
+    name: 'Minelayer', tier: 1, cost: 200, hp: 2, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [0, 1], [1, 1]],
     actions: [{ id: 'mine', kind: 'mine', name: 'Lay Mine', max: 3, dmg: 2 }],
   },
   submarine: {
-    name: 'Submarine', tier: 1, cost: 250, hp: 3, oil: 2, move: 3, sight: 2,
+    name: 'Submarine', tier: 1, cost: 250, hp: 3, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0]],
     passives: { submerged: true },
     actions: [{ id: 'torpedo', kind: 'attack', name: 'Torpedo', range: 4, dmg: 3 }],
@@ -116,7 +140,7 @@ export const SHIPS = {
 
   // ---------- Tier 2 ----------
   destroyer: {
-    name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 2, move: 3, sight: 3,
+    name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 1, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { sonar: 3 },
     actions: [
@@ -125,39 +149,39 @@ export const SHIPS = {
     ],
   },
   missileboat: {
-    name: 'Missile Boat', tier: 2, cost: 220, hp: 2, oil: 2, move: 3, sight: 2,
+    name: 'Missile Boat', tier: 2, cost: 220, hp: 2, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0]],
     actions: [{ id: 'missile', kind: 'attack', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 }],
   },
   frigate: {
-    name: 'Frigate', tier: 2, cost: 350, hp: 4, oil: 2, move: 3, sight: 3,
+    name: 'Frigate', tier: 2, cost: 350, hp: 4, oil: 1, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { airDefense: 2 },
     actions: [{ id: 'gun', kind: 'attack', name: 'Gun', range: 3, dmg: 2 }],
   },
   jammer: {
-    name: 'Jammer Ship', tier: 2, cost: 300, hp: 3, oil: 2, move: 3, sight: 2,
+    name: 'Jammer Ship', tier: 2, cost: 300, hp: 3, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [1, 1]],
     passives: { jam: 2 },
     actions: [{ id: 'spoof', kind: 'spoof', name: 'Spoof Contact', range: 6 }],
   },
   cruiser: {
-    name: 'Cruiser', tier: 2, cost: 450, hp: 5, oil: 3, move: 2, sight: 3,
+    name: 'Cruiser', tier: 2, cost: 450, hp: 5, oil: 2, move: 2, sight: 3,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1]],
     actions: [{ id: 'missile', kind: 'attack', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 }],
   },
   salvage: {
-    name: 'Salvage Ship', tier: 2, cost: 250, hp: 3, oil: 2, move: 3, sight: 1,
+    name: 'Salvage Ship', tier: 2, cost: 250, hp: 3, oil: 1, move: 3, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'salvage', kind: 'salvage', name: 'Salvage Wreck', share: 0.5 }],
   },
   repair: {
-    name: 'Repair Ship', tier: 2, cost: 350, hp: 3, oil: 2, move: 2, sight: 1,
+    name: 'Repair Ship', tier: 2, cost: 350, hp: 3, oil: 1, move: 2, sight: 1,
     shape: [[0, 0], [1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'repair', kind: 'repair', name: 'Repair', amount: 2 }],
   },
   drillship: {
-    name: 'Drillship', tier: 2, cost: 400, hp: 3, oil: 3, move: 2, sight: 1,
+    name: 'Drillship', tier: 2, cost: 400, hp: 3, oil: 2, move: 2, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1]],
     passives: { mobileRig: true },
     actions: [],
@@ -165,7 +189,7 @@ export const SHIPS = {
 
   // ---------- Tier 3 ----------
   carrier: {
-    name: 'Carrier', tier: 3, cost: 700, hp: 6, oil: 4, move: 2, sight: 4,
+    name: 'Carrier', tier: 3, cost: 700, hp: 6, oil: 2, move: 2, sight: 4,
     shape: [[3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     actions: [
       { id: 'recon', kind: 'scan', name: 'Recon Flight', range: 8, size: 4, free: true },
@@ -173,13 +197,13 @@ export const SHIPS = {
     ],
   },
   battleship: {
-    name: 'Battleship', tier: 3, cost: 800, hp: 8, oil: 5, move: 1, sight: 3,
+    name: 'Battleship', tier: 3, cost: 800, hp: 8, oil: 3, move: 1, sight: 3,
     shape: [[1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 1 },
     actions: [{ id: 'salvo', kind: 'attack', name: 'Salvo', range: 5, dmg: 2, shots: 3 }],
   },
   command: {
-    name: 'Command Ship', tier: 3, cost: 600, hp: 5, oil: 3, move: 2, sight: 4,
+    name: 'Command Ship', tier: 3, cost: 600, hp: 5, oil: 2, move: 2, sight: 4,
     shape: [[2, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { command: 3 },
     actions: [],
@@ -191,7 +215,7 @@ export const SHIPS = {
     actions: [{ id: 'torpedo', kind: 'attack', name: 'Heavy Torpedo', range: 5, dmg: 4 }],
   },
   dreadnought: {
-    name: 'Dreadnought', tier: 3, cost: 1300, hp: 12, oil: 7, move: 1, sight: 3,
+    name: 'Dreadnought', tier: 3, cost: 1300, hp: 12, oil: 4, move: 1, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 2, limit: 1 },
     actions: [{ id: 'battery', kind: 'attack', name: 'Main Battery', range: 6, dmg: 3, shots: 4 }],
@@ -210,6 +234,6 @@ export const PASSIVE_TEXT = {
   command: v => `Fleet Command: your ships within ${v} squares get +1 move and +1 range`,
   jam: v => `Jam: enemy scans within ${v} squares of this ship see nothing`,
   hitAndRun: () => 'Hit and Run: can still move after attacking',
-  upkeep: v => `Uses no oil, but costs $${v} per turn`,
+  upkeep: v => `Uses no oil to move (upkeep $${v} per turn)`,
   limit: v => `Limit ${v} per player`,
 };

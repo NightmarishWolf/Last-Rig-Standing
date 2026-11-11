@@ -22,16 +22,17 @@ function ship(id, owner, type, x, y) {
 export function newTutorialGame() {
   const st = E.newGame({ size: 'small', players: 2, seed: 2026 });
   st.tutorial = true;
+  st.domination = false;
   // a few islands, out of the way
   st.land.fill(0);
   [[14, 1], [14, 2], [15, 2], [13, 11], [14, 11], [15, 11], [15, 10], [11, 8], [12, 8]].forEach(([x, y]) => { st.land[y * st.W + x] = 1; });
   st.deposits = [
-    { id: 'd_tut_home', x: 5, y: 2, type: 'medium', reserves: 45 },
-    { id: DEP_FOUND, x: 5, y: 9, type: 'small', reserves: 30 },
-    { id: 'd_tut_a', x: 3, y: 12, type: 'small', reserves: 30 },
-    { id: 'd_tut_b', x: 12, y: 4, type: 'rich', reserves: 70 },
-    { id: 'd_tut_c', x: 16, y: 8, type: 'medium', reserves: 45 },
-    { id: 'd_tut_d', x: 20, y: 3, type: 'medium', reserves: 45 },
+    { id: 'd_tut_home', x: 5, y: 2, type: 'medium', reserves: 45, max: 45 },
+    { id: DEP_FOUND, x: 5, y: 9, type: 'small', reserves: 30, max: 30 },
+    { id: 'd_tut_a', x: 3, y: 12, type: 'small', reserves: 30, max: 30 },
+    { id: 'd_tut_b', x: 12, y: 4, type: 'rich', reserves: 70, max: 70 },
+    { id: 'd_tut_c', x: 16, y: 8, type: 'medium', reserves: 45, max: 45 },
+    { id: 'd_tut_d', x: 20, y: 3, type: 'medium', reserves: 45, max: 45 },
   ];
   st.rigs = [{ id: 'r_tut_home', owner: 0, x: 5, y: 2, hp: 2, depId: 'd_tut_home' }];
   st.ships = [
@@ -64,10 +65,9 @@ export const STEPS = [
   },
   {
     title: 'Oil and money',
-    text: `Look at <b>Resources</b> in the panel on the right.<br>
-      <b class="oil">Oil</b> moves your ships: every square costs oil, and bigger ships burn more.<br>
-      <b class="money">Money</b> buys ships and rigs. You earn money by selling oil.<br>
-      Your rig (the tower icon) produces oil at the start of every turn.`,
+    text: `<b class="oil">Oil</b> moves your ships (bigger ships burn more). <b class="money">Money</b> buys ships and rigs; you get it by selling oil.<br>
+      Your rig (the tower icon) pumps oil every turn until its deposit runs dry. <b>Hover over it</b> to see how much is left.<br>
+      Every ship costs a little <b>upkeep</b> money each turn, so idle fleets drain you.`,
     markers: [{ x0: 5, y0: 2, x1: 5, y1: 2, label: 'Your oil rig' }],
     next: true,
   },
