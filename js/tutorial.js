@@ -94,7 +94,7 @@ export const STEPS = [
   },
   {
     title: 'Build an oil rig',
-    text: `Found one! The amber circle marked <b>S</b> is a small deposit (M = medium, R = rich).<br>
+    text: `Found one! The amber circle marked <b>S</b> is a small deposit (M = medium, R = rich). The <b style="color:#a9d77a">green</b> water is the area you've surveyed.<br>
       Click <b>Build rig</b>, then click the deposit. A rig needs one of your ships right next to it.`,
     highlight: '[data-rig]',
     markers: [{ x0: 5, y0: 9, x1: 5, y1: 9, label: 'Build here' }],
@@ -124,7 +124,7 @@ export const STEPS = [
   },
   {
     title: 'Scout ahead',
-    text: `New turn: your rigs pumped more oil. Intel says an <b>enemy ship</b> is lurking near the marker, but you can't see it yet. Ships only see 2 squares around them.<br>
+    text: `New turn: your rigs pumped more oil. Intel says an <b>enemy ship</b> is lurking near the marker, but you can't see it yet. The <b>bright water</b> is what your fleet can see. Everything else is dark fog. A Patrol Boat sees 3 squares around itself.<br>
       Select your <b>other Patrol Boat</b> (top left) and move it a few squares toward the marker.`,
     markers: [{ x0: 8, y0: 4, x1: 10, y1: 6, label: 'Enemy reported' }],
     check: st => pb(st).some(s => s.movesLeft < SHIPS.patrol.move && E.dist(E.shipCells(s), TARGET_CELLS) <= 5) || targetSeen(st),

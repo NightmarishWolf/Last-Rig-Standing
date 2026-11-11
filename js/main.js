@@ -6,12 +6,49 @@
 // ============================================================
 import * as E from './engine.js';
 import { MAP_SIZES, PLAYER_COLORS } from './data/ships.js';
-import { initUI, setState, refresh, redraw, showOverlay, showRules } from './ui.js';
+import { initUI, setState, refresh, redraw, showOverlay, showRules, showConfirm, endTurnNow } from './ui.js';
 import { newTutorialGame, createTutorial } from './tutorial.js';
 
 const SAVE_KEY = 'last-rig-standing-save-v2';
 let state = null;
-const setup = { size: 'standard', players: 2 };
+const setup = { size: 'standard', players: 2, turnTimer: 90 };
+const TIMER_OPTIONS = [0, 60, 90, 120, 180];
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ---------- turn timer ----------
+// Counts down only while the board is in front of the player (paused behind menus and the
+// pass-the-device screen). When it hits zero the turn ends automatically.
+const timer = { left: 0, running: false, last: 0 };
+function startTimer() {
+  const secs = state.turnTimer ?? 90;
+  timer.running = !state.tutorial && state.phase === 'playing' && secs > 0;
+  timer.left = secs; timer.last = performance.now();
+  renderTimer();
+}
+function stopTimer() { timer.running = false; renderTimer(); }
+function renderTimer() {
+  const el = document.getElementById('timer');
+  if (!timer.running) { el.classList.add('hidden'); return; }
+  const paused = !document.getElementById('overlay').classList.contains('hidden');
+  el.className = 'timer' + (timer.left <= 10 ? ' danger' : timer.left <= 30 ? ' warn' : '') + (paused ? ' paused' : '');
+  el.textContent = (paused ? '⏸ ' : '') + fmt(Math.ceil(timer.left));
+  el.title = paused ? 'Timer paused' : 'Time left this turn';
+}
+setInterval(() => {
+  const now = performance.now(), dt = (now - timer.last) / 1000;
+  timer.last = now;
+  if (!timer.running) return;
+  const paused = !document.getElementById('overlay').classList.contains('hidden');
+  if (!paused) timer.left -= dt;
+  if (timer.left <= 0) {
+    const who = state.players[state.current].name;
+    timer.running = false;
+    endTurnNow(`Time's up for ${who}!`);
+    if (state.phase === 'over') renderTimer();
+    return;
+  }
+  renderTimer();
+}, 200);
 
 function save(st) {
   if (st.tutorial) return; // never overwrite the real save with the tutorial
@@ -29,7 +66,8 @@ function showMenu() {
     <h1>LAST RIG <span style="color:var(--oil)">STANDING</span></h1>
     <p class="muted">A naval war of attrition. Find oil, build rigs, grow your fleet, and outlast everyone else.</p>
     <div class="row" style="margin-top:16px">
-      ${canContinue ? `<button class="primary big" data-continue>Continue (${saved.players.length} players, round ${saved.round})</button>` : ''}
+      ${inGame ? '<button class="primary big" data-resume>Resume</button>' : ''}
+      ${canContinue && !inGame ? `<button class="primary big" data-continue>Continue (${saved.players.length} players, round ${saved.round})</button>` : ''}
       <button class="${canContinue ? '' : 'primary'} big" data-new>New game</button>
       <button class="big" data-tutorial>Tutorial</button>
       <button class="big ghost" data-rules>Rules</button>
@@ -38,15 +76,17 @@ function showMenu() {
     card.querySelector('[data-new]').onclick = () => showSetup(canContinue);
     card.querySelector('[data-rules]').onclick = () => showRules();
     card.querySelector('[data-tutorial]').onclick = () => { close(); startTutorial(); };
+    const res = card.querySelector('[data-resume]');
+    if (res) res.onclick = () => close(); // timer picks up where it left off
     const c = card.querySelector('[data-continue]');
     if (c) c.onclick = () => { close(); state = saved; setState(state); handoff(state); };
     const sur = card.querySelector('[data-surrender]');
-    if (sur) sur.onclick = () => {
-      if (!confirm(`${state.players[state.current].name} surrenders? Their whole fleet will sink.`)) return;
-      E.applyAction(state, { type: 'surrender' });
-      save(state); setState(state);
-      if (state.phase === 'over') gameOver(state); else handoff(state);
-    };
+    if (sur) sur.onclick = () => showConfirm('Surrender?',
+      `${state.players[state.current].name} will be knocked out and their whole fleet will sink.`, 'Surrender', () => {
+        E.applyAction(state, { type: 'surrender' });
+        save(state); setState(state);
+        if (state.phase === 'over') gameOver(state); else handoff(state);
+      }, showMenu);
   });
 }
 
@@ -59,6 +99,12 @@ function showSetup(overwriting) {
       <div class="label">Map size</div>
       <div class="seg">${Object.entries(MAP_SIZES).map(([k, m]) => `
         <button data-size="${k}" class="${setup.size === k ? 'on' : ''}">${m.name}<small>${m.w}×${m.h}${m.maxPlayers < 4 ? ` · up to ${m.maxPlayers} players` : ''}</small></button>`).join('')}
+      </div>
+    </div>
+    <div class="setup-group">
+      <div class="label">Turn timer</div>
+      <div class="seg">${TIMER_OPTIONS.map(t => `
+        <button data-timer="${t}" class="${setup.turnTimer === t ? 'on' : ''}">${t ? fmt(t) : 'Off'}</button>`).join('')}
       </div>
     </div>
     <div class="setup-group">
@@ -75,30 +121,37 @@ function showSetup(overwriting) {
       <button class="big ghost" data-back>Back</button>
     </div>`, (card, close) => {
     card.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { setup.size = b.dataset.size; showSetup(overwriting); });
+    card.querySelectorAll('[data-timer]').forEach(b => b.onclick = () => { setup.turnTimer = Number(b.dataset.timer); showSetup(overwriting); });
     card.querySelectorAll('[data-players]').forEach(b => b.onclick = () => { setup.players = Number(b.dataset.players); showSetup(overwriting); });
     card.querySelector('[data-back]').onclick = showMenu;
     card.querySelector('[data-start]').onclick = () => {
-      if (overwriting && !confirm('Start a new game? The saved game will be lost.')) return;
-      close();
-      state = E.newGame({ size: setup.size, players: setup.players });
-      save(state); setState(state); handoff(state);
+      const start = () => {
+        close();
+        state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer });
+        save(state); setState(state); handoff(state);
+      };
+      if (overwriting) showConfirm('Start a new game?', 'Your saved game will be lost.', 'Start new game', start, () => showSetup(overwriting));
+      else start();
     };
   });
 }
 
 function startTutorial() {
+  stopTimer();
   tutorial.reset();
   state = newTutorialGame();
   setState(state);
 }
 function exitTutorial() {
+  stopTimer();
   tutorial.hide();
   state = load() || E.newGame(setup);
   setState(state);
   showMenu();
 }
 
-function handoff(st) {
+function handoff(st, reason) {
+  stopTimer();
   if (st.tutorial) {
     // the enemy does nothing in the tutorial: skip straight back to the player
     while (st.phase === 'playing' && st.current !== 0) E.applyAction(st, { type: 'endTurn' });
@@ -107,13 +160,16 @@ function handoff(st) {
   }
   const p = st.current, pl = st.players[p];
   showOverlay(`
+    ${reason ? `<p style="color:#ff6b6b;font-weight:700;margin-top:0">${reason}</p>` : ''}
     <h2><span style="color:${PLAYER_COLORS[p]}">${pl.name}</span>'s turn</h2>
+    ${st.turnTimer ? `<p class="muted small">You'll have ${fmt(st.turnTimer)} once you reveal your fleet.</p>` : ''}
     <p class="muted">Pass the device to <b style="color:var(--text)">${pl.name}</b>. Everyone else, look away!</p>
     <div class="row" style="margin-top:16px"><button class="primary big" data-go>I'm ${pl.name}, show my fleet</button></div>`,
-  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); refresh(); });
+  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); refresh(); startTimer(); });
 }
 
 function gameOver(st) {
+  stopTimer();
   if (st.tutorial) {
     showOverlay(`
       <h2>Tutorial complete!</h2>

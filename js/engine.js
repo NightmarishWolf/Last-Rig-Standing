@@ -84,6 +84,7 @@ export function newGame(opts = {}) {
   const st = {
     version: 2, seed, rng: seed, size, W, H,
     turnCount: 1, round: 1, current: 0,
+    turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
     phase: 'playing', winner: null, nextId: 1,
     land: new Array(W * H).fill(0),
     deposits: [], ships: [], rigs: [], mines: [], wrecks: [],
@@ -91,7 +92,7 @@ export function newGame(opts = {}) {
     players: layout.map((l, i) => ({
       name: PLAYER_NAMES[i], seat: (opts.seats && opts.seats[i]) || 'human', out: false,
       home: l.home, spawn: l.spawn,
-      money: START.money, oil: START.oil, known: {}, prevTurn: 0,
+      money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0,
       shots: [], incoming: [], flashes: [], spoofs: [], scans: [],
       reveals: { ships: [], rigs: [] }, log: [],
     })),
@@ -410,6 +411,11 @@ function doAct(st, a) {
     case 'survey': {
       spend(ship, act);
       const found = st.deposits.filter(d => dist(cells, [[d.x, d.y]]) <= act.radius);
+      const sv = (st.players[p].surveyed ||= {});
+      for (const [cx, cy] of cells)
+        for (let dy = -act.radius; dy <= act.radius; dy++)
+          for (let dx = -act.radius; dx <= act.radius; dx++)
+            if (inBounds(st, cx + dx, cy + dy)) sv[(cx + dx) + ',' + (cy + dy)] = 1;
       let fresh = 0;
       found.forEach(d => { if (!st.players[p].known[d.id]) fresh++; st.players[p].known[d.id] = true; });
       log(st, p, fresh ? `Survey found ${fresh} new oil deposit${fresh > 1 ? 's' : ''}!` : 'Survey found no new oil here.');

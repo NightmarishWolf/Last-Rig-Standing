@@ -6,7 +6,8 @@
 // oil:   oil burned per square moved (and per 90° turn).
 // move:  max squares per turn.
 // tier:  1 = always available, 2 = needs TIER_RIGS[2] rigs, 3 = needs TIER_RIGS[3].
-// sight: how far (squares) this ship automatically spots surface enemies.
+// sight: how far (squares) this ship automatically spots surface enemies. Shown on the
+//        board as the bright area around your fleet (everything else is fog).
 // actions: what the ship can do with its one action per turn.
 //   attack: { range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown }
 //   scan:   reveals enemy ships/rigs in a size×size box within range.
@@ -58,7 +59,7 @@ export const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
 export const SHIPS = {
   // ---------- Tier 1 ----------
   patrol: {
-    name: 'Patrol Boat', tier: 1, cost: 100, hp: 2, oil: 1, move: 4, sight: 2,
+    name: 'Patrol Boat', tier: 1, cost: 100, hp: 2, oil: 1, move: 4, sight: 3,
     shape: [[0, 0], [1, 0]],
     actions: [
       { id: 'gun', kind: 'attack', name: 'Light Gun', range: 3, dmg: 1 },
@@ -100,7 +101,7 @@ export const SHIPS = {
     actions: [{ id: 'torpedo', kind: 'attack', name: 'Torpedo', range: 4, dmg: 3 }],
   },
   tanker: {
-    name: 'Tanker', tier: 1, cost: 200, hp: 4, oil: 1, move: 3, sight: 2,
+    name: 'Tanker', tier: 1, cost: 200, hp: 4, oil: 1, move: 3, sight: 1,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { fuelLine: 2 },
     actions: [],
@@ -115,7 +116,7 @@ export const SHIPS = {
 
   // ---------- Tier 2 ----------
   destroyer: {
-    name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 2, move: 3, sight: 2,
+    name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 2, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { sonar: 3 },
     actions: [
@@ -129,7 +130,7 @@ export const SHIPS = {
     actions: [{ id: 'missile', kind: 'attack', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 }],
   },
   frigate: {
-    name: 'Frigate', tier: 2, cost: 350, hp: 4, oil: 2, move: 3, sight: 2,
+    name: 'Frigate', tier: 2, cost: 350, hp: 4, oil: 2, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { airDefense: 2 },
     actions: [{ id: 'gun', kind: 'attack', name: 'Gun', range: 3, dmg: 2 }],
@@ -141,22 +142,22 @@ export const SHIPS = {
     actions: [{ id: 'spoof', kind: 'spoof', name: 'Spoof Contact', range: 6 }],
   },
   cruiser: {
-    name: 'Cruiser', tier: 2, cost: 450, hp: 5, oil: 3, move: 2, sight: 2,
+    name: 'Cruiser', tier: 2, cost: 450, hp: 5, oil: 3, move: 2, sight: 3,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1]],
     actions: [{ id: 'missile', kind: 'attack', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 }],
   },
   salvage: {
-    name: 'Salvage Ship', tier: 2, cost: 250, hp: 3, oil: 2, move: 3, sight: 2,
+    name: 'Salvage Ship', tier: 2, cost: 250, hp: 3, oil: 2, move: 3, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'salvage', kind: 'salvage', name: 'Salvage Wreck', share: 0.5 }],
   },
   repair: {
-    name: 'Repair Ship', tier: 2, cost: 350, hp: 3, oil: 2, move: 2, sight: 2,
+    name: 'Repair Ship', tier: 2, cost: 350, hp: 3, oil: 2, move: 2, sight: 1,
     shape: [[0, 0], [1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'repair', kind: 'repair', name: 'Repair', amount: 2 }],
   },
   drillship: {
-    name: 'Drillship', tier: 2, cost: 400, hp: 3, oil: 3, move: 2, sight: 2,
+    name: 'Drillship', tier: 2, cost: 400, hp: 3, oil: 3, move: 2, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1]],
     passives: { mobileRig: true },
     actions: [],
@@ -164,7 +165,7 @@ export const SHIPS = {
 
   // ---------- Tier 3 ----------
   carrier: {
-    name: 'Carrier', tier: 3, cost: 700, hp: 6, oil: 4, move: 2, sight: 3,
+    name: 'Carrier', tier: 3, cost: 700, hp: 6, oil: 4, move: 2, sight: 4,
     shape: [[3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     actions: [
       { id: 'recon', kind: 'scan', name: 'Recon Flight', range: 8, size: 4, free: true },
@@ -172,13 +173,13 @@ export const SHIPS = {
     ],
   },
   battleship: {
-    name: 'Battleship', tier: 3, cost: 800, hp: 8, oil: 5, move: 1, sight: 2,
+    name: 'Battleship', tier: 3, cost: 800, hp: 8, oil: 5, move: 1, sight: 3,
     shape: [[1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 1 },
     actions: [{ id: 'salvo', kind: 'attack', name: 'Salvo', range: 5, dmg: 2, shots: 3 }],
   },
   command: {
-    name: 'Command Ship', tier: 3, cost: 600, hp: 5, oil: 3, move: 2, sight: 3,
+    name: 'Command Ship', tier: 3, cost: 600, hp: 5, oil: 3, move: 2, sight: 4,
     shape: [[2, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { command: 3 },
     actions: [],
@@ -190,7 +191,7 @@ export const SHIPS = {
     actions: [{ id: 'torpedo', kind: 'attack', name: 'Heavy Torpedo', range: 5, dmg: 4 }],
   },
   dreadnought: {
-    name: 'Dreadnought', tier: 3, cost: 1300, hp: 12, oil: 7, move: 1, sight: 2,
+    name: 'Dreadnought', tier: 3, cost: 1300, hp: 12, oil: 7, move: 1, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 2, limit: 1 },
     actions: [{ id: 'battery', kind: 'attack', name: 'Main Battery', range: 6, dmg: 3, shots: 4 }],
