@@ -1,0 +1,5 @@
+/* Small screens: loaded last so it can override the other files. */
+@media (max-width: 1000px) {
+  .layout { flex-direction: column; }
+  .panel { width: 100%; max-height: none; }
+}

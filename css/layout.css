@@ -1,0 +1,12 @@
+/* Page layout: top bar, board area, side panel placement, small screens. */
+.topbar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0a1826; }
+.brand { font-weight: 800; letter-spacing: 3px; font-size: 18px; }
+.brand span { color: var(--oil); }
+.turn-info { flex: 1; color: var(--muted); }
+.turn-info b { color: var(--text); }
+.top-actions { display: flex; gap: 8px; }
+.layout { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+.board-wrap { flex: 1; min-width: 0; }
+canvas#board { display: block; border-radius: var(--radius); cursor: crosshair; touch-action: manipulation; }
+.status { margin-top: 8px; min-height: 22px; color: var(--muted); }
+.status b { color: var(--text); }

@@ -23,15 +23,67 @@ To test on your own computer, the browser needs a local server (modules don't lo
 
 ## Where things live
 
-| File | What it does |
-|---|---|
-| `js/data/ships.js` | **All balance numbers**: ships, costs, deposits, oil market, starting money, tier unlocks, map sizes, player colours, upkeep, oil cap, domination |
-| `js/engine.js` | Game rules. Pure logic, no graphics. Every change goes through `applyAction(state, action)` |
-| `js/ui.js` | Draws the board and side panel, turns clicks into actions |
-| `js/main.js` | Menu, saving, new-game setup, pass-the-device screens |
-| `js/tutorial.js` | The guided tutorial: its hand-built map and the list of steps (edit the text here) |
+Each feature has its own small file. Start in `js/data/` for balance changes.
 
-The game auto-saves in the browser after every action (Menu → Continue).
+```
+index.html               page skeleton
+css/
+  base.css               colours, fonts, buttons
+  layout.css             top bar, board area, panel placement
+  panel.css              side panel, shipyard, log, player chips
+  dialogs.css            menus, setup screen, rules, confirm boxes
+  tutorial.css           tutorial coach box
+  timer.css              turn timer
+  responsive.css         small screens (loaded last)
+js/
+  main.js                start-up: wires everything together
+  data/                  ALL BALANCE NUMBERS (edit these to tune the game)
+    ships.js             every ship: stats, shape, abilities
+    economy.js           oil deposits, rigs, ports, market, upkeep, oil cap, tiers, domination
+    maps.js              map sizes, player names and colours
+  engine/                game rules, no graphics
+    index.js             one import for the whole engine
+    actions.js           applyAction() and getView(): the only ways in and out
+    setup.js             new game: homes, islands, deposits, starting fleets
+    movement.js          moving/turning, hidden collisions, mines
+    abilities.js         attacks, scans, surveys, mines, repairs, spoofs, salvage
+    combat.js            shot resolution, armor, interception, sinking
+    economy.js           buying ships and rigs, launch zones, selling oil
+    ports.js             forward ports on island coasts
+    turns.js             start of turn, upkeep, domination, elimination
+    visibility.js        fog of war
+    stats.js             prices, upkeep, movement cost, domination counts
+    geometry.js          grid maths, zones, coordinates
+    util.js, rng.js      shared helpers, seeded random numbers
+  ui/                    everything on screen
+    index.js             UI start-up, refresh, sending actions
+    state.js             what the screen is doing (selection, mode, hover)
+    input.js             mouse and keyboard
+    panel.js             side panel and top bar
+    status.js            hint line under the board, error toasts
+    dialogs.js           overlays, confirm box, Rules screen
+    board/               the canvas: render.js draws it layer by layer;
+                         units, fog, modes (move/target/placing), tooltip, markers
+  app/                   menus and game flow
+    menu.js              main menu and new-game setup
+    flow.js              pass-the-device, game over, tutorial enter/exit
+    timer.js             turn timer
+    storage.js           saving in the browser
+    settings.js, state.js
+  tutorial/
+    steps.js             the tutorial steps and coach text (edit text here)
+    map.js               the tutorial's hand-built map
+    coach.js             the coach box and step logic
+```
+
+### Common edits
+
+- **Balance a ship:** change its numbers in `js/data/ships.js`.
+- **Add a ship:** add an entry to `SHIPS` in `js/data/ships.js` and a two-letter label in `CODES` in `js/ui/constants.js`.
+  If it uses a brand-new ability, add it in `js/engine/abilities.js`.
+- **Economy tuning:** `js/data/economy.js`.
+- **New map size:** `js/data/maps.js`.
+- **Tutorial wording:** `js/tutorial/steps.js`.
 
 ## Controls
 

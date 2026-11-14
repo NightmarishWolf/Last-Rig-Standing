@@ -1,84 +1,20 @@
 // ============================================================
-// SHIP DATA — tweak balance here. Every number in the game
-// that describes a ship lives in this file.
+// SHIP DATA: every ship's stats, shape and abilities.
 //
 // shape: list of [x, y] squares in the default (horizontal) facing.
 // oil:   oil burned per square moved (and per 90° turn).
 // move:  max squares per turn.
-// tier:  1 = always available, 2 = needs TIER_RIGS[2] rigs, 3 = needs TIER_RIGS[3].
-// sight: how far (squares) this ship automatically spots surface enemies. Shown on the
-//        board as the bright area around your fleet (everything else is fog).
+// tier:  1 = always available, 2/3 need rigs (see TIER_RIGS in economy.js). 0 = never in the shipyard.
+// sight: how far (squares) this ship spots surface enemies (the bright area on the board).
 // actions: what the ship can do with its one action per turn.
 //   attack: { range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown }
 //   scan:   reveals enemy ships/rigs in a size×size box within range.
 //   survey: reveals oil deposits within `radius` of the ship.
-//   mine, repair, spoof, salvage: see engine.js.
+//   mine, repair, spoof, salvage: see engine/abilities.js.
 //   free: true means it does not use up the ship's action.
 // passives: armor, submerged, sonar, screen, airDefense, fuelLine,
 //   mobileRig, command, jam, hitAndRun, upkeep, limit.
 // ============================================================
-
-export const TIER_RIGS = { 1: 0, 2: 3, 3: 5 };
-
-// Forward port: built on the coast of an island (a land square touching water),
-// with one of your ships next to it. New ships can launch within `range` squares of it.
-export const PORT = {
-  name: 'Forward Port',
-  baseCost: 300,
-  costPerPort: 100, // each port you already own adds this to the price
-  hp: 4,
-  sight: 2,
-  range: 2,
-};
-
-export const RIG = {
-  name: 'Oil Rig',
-  baseCost: 100,
-  costPerRig: 25, // each rig you already own adds this to the price (you start with 1, so your first new rig is $125)
-  hp: 2,
-  sight: 1,
-};
-
-// rate: oil a rig pumps per turn (the same everywhere).
-// home / middle: [min, max] oil a deposit starts with, picked at random each game.
-// Home deposits are small and run dry; No Man's Sea deposits last much longer.
-// (Every player's home gets the exact same amounts, so it stays fair.)
-export const DEPOSITS = {
-  small:  { rate: 2, label: 'S', name: 'Small',  home: [16, 26], middle: [40, 70] },
-  medium: { rate: 3, label: 'M', name: 'Medium', home: [24, 40], middle: [60, 100] },
-  rich:   { rate: 5, label: 'R', name: 'Rich',   home: [40, 60], middle: [100, 160] },
-};
-
-export const MARKET = {
-  basePrice: 15,   // $ per oil when the market is calm
-  minPrice: 4,
-  dropPerUnit: 0.25, // every unit sold lowers the price this much
-  recoverPerTurn: 1,
-};
-
-export const START = { money: 400, oil: 12 };
-
-export const ECONOMY = {
-  upkeepRate: 0.05,  // every ship costs this share of its price in money, every turn
-  oilCap: 60,        // max oil you can store; anything pumped past this spills
-};
-
-// Domination victory (optional, chosen on the new-game screen):
-// own rigs on at least `share` of No Man's Sea's deposits for `rounds` rounds in a row.
-export const DOMINATION = { share: 0.5, rounds: 5 };
-
-// Map sizes offered on the new-game screen.
-// extraHome: deposits added to every player's home waters on bigger maps.
-export const MAP_SIZES = {
-  small:    { name: 'Small',    w: 24, h: 14, maxPlayers: 3, extraHome: [] },
-  standard: { name: 'Standard', w: 30, h: 18, maxPlayers: 4, extraHome: [] },
-  large:    { name: 'Large',    w: 40, h: 24, maxPlayers: 4, extraHome: ['small', 'medium'] },
-  huge:     { name: 'Huge',     w: 52, h: 30, maxPlayers: 4, extraHome: ['small', 'small', 'medium'] },
-};
-
-// Each player's colour (ships, rigs, labels).
-export const PLAYER_COLORS = ['#2bb3a3', '#f08a3c', '#a87cf0', '#d9c84a'];
-export const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
 
 export const SHIPS = {
   // ---------- Tier 1 ----------

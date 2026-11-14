@@ -1,0 +1,8 @@
+/* Tutorial coach box and pulsing button highlight. */
+.coach { background: #1b2a12; border: 1px solid #6f8f2f; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; max-width: 980px; height: 172px; overflow-y: auto; display: flex; flex-direction: column; }
+.coach.hidden { display: none; }
+.coach-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #b7cf86; text-transform: uppercase; letter-spacing: 1.2px; }
+.coach-title { font-size: 17px; font-weight: 700; margin: 4px 0 6px; color: #ffd666; }
+.coach-text { line-height: 1.5; color: #e7efd8; }
+.coach-flash { margin-top: 8px; color: #ffd666; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,214,102,.0); border-color: #ffd666; } 50% { box-shadow: 0 0 0 4px rgba(255,214,102,.35); border-color: #ffd666; } }
