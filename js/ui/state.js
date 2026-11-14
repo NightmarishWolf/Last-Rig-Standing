@@ -5,6 +5,9 @@ export const S = {
   hooks: null,          // callbacks from the app (save, handoff, gameOver, showMenu, tutorial hooks)
   mode: { kind: 'idle' }, // idle | move | target | placeShip | placeRig | placePort
   selectedId: null,     // id of the selected ship
+  selectedBase: null,   // id of the selected rig base
+  planRot: null,        // facing you're planning for the selected ship (R); it only turns when it moves
+  plan: [],             // waypoints added with Shift+click, before the final destination
   hover: null,          // { x, y } square under the mouse
   cell: 28,             // size of one square in pixels
   canvas: null,

@@ -1,9 +1,13 @@
 // Turn flow: start-of-turn production and upkeep, domination, elimination, next player.
-import { DEPOSITS, DOMINATION, ECONOMY, MARKET } from '../data/economy.js';
+import { DEPOSITS, DOMINATION, MARKET } from '../data/economy.js';
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
 import { shipCells } from './geometry.js';
 import { commandBonus, dominationNeed, middleRigs, upkeepOf } from './stats.js';
+import { oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
+import { shipStat } from './modifiers.js';
+import { processResearch } from './research.js';
+import { visibility } from './visibility.js';
 import { alivePlayers, log, others, passives, rigAt } from './util.js';
 
 // ---------- turns ----------
@@ -16,15 +20,19 @@ export function startTurn(st, p, first = false) {
   me.spoofs = me.spoofs.filter(since);
   me.scans = [];
   me.shots = me.shots.filter(o => o.turn >= st.turnCount - 4 * st.players.length);
-  me.reveals = { ships: [], rigs: [], ports: [] };
+  me.reveals = { ships: [], rigs: [], ports: [], platforms: [] };
   me.prevTurn = st.turnCount;
   // the market recovers by MARKET.recoverPerTurn each full round
   st.market.price = Math.min(MARKET.basePrice, st.market.price + MARKET.recoverPerTurn * 2 / alivePlayers(st).length);
 
+  // bases: finish construction, heal, repair, gun platforms fire
+  processBases(st, p, visibility(st, p).ships);
+  // oil from rigs (central rigs and Wellheads), plus drillships parked on deposits
   let produced = 0;
   for (const r of st.rigs.filter(r => r.owner === p)) {
     const d = st.deposits.find(d => d.id === r.depId);
-    const amt = Math.min(DEPOSITS[d.type].rate, d.reserves);
+    if (!d) continue;
+    const amt = rigRate(st, r);
     d.reserves -= amt; produced += amt;
   }
   for (const s of st.ships.filter(s => s.owner === p && passives(s).mobileRig)) {
@@ -35,26 +43,33 @@ export function startTurn(st, p, first = false) {
       me.known[d.id] = true;
     }
   }
-  const room = Math.max(0, ECONOMY.oilCap - me.oil);
+  const cap = oilCapOf(st, p);
+  const room = Math.max(0, cap - me.oil);
   const spilled = Math.max(0, produced - room);
   me.oil += produced - spilled;
-  // upkeep: every ship costs money each turn; ships you can't pay for lose 1 HP
+  // research
+  processResearch(st, p);
+  // upkeep: ships and platforms cost money each turn; ships you can't pay for lose 1 HP
   let paid = 0, unpaid = 0;
-  for (const s of st.ships.filter(s => s.owner === p).sort((a, b) => upkeepOf(a.type) - upkeepOf(b.type))) {
-    const u = upkeepOf(s.type);
+  const pu = platformUpkeep(st, p);
+  if (me.money >= pu) { me.money -= pu; paid += pu; } else { paid += me.money; me.money = 0; unpaid++; }
+  for (const s of st.ships.filter(s => s.owner === p).sort((a, b) => upkeepOf(st, p, a.type) - upkeepOf(st, p, b.type))) {
+    const u = upkeepOf(st, p, s.type);
     if (me.money >= u) { me.money -= u; paid += u; }
     else { unpaid++; s.hp -= 1; if (s.hp <= 0) sink(st, s); }
   }
-  if (unpaid) log(st, p, `Couldn't pay upkeep for ${unpaid} ship${unpaid > 1 ? 's' : ''}: each lost 1 HP.`);
+  if (unpaid) log(st, p, `Couldn't pay all upkeep: unpaid ships lost 1 HP each.`);
   for (const s of st.ships.filter(s => s.owner === p)) {
     s.acted = false; s.shotsLeft = 0; s.activeAction = null; s.freeUsed = {};
     s.screenUsed = false; s.adUsed = false;
     for (const k in s.cooldowns) s.cooldowns[k] = Math.max(0, s.cooldowns[k] - 1);
-    s.movesLeft = SHIPS[s.type].move + commandBonus(st, s);
+    s.movesLeft = shipStat(st, p, s.type, 'move') + commandBonus(st, s);
+    s.maxMoves = s.movesLeft;
   }
-  const dry = st.rigs.filter(r => r.owner === p && st.deposits.find(d => d.id === r.depId).reserves === 0).length;
+  for (const o of (st.platforms || []).filter(o => o.owner === p)) o.adUsed = false;
+  const dry = st.rigs.filter(r => r.owner === p && st.deposits.find(d => d.id === r.depId)?.reserves === 0).length;
   if (first) log(st, p, 'Your fleet is ready. Survey for oil, build rigs, and outlast the enemy.');
-  else log(st, p, `Round ${st.round}: rigs pumped ${produced} oil${spilled ? ` (${spilled} spilled, storage full at ${ECONOMY.oilCap})` : ''}. Upkeep −$${paid}.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
+  else log(st, p, `Round ${st.round}: rigs pumped ${produced} oil${spilled ? ` (${spilled} spilled, storage full at ${cap})` : ''}. Upkeep −$${paid}.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
   // domination: hold at least half of No Man's Sea's deposits, round after round
   if (st.domination) {
     const have = middleRigs(st, p), need = dominationNeed(st);
@@ -79,6 +94,8 @@ export function eliminate(st, p, reason) {
   }
   st.rigs = st.rigs.filter(r => r.owner !== p);
   st.ports = (st.ports || []).filter(o => o.owner !== p);
+  st.platforms = (st.platforms || []).filter(o => o.owner !== p);
+  st.bases = (st.bases || []).filter(b => b.owner !== p);
   st.mines = st.mines.filter(m => m.owner !== p);
   for (const o of alivePlayers(st)) log(st, o, `${pl.name} ${reason}.`);
 }

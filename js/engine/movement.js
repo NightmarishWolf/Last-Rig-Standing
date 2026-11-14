@@ -1,13 +1,17 @@
 // Moving and turning ships, including running into hidden enemies and mines.
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
-import { cellsOf, coord, shipCells } from './geometry.js';
+import { cellsOf, coord, shipCells, turnAnchor } from './geometry.js';
 import { moveCost } from './stats.js';
+import { shipStat } from './modifiers.js';
 import { checkWin } from './turns.js';
 import { fail, log, ok, passives } from './util.js';
 import { hiddenBlocker, placementOk, revealBlocker, visibility } from './visibility.js';
 
 // ---------- movement ----------
+// Everywhere a ship can get to this turn, in any facing. Each step is either one square
+// sideways/forward/back or a 90° turn (which pivots around the ship's middle).
+// Keys are "x,y,rot" (anchor and facing); values hold the step count and the previous state.
 export function reachable(st, ship) {
   const res = new Map();
   if (ship.acted && !passives(ship).hitAndRun) return res;
@@ -16,22 +20,25 @@ export function reachable(st, ship) {
   while (maxSteps > 0 && moveCost(st, ship, maxSteps) > oil) maxSteps--;
   if (maxSteps <= 0) return res;
   const vis = visibility(st, ship.owner);
-  const key = (x, y) => x + ',' + y;
-  const q = [[ship.x, ship.y]];
-  res.set(key(ship.x, ship.y), { d: 0, prev: null, x: ship.x, y: ship.y });
+  const key = (x, y, r) => x + ',' + y + ',' + r;
+  const start = key(ship.x, ship.y, ship.rot);
+  const q = [[ship.x, ship.y, ship.rot]];
+  res.set(start, { d: 0, prev: null, x: ship.x, y: ship.y, r: ship.rot });
   while (q.length) {
-    const [x, y] = q.shift();
-    const cur = res.get(key(x, y));
+    const [x, y, r] = q.shift();
+    const cur = res.get(key(x, y, r));
     if (cur.d >= maxSteps) continue;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx, ny = y + dy, k = key(nx, ny);
+    const next = [[x + 1, y, r], [x - 1, y, r], [x, y + 1, r], [x, y - 1, r]];
+    for (const nr of [(r + 1) % 4, (r + 3) % 4]) next.push([...turnAnchor(ship.type, x, y, r, nr), nr]);
+    for (const [nx, ny, nr] of next) {
+      const k = key(nx, ny, nr);
       if (res.has(k)) continue;
-      if (!placementOk(st, ship.owner, cellsOf(ship.type, nx, ny, ship.rot), ship.id, vis)) continue;
-      res.set(k, { d: cur.d + 1, prev: key(x, y), x: nx, y: ny });
-      q.push([nx, ny]);
+      if (!placementOk(st, ship.owner, cellsOf(ship.type, nx, ny, nr), ship.id, vis)) continue;
+      res.set(k, { d: cur.d + 1, prev: key(x, y, r), x: nx, y: ny, r: nr });
+      q.push([nx, ny, nr]);
     }
   }
-  res.delete(key(ship.x, ship.y));
+  res.delete(start);
   return res;
 }
 
@@ -39,7 +46,7 @@ export function doMove(st, a) {
   const ship = st.ships.find(s => s.id === a.shipId);
   if (!ship || ship.owner !== st.current) return fail('Not your ship.');
   const map = reachable(st, ship);
-  const target = map.get(a.x + ',' + a.y);
+  const target = map.get(a.x + ',' + a.y + ',' + (a.rot ?? ship.rot));
   if (!target) return fail('Cannot reach that spot.');
   const path = [];
   for (let n = target; n && n.prev; n = map.get(n.prev)) path.unshift(n);
@@ -55,18 +62,19 @@ export function sailPath(st, ship, path) {
   const p = ship.owner, fullCost = moveCost(st, ship, path.length);
   let steps = 0;
   for (const step of path) {
-    const cells = cellsOf(ship.type, step.x, step.y, ship.rot);
+    const r = step.r ?? ship.rot;
+    const cells = cellsOf(ship.type, step.x, step.y, r);
     const blk = hiddenBlocker(st, p, cells, ship.id);
     if (blk) {
       revealBlocker(st, p, blk);
       log(st, p, `${SHIPS[ship.type].name} ran into an unseen enemy ${blk.kind === 'ship' ? 'contact' : 'rig'} and stopped.`);
       break;
     }
-    ship.x = step.x; ship.y = step.y; steps++;
+    ship.x = step.x; ship.y = step.y; ship.rot = r; steps++;
     const mine = st.mines.find(m => m.owner !== p && cells.some(([cx, cy]) => cx === m.x && cy === m.y));
     if (mine) {
       st.mines = st.mines.filter(m => m !== mine);
-      const dmg = Math.max(0, mine.dmg - (passives(ship).armor || 0));
+      const dmg = Math.max(0, mine.dmg - shipStat(st, p, ship.type, 'armor'));
       ship.hp -= dmg;
       log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`);
       if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
@@ -88,10 +96,7 @@ export function doRotate(st, a) {
   if (st.players[ship.owner].oil < cost) return fail('Not enough oil.');
   const rot = (ship.rot + 1) % 4;
   // rotate around the ship's middle so it doesn't jump sideways
-  const centre = cs => [Math.round(cs.reduce((t, c) => t + c[0], 0) / cs.length), Math.round(cs.reduce((t, c) => t + c[1], 0) / cs.length)];
-  const [cx, cy] = centre(shipCells(ship));
-  const [rcx, rcy] = centre(cellsOf(ship.type, 0, 0, rot));
-  const nx = cx - rcx, ny = cy - rcy;
+  const [nx, ny] = turnAnchor(ship.type, ship.x, ship.y, ship.rot, rot);
   const cells = cellsOf(ship.type, nx, ny, rot);
   if (!placementOk(st, ship.owner, cells, ship.id, visibility(st, ship.owner))) return fail('No room to turn here.');
   const blk = hiddenBlocker(st, ship.owner, cells, ship.id);

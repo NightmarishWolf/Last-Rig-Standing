@@ -10,16 +10,12 @@ import { S } from '../state.js';
 // Squares one of my ships or rigs can see right now.
 function visionSet(v) {
   const seen = new Set();
-  const mark = (cells, r) => {
+  for (const [cells, r] of E.sightSources(S.st, S.st.current))
     for (const [cx, cy] of cells)
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         const x = cx + dx, y = cy + dy;
         if (x >= 0 && y >= 0 && x < S.st.W && y < S.st.H) seen.add(x + ',' + y);
       }
-  };
-  for (const s of v.myShips) mark(E.shipCells(s), SHIPS[s.type].sight);
-  for (const r of v.myRigs) mark([[r.x, r.y]], RIG.sight);
-  for (const o of v.myPorts) mark([[o.x, o.y]], PORT.sight);
   return seen;
 }
 

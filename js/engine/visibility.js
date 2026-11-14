@@ -1,21 +1,38 @@
 // Fog of war: what each player can see, and what blocks movement or placement.
+import { PLATFORMS } from '../data/bases.js';
 import { PORT, RIG } from '../data/economy.js';
-import { SHIPS } from '../data/ships.js';
+import { baseById, baseRadius } from './bases.js';
 import { dist, inBounds, isLand, shipCells } from './geometry.js';
+import { pstat, shipStat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
 import { passives, rigAt, shipAt } from './util.js';
+
+const platformAt = (st, x, y) => (st.platforms || []).find(o => o.x === x && o.y === y);
+
+// Every way player p can see: [cells, radius] pairs (ships, rigs, base centres, platforms, ports).
+export function sightSources(st, p) {
+  const src = [];
+  for (const s of st.ships) if (s.owner === p) src.push([shipCells(s), shipStat(st, p, s.type, 'sight')]);
+  const baseSight = pstat(st, p, 'baseSight');
+  for (const r of st.rigs) if (r.owner === p) {
+    const b = r.center && baseById(st, r.baseId);
+    src.push([[[r.x, r.y]], b && !b.wrecked ? baseRadius(st, b) + baseSight : RIG.sight]);
+  }
+  for (const o of st.platforms || []) if (o.owner === p && !o.buildLeft) src.push([[[o.x, o.y]], PLATFORMS[o.kind].sight || 1]);
+  for (const o of forwardPorts(st, p)) src.push([[[o.x, o.y]], PORT.sight]);
+  return src;
+}
 
 // ---------- visibility ----------
 export function visibility(st, p) {
   const mine = st.ships.filter(s => s.owner === p);
-  const myRigs = st.rigs.filter(r => r.owner === p);
   const rev = st.players[p].reveals;
-  const myPorts = forwardPorts(st, p);
-  const ships = new Set(), rigs = new Set(), ports = new Set();
-  const seenBy = cells => {
-    for (const s of mine) if (dist(shipCells(s), cells) <= SHIPS[s.type].sight) return true;
-    for (const r of myRigs) if (dist([[r.x, r.y]], cells) <= RIG.sight) return true;
-    for (const o of myPorts) if (dist([[o.x, o.y]], cells) <= PORT.sight) return true;
+  const src = sightSources(st, p);
+  const ships = new Set(), rigs = new Set(), ports = new Set(), platforms = new Set();
+  // stealth research on the *target's* side shortens how far it can be seen from
+  const seenBy = (cells, owner) => {
+    const minus = owner === undefined ? 0 : pstat(st, owner, 'stealth');
+    for (const [c, r] of src) if (dist(c, cells) <= r - minus) return true;
     return false;
   };
   for (const e of st.ships) {
@@ -23,10 +40,12 @@ export function visibility(st, p) {
     const cells = shipCells(e);
     if (rev.ships.includes(e.id)) { ships.add(e.id); continue; }
     if (passives(e).submerged) {
-      const near = mine.some(s => dist(shipCells(s), cells) <= 1 ||
-        (passives(s).sonar && dist(shipCells(s), cells) <= passives(s).sonar));
+      const near = mine.some(s => {
+        const d = dist(shipCells(s), cells), sonar = shipStat(st, p, s.type, 'sonar');
+        return d <= 1 || (sonar && d <= sonar);
+      });
       if (near) ships.add(e.id);
-    } else if (seenBy(cells)) ships.add(e.id);
+    } else if (seenBy(cells, e.owner)) ships.add(e.id);
   }
   for (const r of st.rigs) {
     if (r.owner === p) continue;
@@ -36,7 +55,11 @@ export function visibility(st, p) {
     if (o.owner === p) continue;
     if ((rev.ports || []).includes(o.id) || seenBy([[o.x, o.y]])) ports.add(o.id);
   }
-  return { ships, rigs, ports };
+  for (const o of st.platforms || []) {
+    if (o.owner === p) continue;
+    if ((rev.platforms || []).includes(o.id) || seenBy([[o.x, o.y]])) platforms.add(o.id);
+  }
+  return { ships, rigs, ports, platforms };
 }
 
 // Is a footprint legal for `owner`? Hidden enemies are ignored here
@@ -49,6 +72,8 @@ export function placementOk(st, owner, cells, ignoreId, vis) {
     if (s) return false;
     const r = rigAt(st, x, y);
     if (r && (r.owner === owner || vis.rigs.has(r.id))) return false;
+    const f = platformAt(st, x, y);
+    if (f && (f.owner === owner || vis.platforms?.has(f.id))) return false;
   }
   return true;
 }
@@ -59,10 +84,13 @@ export function hiddenBlocker(st, owner, cells, ignoreId) {
     if (s) return { kind: 'ship', obj: s };
     const r = rigAt(st, x, y);
     if (r && r.owner !== owner) return { kind: 'rig', obj: r };
+    const f = platformAt(st, x, y);
+    if (f && f.owner !== owner) return { kind: 'platform', obj: f };
   }
   return null;
 }
 
 export function revealBlocker(st, p, blk) {
-  st.players[p].reveals[blk.kind === 'ship' ? 'ships' : 'rigs'].push(blk.obj.id);
+  const key = { ship: 'ships', rig: 'rigs', platform: 'platforms' }[blk.kind];
+  (st.players[p].reveals[key] ||= []).push(blk.obj.id);
 }

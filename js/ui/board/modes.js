@@ -3,9 +3,9 @@ import * as E from '../../engine/index.js';
 import { PORT, RIG } from '../../data/economy.js';
 import { SHIPS } from '../../data/ships.js';
 import { ghost, outlineArea, roundRect, sightSquares } from './canvas.js';
-import { drawPort, drawRig } from './units.js';
+import { drawPlatform, drawPort, drawRig } from './units.js';
 import { COL } from '../constants.js';
-import { centerOffset, me, pcol, px, py, reach, selected } from '../helpers.js';
+import { centerOffset, me, pcol, planRot, px, py, reach, selected } from '../helpers.js';
 import { S } from '../state.js';
 import { visibleRange } from '../camera.js';
 
@@ -16,35 +16,58 @@ export const voyageLabel = (s, len) => {
 };
 
 // Route a ship would take to put its anchor at (ax, ay), cached while the mouse stays put.
-export function voyagePreview(s, ax, ay) {
-  const key = `${s.id}|${s.x},${s.y},${s.rot}|${ax},${ay}|${S.st.turnCount}`;
-  if (S.pathCache?.key === key) return S.pathCache.path;
-  const path = E.findPath(S.st, s, ax, ay);
-  S.pathCache = { key, path };
-  return path;
+export function voyagePreview(s, ax, ay, r = s.rot) {
+  const legs = routePreview(s, [...S.plan, { x: ax, y: ay, rot: r }]);
+  return legs ? legs.flat() : null;
 }
 
-function drawRoute(s, path, color, label) {
+// Route through several points (Shift+click waypoints, then a destination). Cached.
+export function routePreview(s, points) {
+  const key = `${s.id}|${s.x},${s.y},${s.rot}|${JSON.stringify(points)}|${S.st.turnCount}|${s.movesLeft}`;
+  if (S.pathCache?.key === key) return S.pathCache.legs;
+  const legs = E.routeThrough(S.st, s, points);
+  S.pathCache = { key, legs };
+  return legs;
+}
+
+// Draw a planned or active route: dashed course, a dot at each end-of-turn stop,
+// numbered circles at waypoints, a ghost at the destination and an optional label.
+function drawRoute(s, legs, color, label) {
+  const path = legs ? legs.flat() : null;
   if (!path || !path.length) return;
-  const [ox, oy] = centerOffset(s.type, s.rot);
+  // draw through the middle of the ship at every step (the middle shifts as it turns)
+  const mid = (x, y, r) => { const [ox, oy] = centerOffset(s.type, r); return [px(x + ox) + S.cell / 2, py(y + oy) + S.cell / 2]; };
   const ctx = S.ctx;
   ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.5, Math.min(3, S.cell * 0.12)); ctx.setLineDash([6, 5]);
-  ctx.beginPath(); ctx.moveTo(px(s.x + ox) + S.cell / 2, py(s.y + oy) + S.cell / 2);
-  for (const n of path) ctx.lineTo(px(n.x + ox) + S.cell / 2, py(n.y + oy) + S.cell / 2);
+  ctx.beginPath(); ctx.moveTo(...mid(s.x, s.y, s.rot));
+  for (const n of path) ctx.lineTo(...mid(n.x, n.y, n.r));
   ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
-  // turn markers: where the ship will stop at the end of each turn
+  // end-of-turn stops
   const mv = SHIPS[s.type].move;
   ctx.fillStyle = color;
   for (let i = s.movesLeft - 1; i < path.length; i += mv) {
     if (i < 0) continue;
-    const n = path[i];
-    ctx.beginPath(); ctx.arc(px(n.x + ox) + S.cell / 2, py(n.y + oy) + S.cell / 2, Math.max(2, S.cell * 0.14), 0, Math.PI * 2); ctx.fill();
+    const n = path[i], [mx, my] = mid(n.x, n.y, n.r);
+    ctx.beginPath(); ctx.arc(mx, my, Math.max(2, S.cell * 0.14), 0, Math.PI * 2); ctx.fill();
+  }
+  // numbered waypoints
+  let n = 0;
+  for (const leg of legs.slice(0, -1)) {
+    n++;
+    const e = leg.length ? leg[leg.length - 1] : null;
+    if (!e) continue;
+    const [wx, wy] = mid(e.x, e.y, e.r), rad = Math.max(7, Math.min(11, S.cell * 0.4));
+    ctx.fillStyle = '#ffd666'; ctx.beginPath(); ctx.arc(wx, wy, rad, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2a1e00'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = '#2a1e00'; ctx.font = `bold ${Math.round(rad * 1.2)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), wx, wy + 1);
   }
   const end = path[path.length - 1];
-  ghost(E.cellsOf(s.type, end.x, end.y, s.rot), 'rgba(255,214,102,0.35)');
+  ghost(E.cellsOf(s.type, end.x, end.y, end.r), 'rgba(255,214,102,0.35)');
   if (label) {
     ctx.font = 'bold 12px system-ui';
-    const tw = ctx.measureText(label).width + 12, lx = px(end.x + ox) + S.cell, ly = py(end.y + oy) - 18;
+    const [ex, ey] = mid(end.x, end.y, end.r);
+    const tw = ctx.measureText(label).width + 12, lx = ex + S.cell / 2, ly = ey - S.cell / 2 - 18;
     ctx.fillStyle = 'rgba(8,18,28,0.92)'; roundRect(lx, ly, tw, 18, 4); ctx.fill();
     ctx.fillStyle = '#ffd666'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, lx + 6, ly + 9.5);
   }
@@ -52,9 +75,25 @@ function drawRoute(s, path, color, label) {
 
 // The selected ship's current voyage (if it has one).
 function drawVoyage(s) {
-  if (!s || !s.order) return;
-  const path = voyagePreview(s, s.order.x, s.order.y);
-  if (path) drawRoute(s, path, 'rgba(255,214,102,0.85)', `Voyage: ${voyageLabel(s, path.length)} left`);
+  if (!s || !s.order || S.plan.length) return;
+  const legs = routePreview(s, E.orderPoints(s.order));
+  if (legs) drawRoute(s, legs, 'rgba(255,214,102,0.85)', `Voyage: ${voyageLabel(s, legs.flat().length)} left`);
+}
+
+// While planning: the waypoints so far, plus the leg to wherever the mouse is.
+function drawPlan(s, hoverPoint) {
+  if (!S.plan.length) return false;
+  const pts = hoverPoint ? [...S.plan, hoverPoint] : S.plan;
+  const legs = routePreview(s, pts);
+  if (!legs) {
+    // the hovered spot can't be reached: still show the waypoints that can
+    const ok = routePreview(s, S.plan);
+    if (ok) drawRoute(s, [...ok, []], 'rgba(255,214,102,0.7)', 'No route to here');
+    return true;
+  }
+  const len = legs.flat().length;
+  drawRoute(s, hoverPoint ? legs : [...legs, []], 'rgba(255,214,102,0.8)', hoverPoint ? `${len} squares · ${voyageLabel(s, len)}` : null);
+  return true;
 }
 
 export function drawModeOverlay() {
@@ -66,23 +105,32 @@ export function drawModeOverlay() {
     const sonar = SHIPS[s.type].passives?.sonar;
     if (sonar) outlineArea(sightSquares(E.shipCells(s), sonar), 'rgba(111,182,255,0.8)', 1.5, [2, 3]);
   }
+  if (S.mode.kind === 'move' && s && planRot(s) !== s.rot) {
+    // planned turn: outline where the ship would sit after turning in place
+    const [tx, ty] = E.turnAnchor(s.type, s.x, s.y, s.rot, planRot(s));
+    outlineArea(new Set(E.cellsOf(s.type, tx, ty, planRot(s)).map(c => c.join(','))), 'rgba(255,214,102,0.9)', 2, [3, 3]);
+  }
+  if (S.mode.kind === 'move' && s && !S.hover) drawPlan(s, null);
   if (S.mode.kind === 'move' && s) {
     const map = reach();
     S.ctx.fillStyle = 'rgba(43,179,163,0.16)';
     const painted = new Set();
-    for (const n of map.values()) for (const [x, y] of E.cellsOf(s.type, n.x, n.y, s.rot)) {
+    const pr = planRot(s);
+    for (const n of map.values()) if (n.r === pr) for (const [x, y] of E.cellsOf(s.type, n.x, n.y, n.r)) {
       const k = x + ',' + y; if (painted.has(k)) continue; painted.add(k); S.ctx.fillRect(px(x), py(y), S.cell, S.cell);
     }
     if (S.hover) {
-      const [ox, oy] = centerOffset(s.type, s.rot);
+      const [ox, oy] = centerOffset(s.type, pr);
       const ax = S.hover.x - ox, ay = S.hover.y - oy;
-      const n = map.get(ax + ',' + ay);
-      if (!n && !S.fit && !(ax === s.x && ay === s.y)) {
-        const path = voyagePreview(s, ax, ay);
-        if (path && path.length) drawRoute(s, path, 'rgba(255,214,102,0.7)', `${path.length} squares · ${voyageLabel(s, path.length)}`);
+      const n = map.get(ax + ',' + ay + ',' + pr);
+      const planning = drawPlan(s, { x: ax, y: ay, rot: pr });
+      if (!planning && !n && !S.fit && !(ax === s.x && ay === s.y && pr === s.rot)) {
+        const legs = routePreview(s, [{ x: ax, y: ay, rot: pr }]);
+        const len = legs ? legs.flat().length : 0;
+        if (len) drawRoute(s, legs, 'rgba(255,214,102,0.7)', `${len} squares · ${voyageLabel(s, len)}`);
       }
-      if (n) {
-        const gc = E.cellsOf(s.type, ax, ay, s.rot);
+      if (n && !planning) {
+        const gc = E.cellsOf(s.type, ax, ay, pr);
         ghost(gc, 'rgba(43,179,163,0.55)');
         outlineArea(sightSquares(gc, SHIPS[s.type].sight), 'rgba(127,209,122,0.9)', 1.5, [5, 4]);
       }
@@ -142,6 +190,22 @@ export function drawModeOverlay() {
         }
         outlineArea(z, 'rgba(95,211,198,0.9)', 1.5, [4, 3]);
       }
+    }
+  }
+  if (S.mode.kind === 'placePlatform') {
+    const b = (S.st.bases || []).find(x => x.id === S.mode.baseId);
+    if (b) {
+      const r = E.baseRadius(S.st, b);
+      for (let y = b.y - r; y <= b.y + r; y++) for (let x = b.x - r; x <= b.x + r; x++) {
+        if (x < 0 || y < 0 || x >= S.st.W || y >= S.st.H || E.platformProblem(S.st, me(), S.mode.platform, x, y)) continue;
+        S.ctx.fillStyle = 'rgba(127,209,122,0.28)'; roundRect(px(x) + 2, py(y) + 2, S.cell - 4, S.cell - 4, 4); S.ctx.fill();
+        S.ctx.strokeStyle = '#7fd17a'; S.ctx.lineWidth = 1.5; roundRect(px(x) + 2, py(y) + 2, S.cell - 4, S.cell - 4, 4); S.ctx.stroke(); S.ctx.lineWidth = 1;
+      }
+    }
+    if (S.hover) {
+      const okSpot = !E.platformProblem(S.st, me(), S.mode.platform, S.hover.x, S.hover.y);
+      S.ctx.globalAlpha = 0.85; drawPlatform({ kind: S.mode.platform, x: S.hover.x, y: S.hover.y, hp: 1, owner: me() }, okSpot ? pcol(me()) : '#e25555'); S.ctx.globalAlpha = 1;
+      if (!okSpot) { S.ctx.fillStyle = 'rgba(226,85,85,0.3)'; S.ctx.fillRect(px(S.hover.x), py(S.hover.y), S.cell, S.cell); }
     }
   }
   if (S.mode.kind === 'placeRig') {

@@ -4,10 +4,12 @@
 // shape: list of [x, y] squares in the default (horizontal) facing.
 // oil:   oil burned per square moved (and per 90° turn).
 // move:  max squares per turn.
-// tier:  1 = always available, 2/3 need rigs (see TIER_RIGS in economy.js). 0 = never in the shipyard.
+// cls:   ship class used by research bonuses: light, escort, sub, capital, support.
+//        Which research unlocks each ship is set in research.js (no entry = available from the start).
 // sight: how far (squares) this ship spots surface enemies (the bright area on the board).
 // actions: what the ship can do with its one action per turn.
-//   attack: { range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown }
+//   attack: { tag, range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown }
+//           tag: gun, torpedo, missile, air, depth (research bonuses target tags)
 //   scan:   reveals enemy ships/rigs in a size×size box within range.
 //   survey: reveals oil deposits within `radius` of the ship.
 //   mine, repair, spoof, salvage: see engine/abilities.js.
@@ -17,144 +19,144 @@
 // ============================================================
 
 export const SHIPS = {
-  // ---------- Tier 1 ----------
+  // ---------- Light ships and early hulls ----------
   patrol: {
-    name: 'Patrol Boat', tier: 1, cost: 100, hp: 2, oil: 1, move: 4, sight: 3,
+    name: 'Patrol Boat', cls: 'light', cost: 100, hp: 2, oil: 1, move: 4, sight: 3,
     shape: [[0, 0], [1, 0]],
     actions: [
-      { id: 'gun', kind: 'attack', name: 'Light Gun', range: 3, dmg: 1 },
-      { id: 'ping', kind: 'scan', name: 'Radar Ping', range: 4, size: 3, cooldown: 2 },
+      { id: 'gun', kind: 'attack', tag: 'gun', name: 'Light Gun', range: 3, dmg: 1 },
+      { id: 'ping', kind: 'scan', tag: 'scan', name: 'Radar Ping', range: 4, size: 3, cooldown: 2 },
       { id: 'survey', kind: 'survey', name: 'Survey', radius: 1 },
     ],
   },
   survey: {
-    name: 'Survey Ship', tier: 1, cost: 150, hp: 1, oil: 1, move: 5, sight: 3,
+    name: 'Survey Ship', cls: 'light', cost: 150, hp: 1, oil: 1, move: 5, sight: 3,
     shape: [[0, 0]],
     actions: [{ id: 'deep', kind: 'survey', name: 'Deep Survey', radius: 2 }],
   },
   corvette: {
-    name: 'Corvette', tier: 1, cost: 150, hp: 2, oil: 1, move: 4, sight: 2,
+    name: 'Corvette', cls: 'light', cost: 150, hp: 2, oil: 1, move: 4, sight: 2,
     shape: [[0, 0], [1, 0]],
     passives: { screen: true },
-    actions: [{ id: 'gun', kind: 'attack', name: 'Light Gun', range: 3, dmg: 1 }],
+    actions: [{ id: 'gun', kind: 'attack', tag: 'gun', name: 'Light Gun', range: 3, dmg: 1 }],
   },
   hydrofoil: {
-    name: 'Hydrofoil Raider', tier: 1, cost: 200, hp: 1, oil: 1, move: 6, sight: 2,
+    name: 'Hydrofoil Raider', cls: 'light', cost: 200, hp: 1, oil: 1, move: 6, sight: 2,
     shape: [[0, 0], [1, 0]],
     passives: { hitAndRun: true },
-    actions: [{ id: 'rockets', kind: 'attack', name: 'Rockets', range: 2, dmg: 2 }],
+    actions: [{ id: 'rockets', kind: 'attack', tag: 'gun', name: 'Rockets', range: 2, dmg: 2 }],
   },
   decoy: {
-    name: 'Decoy Barge', tier: 1, cost: 60, hp: 1, oil: 1, move: 2, sight: 1,
+    name: 'Decoy Barge', cls: 'light', cost: 60, hp: 1, oil: 1, move: 2, sight: 1,
     shape: [[0, 0], [1, 0], [2, 0]],
     actions: [],
   },
   minelayer: {
-    name: 'Minelayer', tier: 1, cost: 200, hp: 2, oil: 1, move: 3, sight: 2,
+    name: 'Minelayer', cls: 'escort', cost: 200, hp: 2, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [0, 1], [1, 1]],
     actions: [{ id: 'mine', kind: 'mine', name: 'Lay Mine', max: 3, dmg: 2 }],
   },
   submarine: {
-    name: 'Submarine', tier: 1, cost: 250, hp: 3, oil: 1, move: 3, sight: 2,
+    name: 'Submarine', cls: 'sub', cost: 250, hp: 3, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0]],
     passives: { submerged: true },
-    actions: [{ id: 'torpedo', kind: 'attack', name: 'Torpedo', range: 4, dmg: 3 }],
+    actions: [{ id: 'torpedo', kind: 'attack', tag: 'torpedo', name: 'Torpedo', range: 4, dmg: 3 }],
   },
   tanker: {
-    name: 'Tanker', tier: 1, cost: 200, hp: 4, oil: 1, move: 3, sight: 1,
+    name: 'Tanker', cls: 'support', cost: 200, hp: 4, oil: 1, move: 3, sight: 1,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { fuelLine: 2 },
     actions: [],
   },
 
-  // Tutorial only (tier 0 never shows in the shipyard): an unarmed practice target.
+  // Tutorial only (hidden: never shows in the shipyard): an unarmed practice target.
   target: {
-    name: 'Target Barge', tier: 0, cost: 0, hp: 1, oil: 1, move: 0, sight: 1,
+    name: 'Target Barge', cls: 'support', hidden: true, cost: 0, hp: 1, oil: 1, move: 0, sight: 1,
     shape: [[0, 0], [1, 0], [2, 0]],
     actions: [],
   },
 
-  // ---------- Tier 2 ----------
+  // ---------- Escorts and support ----------
   destroyer: {
-    name: 'Destroyer', tier: 2, cost: 300, hp: 4, oil: 1, move: 3, sight: 3,
+    name: 'Destroyer', cls: 'escort', cost: 300, hp: 4, oil: 1, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { sonar: 3 },
     actions: [
-      { id: 'gun', kind: 'attack', name: 'Gun', range: 3, dmg: 2 },
-      { id: 'depth', kind: 'attack', name: 'Depth Charges', range: 3, dmg: 2, area: 3, subsOnly: true },
+      { id: 'gun', kind: 'attack', tag: 'gun', name: 'Gun', range: 3, dmg: 2 },
+      { id: 'depth', kind: 'attack', tag: 'depth', name: 'Depth Charges', range: 3, dmg: 2, area: 3, subsOnly: true },
     ],
   },
   missileboat: {
-    name: 'Missile Boat', tier: 2, cost: 220, hp: 2, oil: 1, move: 3, sight: 2,
+    name: 'Missile Boat', cls: 'escort', cost: 220, hp: 2, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0]],
-    actions: [{ id: 'missile', kind: 'attack', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 }],
+    actions: [{ id: 'missile', kind: 'attack', tag: 'missile', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 }],
   },
   frigate: {
-    name: 'Frigate', tier: 2, cost: 350, hp: 4, oil: 1, move: 3, sight: 3,
+    name: 'Frigate', cls: 'escort', cost: 350, hp: 4, oil: 1, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { airDefense: 2 },
-    actions: [{ id: 'gun', kind: 'attack', name: 'Gun', range: 3, dmg: 2 }],
+    actions: [{ id: 'gun', kind: 'attack', tag: 'gun', name: 'Gun', range: 3, dmg: 2 }],
   },
   jammer: {
-    name: 'Jammer Ship', tier: 2, cost: 300, hp: 3, oil: 1, move: 3, sight: 2,
+    name: 'Jammer Ship', cls: 'escort', cost: 300, hp: 3, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [1, 1]],
     passives: { jam: 2 },
     actions: [{ id: 'spoof', kind: 'spoof', name: 'Spoof Contact', range: 6 }],
   },
   cruiser: {
-    name: 'Cruiser', tier: 2, cost: 450, hp: 5, oil: 2, move: 2, sight: 3,
+    name: 'Cruiser', cls: 'capital', cost: 450, hp: 5, oil: 2, move: 2, sight: 3,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1]],
-    actions: [{ id: 'missile', kind: 'attack', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 }],
+    actions: [{ id: 'missile', kind: 'attack', tag: 'missile', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 }],
   },
   salvage: {
-    name: 'Salvage Ship', tier: 2, cost: 250, hp: 3, oil: 1, move: 3, sight: 1,
+    name: 'Salvage Ship', cls: 'support', cost: 250, hp: 3, oil: 1, move: 3, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'salvage', kind: 'salvage', name: 'Salvage Wreck', share: 0.5 }],
   },
   repair: {
-    name: 'Repair Ship', tier: 2, cost: 350, hp: 3, oil: 1, move: 2, sight: 1,
+    name: 'Repair Ship', cls: 'support', cost: 350, hp: 3, oil: 1, move: 2, sight: 1,
     shape: [[0, 0], [1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'repair', kind: 'repair', name: 'Repair', amount: 2 }],
   },
   drillship: {
-    name: 'Drillship', tier: 2, cost: 400, hp: 3, oil: 2, move: 2, sight: 1,
+    name: 'Drillship', cls: 'support', cost: 400, hp: 3, oil: 2, move: 2, sight: 1,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1]],
     passives: { mobileRig: true },
     actions: [],
   },
 
-  // ---------- Tier 3 ----------
+  // ---------- Capital ships ----------
   carrier: {
-    name: 'Carrier', tier: 3, cost: 700, hp: 6, oil: 2, move: 2, sight: 4,
+    name: 'Carrier', cls: 'capital', cost: 700, hp: 6, oil: 2, move: 2, sight: 4,
     shape: [[3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     actions: [
-      { id: 'recon', kind: 'scan', name: 'Recon Flight', range: 8, size: 4, free: true },
-      { id: 'strike', kind: 'attack', name: 'Airstrike', range: 8, dmg: 2, air: true },
+      { id: 'recon', kind: 'scan', tag: 'scan', name: 'Recon Flight', range: 8, size: 4, free: true },
+      { id: 'strike', kind: 'attack', tag: 'air', name: 'Airstrike', range: 8, dmg: 2, air: true },
     ],
   },
   battleship: {
-    name: 'Battleship', tier: 3, cost: 800, hp: 8, oil: 3, move: 1, sight: 3,
+    name: 'Battleship', cls: 'capital', cost: 800, hp: 8, oil: 3, move: 1, sight: 3,
     shape: [[1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 1 },
-    actions: [{ id: 'salvo', kind: 'attack', name: 'Salvo', range: 5, dmg: 2, shots: 3 }],
+    actions: [{ id: 'salvo', kind: 'attack', tag: 'gun', name: 'Salvo', range: 5, dmg: 2, shots: 3 }],
   },
   command: {
-    name: 'Command Ship', tier: 3, cost: 600, hp: 5, oil: 2, move: 2, sight: 4,
+    name: 'Command Ship', cls: 'capital', cost: 600, hp: 5, oil: 2, move: 2, sight: 4,
     shape: [[2, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { command: 3 },
     actions: [],
   },
   nuclearsub: {
-    name: 'Nuclear Submarine', tier: 3, cost: 900, hp: 5, oil: 0, move: 3, sight: 2,
+    name: 'Nuclear Submarine', cls: 'sub', cost: 900, hp: 5, oil: 0, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { submerged: true, upkeep: 50 },
-    actions: [{ id: 'torpedo', kind: 'attack', name: 'Heavy Torpedo', range: 5, dmg: 4 }],
+    actions: [{ id: 'torpedo', kind: 'attack', tag: 'torpedo', name: 'Heavy Torpedo', range: 5, dmg: 4 }],
   },
   dreadnought: {
-    name: 'Dreadnought', tier: 3, cost: 1300, hp: 12, oil: 4, move: 1, sight: 3,
+    name: 'Dreadnought', cls: 'capital', cost: 1300, hp: 12, oil: 4, move: 1, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     passives: { armor: 2, limit: 1 },
-    actions: [{ id: 'battery', kind: 'attack', name: 'Main Battery', range: 6, dmg: 3, shots: 4 }],
+    actions: [{ id: 'battery', kind: 'attack', tag: 'gun', name: 'Main Battery', range: 6, dmg: 3, shots: 4 }],
   },
 };
 

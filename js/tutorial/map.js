@@ -33,7 +33,8 @@ export function newTutorialGame() {
     { id: 'd_tut_c', x: 16, y: 8, type: 'medium', reserves: 45, max: 45 },
     { id: 'd_tut_d', x: 20, y: 3, type: 'medium', reserves: 45, max: 45 },
   ];
-  st.rigs = [{ id: 'r_tut_home', owner: 0, x: 5, y: 2, hp: 2, depId: 'd_tut_home' }];
+  st.rigs = []; st.bases = []; st.platforms = []; st.ports = [];
+  E.foundBase(st, 0, st.deposits[0], true); // your Admiralty on the home deposit
   st.ships = [
     ship('tut_pb_south', 0, 'patrol', 0, 9),
     ship('tut_pb_north', 0, 'patrol', 0, 3),

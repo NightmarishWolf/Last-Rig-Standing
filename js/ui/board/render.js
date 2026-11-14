@@ -7,6 +7,7 @@ import { DEPOSITS } from '../../data/economy.js';
 import { SHIPS } from '../../data/ships.js';
 import { hatch, roundRect } from './canvas.js';
 import { drawFog } from './fog.js';
+import { drawBasePieces, drawClaims } from './bases.js';
 import { drawMarkers } from './markers.js';
 import { drawMinimap } from './minimap.js';
 import { drawModeOverlay } from './modes.js';
@@ -168,6 +169,7 @@ export function draw() {
     ctx.beginPath(); ctx.arc(px(s.x) + cell / 2, py(s.y) + cell / 2, Math.max(2, cell * 0.3), 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
   }
   drawFog(v);
+  drawClaims(v);
 
   // ---- units ----
   for (const m of v.myMines) {
@@ -183,6 +185,7 @@ export function draw() {
   v.enemyRigs.forEach(r => inView(r.x, r.y) && drawRig(r, pcol(r.owner)));
   v.myPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(p)));
   v.enemyPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(o.owner)));
+  drawBasePieces(v);
   for (const s of v.myShips) {
     if (!inView(s.x, s.y) && !inView(s.x + 4, s.y + 4)) continue;
     drawHull(E.shipCells(s), pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);

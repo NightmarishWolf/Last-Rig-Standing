@@ -1,5 +1,7 @@
 // Drawing ships, rigs and ports.
 import { PORT, RIG } from '../../data/economy.js';
+import { PLATFORMS } from '../../data/bases.js';
+import * as E from '../../engine/index.js';
 import { roundRect } from './canvas.js';
 import { COL } from '../constants.js';
 import { px, py } from '../helpers.js';
@@ -57,7 +59,9 @@ export function drawRig(r, color) {
   S.ctx.moveTo(x0 + u * 4.0, y0 + u * 5.4); S.ctx.lineTo(x0 + u * 6.0, y0 + u * 5.4);
   S.ctx.moveTo(x0 + u * 4.4, y0 + u * 3.8); S.ctx.lineTo(x0 + u * 5.6, y0 + u * 3.8);
   S.ctx.stroke(); S.ctx.lineWidth = 1;
-  if (r.hp < RIG.hp) { S.ctx.fillStyle = '#ff4d4d'; S.ctx.fillRect(x0 + 4, y0 + S.cell - 5, (S.cell - 8) * r.hp / RIG.hp, 3); }
+  const b = r.center && (S.st.bases || []).find(b => b.id === r.baseId);
+  const max = b ? E.baseMaxHp(S.st, b) : RIG.hp;
+  if (r.hp < max) { S.ctx.fillStyle = '#ff4d4d'; S.ctx.fillRect(x0 + 4, y0 + S.cell - 5, (S.cell - 8) * r.hp / max, 3); }
 }
 
 // forward port: an anchor on a coast square
@@ -75,4 +79,25 @@ export function drawPort(o, color) {
   S.ctx.beginPath(); S.ctx.arc(x0 + u * 5, y0 + u * 5.6, u * 2.5, Math.PI * 0.15, Math.PI * 0.85); S.ctx.stroke();
   S.ctx.lineCap = 'butt'; S.ctx.lineWidth = 1;
   if (o.hp < PORT.hp) { S.ctx.fillStyle = '#ff4d4d'; S.ctx.fillRect(x0 + 4, y0 + S.cell - 6, (S.cell - 8) * o.hp / PORT.hp, 3); }
+}
+
+// A platform: a small square with its letter (W, S, L, G...). Dashed while under construction.
+export function drawPlatform(o, color) {
+  const def = PLATFORMS[o.kind], x0 = px(o.x), y0 = py(o.y), c = S.cell, ctx = S.ctx;
+  if (c < 10) { ctx.fillStyle = color; ctx.globalAlpha = o.buildLeft ? 0.5 : 1; ctx.fillRect(x0, y0, c, c); ctx.globalAlpha = 1; return; }
+  const g = Math.max(2, c * 0.1);
+  ctx.globalAlpha = o.buildLeft ? 0.65 : 1;
+  ctx.fillStyle = '#0a1a26'; roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; if (o.buildLeft) ctx.setLineDash([3, 3]);
+  roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+  ctx.fillStyle = o.kind === 'wellhead' ? '#f0a531' : '#e8eef4';
+  ctx.font = `bold ${Math.round(c * 0.42)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(def.code, x0 + c / 2, y0 + c / 2 + 1);
+  ctx.globalAlpha = 1;
+  if (o.buildLeft && c >= 16) {
+    ctx.fillStyle = '#ffd666'; ctx.font = `bold ${Math.round(c * 0.28)}px system-ui`;
+    ctx.fillText(String(o.buildLeft), x0 + c - g - c * 0.12, y0 + c - g - c * 0.14);
+  }
+  const max = E.platformMaxHp(S.st, o);
+  if (!o.buildLeft && o.hp < max) { ctx.fillStyle = '#ff4d4d'; ctx.fillRect(x0 + 4, y0 + c - 5, (c - 8) * o.hp / max, 3); }
 }

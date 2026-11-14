@@ -1,5 +1,7 @@
 // Hover tooltip for oil deposits, rigs and ports (e.g. "18/35 oil left").
 import { DEPOSITS, PORT, RIG } from '../../data/economy.js';
+import { BASE_LEVELS, PLATFORMS } from '../../data/bases.js';
+import * as E from '../../engine/index.js';
 import { roundRect } from './canvas.js';
 import { MARGIN } from '../constants.js';
 import { me, pcol, pname, px, py } from '../helpers.js';
@@ -10,6 +12,15 @@ export function oilInfo(v, x, y) {
   const dep = v.deposits.find(d => d.x === x && d.y === y);
   const myRig = v.myRigs.find(r => r.x === x && r.y === y);
   const enemyRig = v.enemyRigs.find(r => r.x === x && r.y === y);
+  const plat = [...v.myPlatforms, ...v.enemyPlatforms].find(o => o.x === x && o.y === y);
+  if (plat) {
+    const def = PLATFORMS[plat.kind];
+    return [
+      { t: plat.owner === me() ? `Your ${def.name}` : `${pname(plat.owner)}'s ${def.name}`, c: pcol(plat.owner) },
+      { t: plat.buildLeft ? `Under construction: ${plat.buildLeft} turn${plat.buildLeft > 1 ? 's' : ''} left` : `HP ${plat.hp}/${E.platformMaxHp(S.st, plat)}`, c: '#ffffff', big: true },
+      { t: def.text, c: '#9fb3c6' },
+    ];
+  }
   const port = [...v.myPorts, ...v.enemyPorts].find(o => o.x === x && o.y === y);
   if (port) return [
     { t: port.owner === me() ? 'Your forward port' : `${pname(port.owner)}'s forward port`, c: pcol(port.owner) },
@@ -18,8 +29,14 @@ export function oilInfo(v, x, y) {
   ];
   if (!dep && !myRig && !enemyRig) return null;
   const lines = [];
-  if (myRig) lines.push({ t: `Your oil rig · HP ${myRig.hp}/${RIG.hp}`, c: pcol(me()) });
+  const rig = myRig || enemyRig;
+  const base = rig?.center && (S.st.bases || []).find(b => b.id === rig.baseId);
+  if (base) {
+    lines.push({ t: `${base.owner === me() ? '' : pname(base.owner) + "'s "}${E.baseName(S.st, base)} · ${BASE_LEVELS[base.level].name}`, c: pcol(base.owner) });
+    lines.push({ t: `Central rig HP ${rig.hp}/${E.baseMaxHp(S.st, base)} · claim ${E.claimSize(S.st, base)}×${E.claimSize(S.st, base)}${base.owner === me() ? ' · click to manage' : ''}`, c: '#9fb3c6' });
+  } else if (myRig) lines.push({ t: `Your Wellhead · HP ${myRig.hp}/${RIG.hp}`, c: pcol(me()) });
   else if (enemyRig) lines.push({ t: `${pname(enemyRig.owner)}'s oil rig`, c: pcol(enemyRig.owner) });
+  if (rig && rig.owner === me()) lines.push({ t: `Pumping ${E.rigRate(S.st, rig)}/turn`, c: '#f0a531' });
   if (dep) {
     const info = DEPOSITS[dep.type], max = dep.max ?? dep.reserves;
     lines.push({ t: `${info.name} deposit`, c: '#f0a531' });

@@ -16,6 +16,14 @@ export const me = () => S.st.current;
 
 export const selected = () => S.st.ships.find(s => s.id === S.selectedId);
 
+export const selectedBase = () => (S.st.bases || []).find(b => b.id === S.selectedBase && b.owner === S.st.current);
+
+// The facing being planned for the selected ship (defaults to the way it faces now).
+export const planRot = s => (S.planRot ?? s.rot);
+
+// Select a ship (or nothing) and reset any planned facing.
+export function select(id) { S.selectedId = id; S.planRot = null; }
+
 export const centerOffset = (type, rot) => {
   const c = E.cellsOf(type, 0, 0, rot);
   return c[Math.floor(c.length / 2)];

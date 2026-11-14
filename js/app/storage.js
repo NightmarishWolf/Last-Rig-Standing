@@ -1,6 +1,6 @@
 // Saving and loading the game in the browser (localStorage).
 
-const SAVE_KEY = 'last-rig-standing-save-v2';
+const SAVE_KEY = 'last-rig-standing-save-v3';
 
 export function save(st) {
   if (st.tutorial) return; // never overwrite the real save with the tutorial

@@ -13,8 +13,15 @@ A naval strategy game of attrition: find hidden oil, build rigs, grow your fleet
 A player with no ships, no rigs and less than $60 is knocked out. Last player left wins, or (optional) hold half of
 No Man's Sea's rich deposits for 5 rounds for a Domination victory.
 
-Economy: every deposit starts with a random amount of oil (small at home, large in No Man's Sea), ships cost upkeep
-every turn, you can store at most 60 oil, and forward ports built on island coasts let you launch new ships near the front.
+Economy: every deposit starts with a random amount of oil (small at home, large in No Man's Sea), ships and platforms
+cost upkeep every turn, and you can only store so much oil.
+
+**Rig bases.** Building a rig on a deposit founds a base that claims the water around it (3×3, growing to 13×13).
+Build platforms inside the claim (Wellheads for extra deposits, Storage, Research Labs, Pumps, Gun Platforms, Radar,
+Dry Docks, Refineries, AA, Helipads, Missile Batteries) and upgrade the base from Outpost to Station, Complex and Hub.
+
+**Research.** A 100-tech tree in seven branches (press **T** or the 🔬 button). Research points come from your
+Admiralty, Research Labs and funding. Fourteen ⚖ doctrine pairs force real choices: pick one, lose the other.
 
 ## Put it on GitHub Pages
 
@@ -46,7 +53,9 @@ js/
   main.js                start-up: wires everything together
   data/                  ALL BALANCE NUMBERS (edit these to tune the game)
     ships.js             every ship: stats, shape, abilities
-    economy.js           oil deposits, rigs, ports, market, upkeep, oil cap, tiers, domination
+    economy.js           oil deposits, rigs, ports, market, upkeep, oil cap, domination
+    bases.js             rig base levels and every platform type
+    research.js          THE TECH TREE: every tech, its cost, prerequisites, effects, doctrines
     maps.js              map sizes, player names and colours
   engine/                game rules, no graphics
     index.js             one import for the whole engine
@@ -63,6 +72,9 @@ js/
     turns.js             start of turn, upkeep, domination, elimination
     visibility.js        fog of war
     stats.js             prices, upkeep, movement cost, domination counts
+    modifiers.js         every ship/weapon/player stat with research bonuses applied
+    research.js          research points, queue, doctrines, unlocks
+    bases.js             rig bases, claims, platforms, upgrades, gun platforms
     geometry.js          grid maths, zones, coordinates
     util.js, rng.js      shared helpers, seeded random numbers
   ui/                    everything on screen
@@ -73,6 +85,7 @@ js/
     panel.js             side panel and top bar
     status.js            hint line under the board, error toasts
     dialogs.js           overlays, confirm box, Rules screen
+    research.js          the research tree screen
     board/               the canvas: render.js draws it layer by layer;
                          units, fog, modes (move/target/placing/voyages), tooltip, markers, minimap
   app/                   menus and game flow
@@ -93,6 +106,8 @@ js/
 - **Add a ship:** add an entry to `SHIPS` in `js/data/ships.js` and a two-letter label in `CODES` in `js/ui/constants.js`.
   If it uses a brand-new ability, add it in `js/engine/abilities.js`.
 - **Economy tuning:** `js/data/economy.js`.
+- **Add or change a tech:** `js/data/research.js` (the header explains every effect you can use).
+- **Add or change a platform or base level:** `js/data/bases.js`.
 - **Map sizes, land amount, deposit density:** `js/data/maps.js`.
 - **Tutorial wording:** `js/tutorial/steps.js`.
 
@@ -100,8 +115,11 @@ js/
 
 - Click a ship to select it, then click a highlighted spot to move.
 - Click further away to send it on a **voyage**: it finds a sea route and sails on by itself every time you end your turn.
+- **Shift+click** to add waypoints first (A, then B, then C) to route around islands or danger; Esc clears them.
+- **R** plans which way the ship will face; it only turns (and pays for it) when it actually moves.
 - **Drag** the map (or WASD / arrow keys) to scroll, **mouse wheel** (or +/-) to zoom, click the **minimap** to jump.
 - **Tab** selects your next ready ship, **Space** centres on the selected one.
+- Click one of your rigs or platforms to open its **base**. **T** opens the **research** tree.
 - **R** turns the selected ship (or the ship you're placing). **Esc** / right-click cancels.
 - Pick an action in the side panel, then click a target on the board.
 

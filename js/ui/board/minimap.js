@@ -31,6 +31,7 @@ export function drawMinimap(v) {
   for (const r of v.myRigs) dot(r.x, r.y, pcol(me()), 3);
   for (const r of v.enemyRigs) dot(r.x, r.y, pcol(r.owner), 3);
   for (const o of [...v.myPorts, ...v.enemyPorts]) dot(o.x, o.y, '#ffffff', 3);
+  for (const b of [...v.myBases, ...v.enemyBases]) if (!b.wrecked) { g.strokeStyle = pcol(b.owner); g.lineWidth = 1.5; const r = E.baseRadius(S.st, b) + 0.5; g.strokeRect((b.x - r + 0.5) * k, (b.y - r + 0.5) * k, 2 * r * k, 2 * r * k); }
   for (const s of v.enemyShips) for (const [x, y] of s.cells) dot(x, y, '#ff4d4d', 2.5);
   for (const s of v.myShips) { const c = E.shipCells(s); dot(c[0][0], c[0][1], s.id === S.selectedId ? '#ffffff' : pcol(me()), 3); }
   // the camera's view

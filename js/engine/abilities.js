@@ -5,12 +5,14 @@ import { resolveShot } from './combat.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { randInt } from './rng.js';
 import { commandBonus } from './stats.js';
+import { baseById, baseMaxHp, platformAt, platformMaxHp } from './bases.js';
+import { pstat, shipStat, weaponStat } from './modifiers.js';
 import { checkWin } from './turns.js';
 import { fail, log, ok, others, passives, portAt, rigAt, shipAt } from './util.js';
 
 // ---------- actions ----------
 export function actionRange(st, ship, act) {
-  if (act.kind === 'attack' || act.kind === 'scan' || act.kind === 'spoof') return act.range + commandBonus(st, ship);
+  if (act.kind === 'attack' || act.kind === 'scan' || act.kind === 'spoof') return weaponStat(st, ship.owner, act, 'range') + commandBonus(st, ship);
   if (act.kind === 'survey') return 0;
   return 1; // mine, repair, salvage: adjacent squares
 }
@@ -27,10 +29,10 @@ export function canUseAction(st, ship, act) {
   return null;
 }
 
-function spend(ship, act) {
+function spend(st, ship, act) {
   if (act.free) { ship.freeUsed[act.id] = true; }
   else if (ship.activeAction === act.id && ship.shotsLeft > 0) { ship.shotsLeft--; }
-  else { ship.acted = true; ship.activeAction = act.id; ship.shotsLeft = (act.shots || 1) - 1; }
+  else { ship.acted = true; ship.activeAction = act.id; ship.shotsLeft = (act.kind === 'attack' ? weaponStat(st, ship.owner, act, 'shots') : 1) - 1; }
   if (act.cooldown && (ship.shotsLeft === 0 || act.free)) ship.cooldowns[act.id] = act.cooldown;
 }
 
@@ -51,23 +53,24 @@ export function doAct(st, a) {
   const firstUse = !ship.acted || ship.activeAction !== act.id;
   switch (act.kind) {
     case 'attack': {
-      spend(ship, act);
+      spend(st, ship, act);
       if (firstUse) addFlash(st, ship);
       resolveShot(st, ship, act, x, y);
       break;
     }
     case 'scan': {
-      spend(ship, act);
+      spend(st, ship, act);
       doScan(st, ship, act, x, y);
       break;
     }
     case 'survey': {
-      spend(ship, act);
-      const found = st.deposits.filter(d => dist(cells, [[d.x, d.y]]) <= act.radius);
+      spend(st, ship, act);
+      const radius = act.radius + pstat(st, p, 'surveyRadius');
+      const found = st.deposits.filter(d => dist(cells, [[d.x, d.y]]) <= radius);
       const sv = (st.players[p].surveyed ||= {});
       for (const [cx, cy] of cells)
-        for (let dy = -act.radius; dy <= act.radius; dy++)
-          for (let dx = -act.radius; dx <= act.radius; dx++)
+        for (let dy = -radius; dy <= radius; dy++)
+          for (let dx = -radius; dx <= radius; dx++)
             if (inBounds(st, cx + dx, cy + dy)) sv[(cx + dx) + ',' + (cy + dy)] = 1;
       let fresh = 0;
       found.forEach(d => { if (!st.players[p].known[d.id]) fresh++; st.players[p].known[d.id] = true; });
@@ -75,27 +78,28 @@ export function doAct(st, a) {
       break;
     }
     case 'mine': {
-      if (isLand(st, x, y) || shipAt(st, x, y) || rigAt(st, x, y) || st.mines.some(m => m.x === x && m.y === y))
+      if (isLand(st, x, y) || shipAt(st, x, y) || rigAt(st, x, y) || (st.platforms || []).some(o => o.x === x && o.y === y) || st.mines.some(m => m.x === x && m.y === y))
         return fail('Square must be empty water.');
-      spend(ship, act);
+      spend(st, ship, act);
       st.mines.push({ id: 'm' + st.nextId++, owner: p, x, y, layer: ship.id, dmg: act.dmg });
       log(st, p, `Mine laid at ${coord(x, y)}.`);
       break;
     }
     case 'repair': {
       const t = shipAt(st, x, y, s => s.owner === p && s.id !== ship.id);
-      const r = rigAt(st, x, y), po = portAt(st, x, y);
-      const obj = t || (r && r.owner === p ? r : null) || (po && po.owner === p ? po : null);
-      if (!obj) return fail('Pick one of your ships, rigs or ports next to the repair ship.');
-      const max = t ? SHIPS[t.type].hp : obj === po ? PORT.hp : RIG.hp;
+      const r = rigAt(st, x, y), po = portAt(st, x, y), pl = platformAt(st, x, y);
+      const obj = t || (r && r.owner === p ? r : null) || (po && po.owner === p ? po : null) || (pl && pl.owner === p ? pl : null);
+      if (!obj) return fail('Pick one of your ships, rigs, platforms or ports next to the repair ship.');
+      const max = t ? shipStat(st, p, t.type, 'hp') : obj === po ? PORT.hp : obj === pl ? platformMaxHp(st, pl)
+        : r.center && baseById(st, r.baseId) ? baseMaxHp(st, baseById(st, r.baseId)) : RIG.hp;
       if (obj.hp >= max) return fail('Already at full health.');
-      spend(ship, act);
+      spend(st, ship, act);
       obj.hp = Math.min(max, obj.hp + act.amount);
-      log(st, p, `Repaired ${t ? SHIPS[t.type].name : obj === po ? 'port' : 'rig'} to ${obj.hp}/${max} HP.`);
+      log(st, p, `Repaired ${t ? SHIPS[t.type].name : obj === po ? 'port' : obj === pl ? 'platform' : 'rig'} to ${obj.hp}/${max} HP.`);
       break;
     }
     case 'spoof': {
-      spend(ship, act);
+      spend(st, ship, act);
       for (const o of others(st, p)) st.players[o].spoofs.push({ x, y, turn: st.turnCount, owner: p });
       log(st, p, `Fake contact broadcast at ${coord(x, y)}.`);
       break;
@@ -103,7 +107,7 @@ export function doAct(st, a) {
     case 'salvage': {
       const w = st.wrecks.find(w => w.cells.some(([cx, cy]) => cx === x && cy === y));
       if (!w) return fail('Pick a wreck square next to the salvage ship.');
-      spend(ship, act);
+      spend(st, ship, act);
       const gain = Math.floor(w.value * act.share);
       st.players[p].money += gain;
       st.wrecks = st.wrecks.filter(o => o !== w);
@@ -120,8 +124,11 @@ function addFlash(st, ship) {
   const cells = shipCells(ship);
   const [cx, cy] = cells[Math.floor(cells.length / 2)];
   const ox = randInt(st, -1, 1), oy = randInt(st, -1, 1);
-  for (const o of others(st, ship.owner))
-    st.players[o].flashes.push({ x: cx + ox - 2, y: cy + oy - 2, w: 5, h: 5, turn: st.turnCount, owner: ship.owner });
+  for (const o of others(st, ship.owner)) {
+    // Signals Intelligence pinpoints the exact square; everyone else gets a rough 5×5 box
+    if (pstat(st, o, 'flashExact')) st.players[o].flashes.push({ x: cx, y: cy, w: 1, h: 1, turn: st.turnCount, owner: ship.owner });
+    else st.players[o].flashes.push({ x: cx + ox - 2, y: cy + oy - 2, w: 5, h: 5, turn: st.turnCount, owner: ship.owner });
+  }
 }
 
 function doScan(st, ship, act, tx, ty) {
@@ -131,7 +138,7 @@ function doScan(st, ship, act, tx, ty) {
   for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++)
     if (inBounds(st, tx + dx, ty + dy)) box.push([tx + dx, ty + dy]);
   const jammers = st.ships.filter(s => s.owner !== p && passives(s).jam);
-  const jammed = ([x, y]) => jammers.some(j => dist(shipCells(j), [[x, y]]) <= passives(j).jam);
+  const jammed = ([x, y]) => jammers.some(j => dist(shipCells(j), [[x, y]]) <= shipStat(st, j.owner, j.type, 'jam'));
   const clear = box.filter(c => !jammed(c));
   const jam = box.filter(c => jammed(c));
   const rev = st.players[p].reveals;
@@ -144,6 +151,11 @@ function doScan(st, ship, act, tx, ty) {
     for (const r of st.rigs) {
       if (r.owner === p) continue;
       if (clear.some(([x, y]) => x === r.x && y === r.y) && !rev.rigs.includes(r.id)) { rev.rigs.push(r.id); found++; }
+    }
+    rev.platforms ||= [];
+    for (const o of st.platforms || []) {
+      if (o.owner === p) continue;
+      if (clear.some(([x, y]) => x === o.x && y === o.y) && !rev.platforms.includes(o.id)) { rev.platforms.push(o.id); found++; }
     }
     rev.ports ||= [];
     for (const o of st.ports || []) {

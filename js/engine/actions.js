@@ -1,6 +1,8 @@
 // The two public entry points: applyAction() changes the game, getView() is what one player may see.
 import { doAct } from './abilities.js';
-import { doBuyRig, doBuyShip, doSell } from './economy.js';
+import { doBuyShip, doSell } from './economy.js';
+import { baseById, doBuildPlatform, doBuyRig, doUpgradeBase } from './bases.js';
+import { doDequeue, doFunding, doQueue, doResearch } from './research.js';
 import { shipCells } from './geometry.js';
 import { doMove, doRotate } from './movement.js';
 import { doCancelOrder, doSetOrder, runVoyages } from './orders.js';
@@ -19,6 +21,12 @@ export function applyAction(st, a) {
     case 'buyShip': return doBuyShip(st, a);
     case 'buyRig': return doBuyRig(st, a);
     case 'buyPort': return doBuyPort(st, a);
+    case 'buildPlatform': return doBuildPlatform(st, a);
+    case 'upgradeBase': return doUpgradeBase(st, a);
+    case 'research': return doResearch(st, a);
+    case 'queueResearch': return doQueue(st, a);
+    case 'dequeueResearch': return doDequeue(st, a);
+    case 'setFunding': return doFunding(st, a);
     case 'setOrder': return doSetOrder(st, a);
     case 'cancelOrder': return doCancelOrder(st, a);
     case 'sell': return doSell(st, a);
@@ -51,6 +59,11 @@ export function getView(st, p) {
     enemyRigs: st.rigs.filter(r => r.owner !== p && vis.rigs.has(r.id)),
     myPorts: forwardPorts(st, p),
     enemyPorts: (st.ports || []).filter(o => o.owner !== p && vis.ports.has(o.id)),
+    myPlatforms: (st.platforms || []).filter(o => o.owner === p),
+    enemyPlatforms: (st.platforms || []).filter(o => o.owner !== p && vis.platforms.has(o.id)),
+    myBases: (st.bases || []).filter(b => b.owner === p),
+    // enemy bases are known once you've seen their central rig (or its wreck)
+    enemyBases: (st.bases || []).filter(b => b.owner !== p && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
     deposits: st.deposits.filter(d => me.known[d.id]),
     wrecks: st.wrecks,
   };

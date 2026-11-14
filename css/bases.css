@@ -1,0 +1,10 @@
+/* Rig base card in the side panel. */
+.base-card h3 { color: #ffd666; }
+.plat-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.plat-chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); }
+.plat-chip.building { border-style: dashed; color: var(--muted); }
+.plat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.plat-btn { display: grid; grid-template-columns: 20px 1fr auto; gap: 6px; align-items: center; text-align: left; padding: 4px 6px; font-size: 12px; }
+.plat-btn .code { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: #0a1a26; border: 1px solid #5fd3c6; font-weight: 700; font-size: 11px; }
+.plat-btn .cost { color: var(--money); font-size: 11px; }
+.plat-btn.locked .cost { color: var(--muted); }

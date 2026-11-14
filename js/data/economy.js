@@ -2,7 +2,7 @@
 // ECONOMY DATA: oil, money, rigs, ports, upkeep and win conditions.
 // ============================================================
 
-export const TIER_RIGS = { 1: 0, 2: 3, 3: 5 };
+// (Ship unlocks now come from research: see research.js.)
 
 // Forward port: built on the coast of an island (a land square touching water),
 // with one of your ships next to it. New ships can launch within `range` squares of it.
@@ -17,9 +17,7 @@ export const PORT = {
 
 export const RIG = {
   name: 'Oil Rig',
-  baseCost: 100,
-  costPerRig: 25, // each rig you already own adds this to the price (you start with 1, so your first new rig is $125)
-  hp: 2,
+  hp: 2, // a Wellhead rig; a base's central rig uses the base level's HP (bases.js)
   sight: 1,
 };
 

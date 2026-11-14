@@ -6,6 +6,9 @@ import { cellsOf, inRect, inSpawn, isLand, zoneOf } from './geometry.js';
 import { rand, randInt } from './rng.js';
 import { generateTerrain } from './terrain.js';
 import { startTurn } from './turns.js';
+import { foundBase } from './bases.js';
+import { shipStat } from './modifiers.js';
+import { newResearch } from './research.js';
 
 export const SPAWN_DEPTH = 3;
 
@@ -63,21 +66,21 @@ export function newGame(opts = {}) {
   const seed = opts.seed ?? Math.floor(Math.random() * 1e9);
   const layout = MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
   const st = {
-    version: 2, seed, rng: seed, size, W, H,
+    version: 3, seed, rng: seed, size, W, H,
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
     domination: opts.domination ?? true, // Domination victory on/off
     winReason: null,
     phase: 'playing', winner: null, nextId: 1,
     land: new Array(W * H).fill(0),
-    deposits: [], ships: [], rigs: [], ports: [], mines: [], wrecks: [],
+    deposits: [], ships: [], rigs: [], ports: [], mines: [], wrecks: [], bases: [], platforms: [],
     market: { price: MARKET.basePrice },
     players: layout.map((l, i) => ({
       name: PLAYER_NAMES[i], seat: (opts.seats && opts.seats[i]) || 'human', out: false,
       home: l.home, spawn: l.spawn,
-      money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0, domStreak: 0,
+      money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0, domStreak: 0, research: newResearch(),
       shots: [], incoming: [], flashes: [], spoofs: [], scans: [],
-      reveals: { ships: [], rigs: [] }, log: [],
+      reveals: { ships: [], rigs: [], ports: [], platforms: [] }, log: [],
     })),
   };
   generateMap(st);
@@ -115,7 +118,7 @@ function generateMap(st) {
       const dep = placeDeposit(t, pl.home, (x, y) => !inRect(pl.spawn, x, y), homeReserves[i]);
       if (i === 0 && dep) {
         pl.known[dep.id] = true; // starting rig on the first medium deposit
-        st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: RIG.hp, depId: dep.id });
+        foundBase(st, p, dep, true); // your Admiralty: the starting rig base
       }
     });
   });
@@ -188,7 +191,7 @@ function generateClassic(st) {
       const dep = placeDeposit(t, (x, y) => inRect(pl.home, x, y) && !inRect(pl.spawn, x, y), homeReserves[i]);
       if (i === 0 && dep) {
         pl.known[dep.id] = true; // starting rig on the first medium deposit
-        st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: RIG.hp, depId: dep.id });
+        foundBase(st, p, dep, true); // your Admiralty: the starting rig base
       }
     });
   });
@@ -219,7 +222,7 @@ function generateClassic(st) {
 export function addShip(st, owner, type, x, y, rot, ready = false) {
   const def = SHIPS[type];
   const ship = {
-    id: 's' + st.nextId++, owner, type, x, y, rot, hp: def.hp,
+    id: 's' + st.nextId++, owner, type, x, y, rot, hp: shipStat(st, owner, type, 'hp'),
     movesLeft: 0, acted: !ready, shotsLeft: 0, activeAction: null,
     cooldowns: {}, freeUsed: {}, screenUsed: false, adUsed: false,
   };

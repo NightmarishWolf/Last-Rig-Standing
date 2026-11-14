@@ -6,7 +6,8 @@ import { minimapToWorld } from './board/minimap.js';
 import { centerOn, panBy, zoomAt } from './camera.js';
 import { MARGIN } from './constants.js';
 import { showRules } from './dialogs.js';
-import { cancelMode, onBoardClick, onKey, onPanelClick } from './input.js';
+import { cancelMode, onBoardClick, onKey, onPanelClick, onResearchClick } from './input.js';
+import { closeResearch, openResearch, renderResearch } from './research.js';
 import { renderPanel, renderTop } from './panel.js';
 import { S } from './state.js';
 import { toast, updateStatus } from './status.js';
@@ -32,7 +33,7 @@ export function initUI(state, h) {
   });
   window.addEventListener('mouseup', e => {
     const d = S.drag; S.drag = null; S.canvas.style.cursor = '';
-    if (d && !d.moved && d.button === 0 && e.target === S.canvas) onBoardClick(cellFromEvent(e));
+    if (d && !d.moved && d.button === 0 && e.target === S.canvas) onBoardClick(cellFromEvent(e), e.shiftKey);
   });
   S.canvas.addEventListener('mouseleave', () => { S.hover = null; requestDraw(); });
   S.canvas.addEventListener('contextmenu', e => { e.preventDefault(); cancelMode(); });
@@ -53,6 +54,8 @@ export function initUI(state, h) {
     window.addEventListener('mouseup', () => { mmDrag = false; });
   }
   document.getElementById('panel').addEventListener('click', onPanelClick);
+  document.getElementById('research').addEventListener('click', onResearchClick);
+  document.getElementById('turn-info').addEventListener('click', e => { if (e.target.closest('#btn-research')) openResearch(); });
   document.getElementById('btn-help').onclick = showRules;
   document.getElementById('btn-menu').onclick = () => S.hooks.showMenu();
   window.addEventListener('keydown', onKey);
@@ -62,17 +65,19 @@ export function initUI(state, h) {
 export function setState(state) { S.st = state; S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }
 
 export function refresh() {
+  if (S.planFor !== S.selectedId) { S.planRot = null; S.plan = []; S.planFor = S.selectedId; }
   S.reachCache = null; renderPanel(); renderTop();
   if (S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode })) { renderPanel(); S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode }); }
-  resize(); draw(); updateStatus();
+  resize(); draw(); updateStatus(); renderResearch();
 }
 
 export const redraw = () => draw();
 
 // End the current player's turn (End turn button, or the turn timer running out).
 export function endTurnNow(reason) {
+  closeResearch(); // never leave one player's research on screen for the next
   dispatch({ type: 'endTurn' });
-  S.selectedId = null; S.mode = { kind: 'idle' };
+  S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' };
   if (S.st.phase === 'playing') S.hooks.handoff(S.st, reason);
   refresh();
 }

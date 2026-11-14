@@ -21,5 +21,8 @@ export * from './combat.js';
 export * from './economy.js';
 export * from './ports.js';
 export * from './stats.js';
+export * from './modifiers.js';
+export * from './research.js';
+export * from './bases.js';
 export * from './turns.js';
 export * from './util.js';

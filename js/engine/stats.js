@@ -1,21 +1,23 @@
 // Derived numbers: prices, upkeep, movement cost and domination counts.
-import { DOMINATION, ECONOMY, PORT, RIG, TIER_RIGS } from '../data/economy.js';
+import { DOMINATION, ECONOMY, PORT } from '../data/economy.js';
 import { SHIPS } from '../data/ships.js';
+import { baseFoundCost, platformUpkeep } from './bases.js';
 import { dist, shipCells, zoneOf } from './geometry.js';
+import { pstat, shipStat } from './modifiers.js';
 import { passives } from './util.js';
 
-// ---------- helpers ----------
 export const rigsOwned = (st, p) => st.rigs.filter(r => r.owner === p).length;
 
-export const rigCost = (st, p) => RIG.baseCost + RIG.costPerRig * rigsOwned(st, p);
+// Founding a new rig base (kept as "rigCost" for older code).
+export const rigCost = (st, p) => baseFoundCost(st, p);
 
-export const tierUnlocked = (st, p, tier) => rigsOwned(st, p) >= TIER_RIGS[tier];
+// Ship upkeep: a share of the ship's price each turn (the Nuclear Submarine has its own fixed upkeep).
+export const upkeepOf = (st, p, type) =>
+  Math.round((SHIPS[type].passives?.upkeep ?? shipStat(st, p, type, 'cost') * ECONOMY.upkeepRate) * pstat(st, p, 'upkeepMult'));
 
-export const upkeepOf = type => SHIPS[type].passives?.upkeep ?? Math.round(SHIPS[type].cost * ECONOMY.upkeepRate);
+export const upkeepTotal = (st, p) =>
+  st.ships.filter(s => s.owner === p).reduce((t, s) => t + upkeepOf(st, p, s.type), 0) + platformUpkeep(st, p);
 
-export const upkeepTotal = (st, p) => st.ships.filter(s => s.owner === p).reduce((t, s) => t + upkeepOf(s.type), 0);
-
-// Rigs outside your own home waters act as forward ports for launching ships.
 // Forward ports: built on island coasts, they let you launch ships near the front.
 export const forwardPorts = (st, p) => (st.ports || []).filter(o => o.owner === p);
 
@@ -44,7 +46,8 @@ function fuelLineActive(st, ship) {
     dist(shipCells(o), cells) <= passives(o).fuelLine);
 }
 
+// Oil for sailing `steps` squares (turns count as a square). Research can make it cheaper.
 export function moveCost(st, ship, steps) {
-  const rate = SHIPS[ship.type].oil;
-  return fuelLineActive(st, ship) ? Math.ceil((steps * rate) / 2) : steps * rate;
+  const rate = shipStat(st, ship.owner, ship.type, 'oil');
+  return Math.ceil((fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - 1e-9);
 }

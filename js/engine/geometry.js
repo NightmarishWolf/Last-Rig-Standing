@@ -12,6 +12,22 @@ export function cellsOf(type, x, y, rot = 0) {
 
 export const shipCells = s => cellsOf(s.type, s.x, s.y, s.rot);
 
+// Turning a ship pivots around its middle; this gives the new anchor (top-left) after a turn.
+// The shift only depends on the ship type and the two facings, so it's worked out once and cached.
+const turnCache = {};
+export function turnDelta(type, rot, newRot) {
+  const k = type + rot + newRot;
+  if (turnCache[k]) return turnCache[k];
+  const centre = cs => [Math.round(cs.reduce((t, c) => t + c[0], 0) / cs.length), Math.round(cs.reduce((t, c) => t + c[1], 0) / cs.length)];
+  const [cx, cy] = centre(cellsOf(type, 0, 0, rot));
+  const [rcx, rcy] = centre(cellsOf(type, 0, 0, newRot));
+  return (turnCache[k] = [cx - rcx, cy - rcy]);
+}
+export function turnAnchor(type, x, y, rot, newRot) {
+  const [dx, dy] = turnDelta(type, rot, newRot);
+  return [x + dx, y + dy];
+}
+
 export function dist(cellsA, cellsB) {
   let best = Infinity;
   for (const [ax, ay] of cellsA)
