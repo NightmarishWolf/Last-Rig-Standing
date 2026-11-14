@@ -1,7 +1,10 @@
 // UI entry point: start-up, refreshing everything, and sending actions to the engine.
 import * as E from '../engine/index.js';
 import { cellFromEvent, resize } from './board/canvas.js';
-import { draw } from './board/render.js';
+import { draw, requestDraw } from './board/render.js';
+import { minimapToWorld } from './board/minimap.js';
+import { centerOn, panBy, zoomAt } from './camera.js';
+import { MARGIN } from './constants.js';
 import { showRules } from './dialogs.js';
 import { cancelMode, onBoardClick, onKey, onPanelClick } from './input.js';
 import { renderPanel, renderTop } from './panel.js';
@@ -13,10 +16,42 @@ export function initUI(state, h) {
   S.canvas = document.getElementById('board');
   S.ctx = S.canvas.getContext('2d');
   window.addEventListener('resize', () => { resize(); draw(); });
-  S.canvas.addEventListener('mousemove', e => { S.hover = cellFromEvent(e); draw(); updateStatus(); });
-  S.canvas.addEventListener('mouseleave', () => { S.hover = null; draw(); });
-  S.canvas.addEventListener('click', e => onBoardClick(cellFromEvent(e)));
+  // left-click = act, drag (left or middle button) = scroll the map, wheel = zoom, right-click = cancel
+  S.canvas.addEventListener('mousedown', e => {
+    if (e.button === 0 || e.button === 1) S.drag = { x: e.clientX, y: e.clientY, moved: false, button: e.button };
+    if (e.button === 1) e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (S.drag) {
+      const dx = e.clientX - S.drag.x, dy = e.clientY - S.drag.y;
+      if (!S.drag.moved && Math.abs(dx) + Math.abs(dy) > 5 && !S.fit) S.drag.moved = true;
+      if (S.drag.moved) { panBy(dx, dy); S.drag.x = e.clientX; S.drag.y = e.clientY; S.canvas.style.cursor = 'grabbing'; }
+    }
+    if (e.target === S.canvas) { S.hover = cellFromEvent(e); requestDraw(); updateStatus(); }
+    else if (S.drag?.moved) requestDraw();
+  });
+  window.addEventListener('mouseup', e => {
+    const d = S.drag; S.drag = null; S.canvas.style.cursor = '';
+    if (d && !d.moved && d.button === 0 && e.target === S.canvas) onBoardClick(cellFromEvent(e));
+  });
+  S.canvas.addEventListener('mouseleave', () => { S.hover = null; requestDraw(); });
   S.canvas.addEventListener('contextmenu', e => { e.preventDefault(); cancelMode(); });
+  S.canvas.addEventListener('wheel', e => {
+    if (S.fit) return;
+    e.preventDefault();
+    const r = S.canvas.getBoundingClientRect();
+    zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left - MARGIN, e.clientY - r.top - MARGIN);
+    S.hover = cellFromEvent(e); requestDraw(); updateStatus();
+  }, { passive: false });
+  // minimap: click or drag to jump
+  const mm = document.getElementById('minimap');
+  if (mm) {
+    let mmDrag = false;
+    const jump = e => { const w = minimapToWorld(e); centerOn(Math.floor(w.x), Math.floor(w.y)); requestDraw(); };
+    mm.addEventListener('mousedown', e => { mmDrag = true; jump(e); e.stopPropagation(); });
+    window.addEventListener('mousemove', e => { if (mmDrag) jump(e); });
+    window.addEventListener('mouseup', () => { mmDrag = false; });
+  }
   document.getElementById('panel').addEventListener('click', onPanelClick);
   document.getElementById('btn-help').onclick = showRules;
   document.getElementById('btn-menu').onclick = () => S.hooks.showMenu();

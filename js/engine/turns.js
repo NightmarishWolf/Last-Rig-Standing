@@ -53,7 +53,8 @@ export function startTurn(st, p, first = false) {
     s.movesLeft = SHIPS[s.type].move + commandBonus(st, s);
   }
   const dry = st.rigs.filter(r => r.owner === p && st.deposits.find(d => d.id === r.depId).reserves === 0).length;
-  if (!first) log(st, p, `Round ${st.round}: rigs pumped ${produced} oil${spilled ? ` (${spilled} spilled, storage full at ${ECONOMY.oilCap})` : ''}. Upkeep −$${paid}.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
+  if (first) log(st, p, 'Your fleet is ready. Survey for oil, build rigs, and outlast the enemy.');
+  else log(st, p, `Round ${st.round}: rigs pumped ${produced} oil${spilled ? ` (${spilled} spilled, storage full at ${ECONOMY.oilCap})` : ''}. Upkeep −$${paid}.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
   // domination: hold at least half of No Man's Sea's deposits, round after round
   if (st.domination) {
     const have = middleRigs(st, p), need = dominationNeed(st);
@@ -64,7 +65,6 @@ export function startTurn(st, p, first = false) {
     }
     if (me.domStreak >= DOMINATION.rounds) { st.phase = 'over'; st.winner = p; st.winReason = 'domination'; return; }
   }
-  else log(st, p, 'Your fleet is ready. Survey for oil, build rigs, and outlast the enemy.');
   checkWin(st);
 }
 

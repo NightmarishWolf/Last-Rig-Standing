@@ -43,6 +43,15 @@ export function doMove(st, a) {
   if (!target) return fail('Cannot reach that spot.');
   const path = [];
   for (let n = target; n && n.prev; n = map.get(n.prev)) path.unshift(n);
+  ship.order = null; // steering by hand cancels any voyage
+  sailPath(st, ship, path);
+  checkWin(st);
+  return ok();
+}
+
+// Sail a ship along a list of {x, y} steps: stops early on hidden enemies or mines,
+// pays oil for the squares actually sailed. Returns how many steps were taken.
+export function sailPath(st, ship, path) {
   const p = ship.owner, fullCost = moveCost(st, ship, path.length);
   let steps = 0;
   for (const step of path) {
@@ -67,8 +76,7 @@ export function doMove(st, a) {
   }
   st.players[p].oil -= steps === path.length ? fullCost : moveCost(st, ship, steps);
   ship.movesLeft -= steps;
-  checkWin(st);
-  return ok();
+  return steps;
 }
 
 export function doRotate(st, a) {

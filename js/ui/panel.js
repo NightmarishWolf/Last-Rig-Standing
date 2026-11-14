@@ -21,7 +21,7 @@ export function renderPanel() {
   <div class="card">
     <h3>Admirals</h3>
     <div class="row" style="margin-top:0">${S.st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ' (CPU)' : ''}${o.out ? ' · out' : ''}${S.st.domination && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">domination ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('')}</div>
-    ${S.st.domination ? `<div class="small muted" style="margin-top:6px">Domination: hold rigs on ${E.dominationNeed(S.st)} of ${E.middleDeposits(S.st).length} No Man's Sea deposits for ${DOMINATION.rounds} rounds to win. You hold ${E.middleRigs(S.st, p)}.</div>` : ''}
+    ${S.st.domination ? `<div class="small muted" style="margin-top:6px">Domination: hold rigs on ${E.dominationNeed(S.st)} of the ${E.dominationDeposits(S.st).length} rich deposits in No Man's Sea for ${DOMINATION.rounds} rounds to win. You hold ${E.middleRigs(S.st, p)}.</div>` : ''}
   </div>
   <div class="card">
     <h3>Resources</h3>
@@ -69,8 +69,12 @@ export function renderPanel() {
           <b>${a.name}</b>${a.free ? ' <span class="small muted">(free)</span>' : ''}${shots}
           <span class="why">${why || describeAction(a)}</span></button>`;
       }).join('')}
+      ${s.order ? `<div class="voyage">⚓ On a voyage to <b>${E.coord(s.order.x, s.order.y)}</b>. Sails on automatically when you end your turn.
+        <div class="row" style="margin-top:6px"><button data-cancel-order="1">Cancel voyage</button></div></div>`
+        : S.fit ? '' : '<div class="small muted" style="margin-top:8px">Tip: click anywhere beyond the teal area to send this ship on a multi-turn voyage.</div>'}
       <div class="row">
         <button data-rotate="1" ${!canMove || s.movesLeft < 1 ? 'disabled' : ''}>Turn 90° (R) · ${E.moveCost(S.st, s, 1)} oil</button>
+        ${S.fit ? '' : '<button data-center="1" class="ghost">Centre view (Space)</button>'}
         <button data-deselect="1" class="ghost">Deselect</button>
       </div>
     </div>`;

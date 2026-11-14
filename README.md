@@ -1,10 +1,17 @@
 # Last Rig Standing
 
-A naval strategy game of attrition: find hidden oil, build rigs, grow your fleet, and outlast your opponent.
-2–4 players on one screen (hot-seat), four map sizes from Small (24×14) to Huge (52×30).
-With 2 players, homes are on the left and right; with 3–4, homes sit in the corners (and bottom-middle for 3).
+A naval strategy game of attrition: find hidden oil, build rigs, grow your fleet, and outlast your opponents.
+2–4 players on one screen (hot-seat), on huge generated worlds of continents, islands and open ocean:
+
+| Map | Size |
+|---|---|
+| Small | 150×100 |
+| Standard | 200×130 |
+| Large | 260×170 |
+| Huge | 320×210 |
+
 A player with no ships, no rigs and less than $60 is knocked out. Last player left wins, or (optional) hold half of
-No Man's Sea's deposits for 5 rounds for a Domination victory.
+No Man's Sea's rich deposits for 5 rounds for a Domination victory.
 
 Economy: every deposit starts with a random amount of oil (small at home, large in No Man's Sea), ships cost upkeep
 every turn, you can store at most 60 oil, and forward ports built on island coasts let you launch new ships near the front.
@@ -44,7 +51,10 @@ js/
   engine/                game rules, no graphics
     index.js             one import for the whole engine
     actions.js           applyAction() and getView(): the only ways in and out
-    setup.js             new game: homes, islands, deposits, starting fleets
+    setup.js             new game: homes, deposits, starting fleets
+    terrain.js           world generator: continents, islands, one connected ocean
+    pathfind.js          sea routes for long voyages (A*)
+    orders.js            voyage orders that keep sailing turn after turn
     movement.js          moving/turning, hidden collisions, mines
     abilities.js         attacks, scans, surveys, mines, repairs, spoofs, salvage
     combat.js            shot resolution, armor, interception, sinking
@@ -58,12 +68,13 @@ js/
   ui/                    everything on screen
     index.js             UI start-up, refresh, sending actions
     state.js             what the screen is doing (selection, mode, hover)
+    camera.js            scrolling and zooming
     input.js             mouse and keyboard
     panel.js             side panel and top bar
     status.js            hint line under the board, error toasts
     dialogs.js           overlays, confirm box, Rules screen
     board/               the canvas: render.js draws it layer by layer;
-                         units, fog, modes (move/target/placing), tooltip, markers
+                         units, fog, modes (move/target/placing/voyages), tooltip, markers, minimap
   app/                   menus and game flow
     menu.js              main menu and new-game setup
     flow.js              pass-the-device, game over, tutorial enter/exit
@@ -82,12 +93,15 @@ js/
 - **Add a ship:** add an entry to `SHIPS` in `js/data/ships.js` and a two-letter label in `CODES` in `js/ui/constants.js`.
   If it uses a brand-new ability, add it in `js/engine/abilities.js`.
 - **Economy tuning:** `js/data/economy.js`.
-- **New map size:** `js/data/maps.js`.
+- **Map sizes, land amount, deposit density:** `js/data/maps.js`.
 - **Tutorial wording:** `js/tutorial/steps.js`.
 
 ## Controls
 
 - Click a ship to select it, then click a highlighted spot to move.
+- Click further away to send it on a **voyage**: it finds a sea route and sails on by itself every time you end your turn.
+- **Drag** the map (or WASD / arrow keys) to scroll, **mouse wheel** (or +/-) to zoom, click the **minimap** to jump.
+- **Tab** selects your next ready ship, **Space** centres on the selected one.
 - **R** turns the selected ship (or the ship you're placing). **Esc** / right-click cancels.
 - Pick an action in the side panel, then click a target on the board.
 

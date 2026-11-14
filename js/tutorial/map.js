@@ -19,7 +19,7 @@ function ship(id, owner, type, x, y) {
 }
 
 export function newTutorialGame() {
-  const st = E.newGame({ size: 'small', players: 2, seed: 2026 });
+  const st = E.newGame({ size: 'tutorial', players: 2, seed: 2026 });
   st.tutorial = true;
   st.domination = false;
   // a few islands, out of the way

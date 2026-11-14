@@ -2,6 +2,7 @@
 import { MARGIN } from '../constants.js';
 import { px, py } from '../helpers.js';
 import { S } from '../state.js';
+import { clampCam, switchCameraTo } from '../camera.js';
 
 // ---------- geometry ----------
 export function resize() {
@@ -11,8 +12,18 @@ export function resize() {
   const avail = Math.max(300, vw <= 1000 ? vw - 32 : vw - 340 - 48);
   const COACH_SPACE = S.st && S.st.tutorial ? 172 + 10 : 0; // fixed coach height + gap (see .coach in style.css)
   const maxH = vh - 150 - COACH_SPACE;
-  S.cell = Math.max(12, Math.min(40, Math.floor(Math.min((avail - MARGIN) / S.st.W, (maxH - MARGIN) / S.st.H))));
-  const w = S.cell * S.st.W + MARGIN, h = S.cell * S.st.H + MARGIN;
+  const fitCell = Math.floor(Math.min((avail - MARGIN) / S.st.W, (maxH - MARGIN) / S.st.H));
+  let w, h;
+  if (fitCell >= 16) {
+    // small map: show it whole, like a board game
+    S.fit = true; S.cell = Math.min(40, fitCell); S.cam.x = 0; S.cam.y = 0;
+    w = S.cell * S.st.W + MARGIN; h = S.cell * S.st.H + MARGIN;
+  } else {
+    // big world: the board fills the space and the camera scrolls
+    S.fit = false; w = avail; h = Math.max(300, maxH);
+  }
+  S.view.w = w - MARGIN; S.view.h = h - MARGIN;
+  if (!S.fit) { switchCameraTo(S.st.current); clampCam(); }
   const dpr = window.devicePixelRatio || 1;
   S.canvas.width = w * dpr; S.canvas.height = h * dpr;
   S.canvas.style.width = w + 'px'; S.canvas.style.height = h + 'px';
@@ -21,8 +32,10 @@ export function resize() {
 
 export function cellFromEvent(e) {
   const r = S.canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - r.left - MARGIN) / S.cell);
-  const y = Math.floor((e.clientY - r.top - MARGIN) / S.cell);
+  const sx = e.clientX - r.left - MARGIN, sy = e.clientY - r.top - MARGIN;
+  if (sx < 0 || sy < 0 || sx > S.view.w || sy > S.view.h) return null;
+  const x = Math.floor(sx / S.cell + S.cam.x);
+  const y = Math.floor(sy / S.cell + S.cam.y);
   return x >= 0 && y >= 0 && x < S.st.W && y < S.st.H ? { x, y } : null;
 }
 
@@ -52,7 +65,7 @@ export function sightSquares(cells, r) {
 
 export function ghost(cells, color) {
   S.ctx.fillStyle = color;
-  for (const [x, y] of cells) if (x >= 0 && y >= 0 && x < S.st.W && y < S.st.H) { roundRect(px(x) + 2, py(y) + 2, S.cell - 4, S.cell - 4, 4); S.ctx.fill(); }
+  for (const [x, y] of cells) if (x >= 0 && y >= 0 && x < S.st.W && y < S.st.H) { const g = S.cell < 8 ? 0 : 2; roundRect(px(x) + g, py(y) + g, S.cell - g * 2, S.cell - g * 2, Math.min(4, S.cell / 3)); S.ctx.fill(); }
 }
 
 export function hatch(x, y, color) {
@@ -63,6 +76,7 @@ export function hatch(x, y, color) {
 }
 
 export function roundRect(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
   S.ctx.beginPath(); S.ctx.moveTo(x + r, y); S.ctx.arcTo(x + w, y, x + w, y + h, r); S.ctx.arcTo(x + w, y + h, x, y + h, r);
   S.ctx.arcTo(x, y + h, x, y, r); S.ctx.arcTo(x, y, x + w, y, r); S.ctx.closePath();
 }

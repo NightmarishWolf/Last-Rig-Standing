@@ -25,6 +25,8 @@ export function showRules() {
     <ul>
       <li>Each ship can <b>move</b> (up to its Move, paying oil per square) and take <b>one action</b> (attack, scan, survey…). Once a ship attacks it can't move, unless it has Hit and Run.</li>
       <li>Turning a ship 90° costs one square of movement. Press <b>R</b>.</li>
+      <li><b>Voyages:</b> click anywhere beyond a ship's teal movement area to send it on a multi-turn voyage. It sails on by itself every time you end your turn, until it arrives. Clicking a normal move or <b>Cancel voyage</b> stops it.</li>
+      <li><b>Getting around:</b> drag the map or use WASD / arrow keys to scroll, the mouse wheel or +/- to zoom, and click the minimap to jump. <b>Tab</b> selects your next ready ship, <b>Space</b> centres on the selected one.</li>
       <li>Buy ships in the Shipyard. They launch in your spawn zone (the lighter strip at your edge of the map) and are ready next turn.</li>
       <li>Sell oil for money. Selling a lot at once drops the price; it recovers each turn.</li>
       <li><b>Upkeep:</b> every ship costs 5% of its price in money each turn. Ships you can't pay for lose 1 HP. Big idle fleets drain you.</li>
@@ -49,7 +51,7 @@ export function showRules() {
       <li>Moving into an unseen enemy stops your ship and reveals it. Mines are invisible to the enemy.</li>
     </ul>
     <h4>Winning</h4>
-    <p>Knock everyone else out (no ships, no rigs, under $60), or, if Domination is on, hold rigs on at least half of No Man's Sea's deposits for ${DOMINATION.rounds} rounds in a row.</p>
+    <p>Knock everyone else out (no ships, no rigs, under $60), or, if Domination is on, hold rigs on at least half of No Man's Sea's rich deposits for ${DOMINATION.rounds} rounds in a row.</p>
     <h4>Wrecks</h4>
     <p>Sunk ships leave wrecks. A Salvage Ship can recover half their value, from any side. When a player is knocked out, their whole fleet becomes wrecks.</p>
     <div class="row" style="margin-top:16px"><button class="primary" data-close>Got it</button></div>

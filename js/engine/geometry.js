@@ -38,4 +38,5 @@ export const inSpawn = (st, p, x, y) => inRect(st.players[p].spawn, x, y);
 export const isCoast = (st, x, y) => inBounds(st, x, y) && isLand(st, x, y) &&
   [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inBounds(st, x + dx, y + dy) && !isLand(st, x + dx, y + dy));
 
-export const coord = (x, y) => `${y < 26 ? String.fromCharCode(65 + y) : 'A' + String.fromCharCode(39 + y)}${x + 1}`;
+export const rowName = y => (y < 26 ? '' : String.fromCharCode(64 + Math.floor(y / 26))) + String.fromCharCode(65 + (y % 26));
+export const coord = (x, y) => `${rowName(y)}${x + 1}`;

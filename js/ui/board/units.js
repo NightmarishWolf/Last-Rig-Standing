@@ -9,9 +9,9 @@ export function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false)
   S.ctx.globalAlpha = alpha;
   S.ctx.fillStyle = color;
   const set = new Set(cells.map(c => c[0] + ',' + c[1]));
-  const ins = Math.max(2, S.cell * 0.12);
+  const ins = S.cell < 8 ? 0.3 : Math.max(2, S.cell * 0.12);
   for (const [x, y] of cells) {
-    roundRect(px(x) + ins, py(y) + ins, S.cell - ins * 2, S.cell - ins * 2, 4); S.ctx.fill();
+    roundRect(px(x) + ins, py(y) + ins, S.cell - ins * 2, S.cell - ins * 2, S.cell < 8 ? 0 : 4); S.ctx.fill();
     if (set.has((x + 1) + ',' + y)) S.ctx.fillRect(px(x) + S.cell - ins - 1, py(y) + ins, ins * 2 + 2, S.cell - ins * 2);
     if (set.has(x + ',' + (y + 1))) S.ctx.fillRect(px(x) + ins, py(y) + S.cell - ins - 1, S.cell - ins * 2, ins * 2 + 2);
   }
@@ -28,8 +28,8 @@ export function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false)
   const mid = cells[Math.floor(cells.length / 2)];
   S.ctx.fillStyle = 'rgba(0,0,0,0.75)';
   S.ctx.font = `bold ${Math.max(9, S.cell * 0.34)}px system-ui`; S.ctx.textAlign = 'center'; S.ctx.textBaseline = 'middle';
-  S.ctx.fillText(label, px(mid[0]) + S.cell / 2, py(mid[1]) + S.cell / 2 + 1);
-  if (hpFrac !== undefined && hpFrac < 1) {
+  if (S.cell >= 14) S.ctx.fillText(label, px(mid[0]) + S.cell / 2, py(mid[1]) + S.cell / 2 + 1);
+  if (hpFrac !== undefined && hpFrac < 1 && S.cell >= 10) {
     const minX = Math.min(...cells.map(c => c[0])), maxX = Math.max(...cells.map(c => c[0]));
     const maxY = Math.max(...cells.map(c => c[1]));
     const w = (maxX - minX + 1) * S.cell - 8;
@@ -42,6 +42,7 @@ export function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false)
 
 export function drawRig(r, color) {
   const x0 = px(r.x), y0 = py(r.y), u = S.cell / 10;
+  if (S.cell < 10) { S.ctx.fillStyle = color; S.ctx.fillRect(x0, y0, S.cell, S.cell); S.ctx.fillStyle = '#f0a531'; S.ctx.fillRect(x0 + S.cell * .3, y0 + S.cell * .3, S.cell * .4, S.cell * .4); return; }
   S.ctx.fillStyle = '#0a1a26';
   roundRect(x0 + 2, y0 + 2, S.cell - 4, S.cell - 4, 3); S.ctx.fill();
   S.ctx.strokeStyle = color; S.ctx.lineWidth = 2; S.ctx.stroke();
@@ -62,6 +63,7 @@ export function drawRig(r, color) {
 // forward port: an anchor on a coast square
 export function drawPort(o, color) {
   const x0 = px(o.x), y0 = py(o.y), u = S.cell / 10;
+  if (S.cell < 10) { S.ctx.fillStyle = '#ffffff'; S.ctx.fillRect(x0, y0, S.cell, S.cell); S.ctx.fillStyle = color; S.ctx.fillRect(x0 + S.cell * .25, y0 + S.cell * .25, S.cell * .5, S.cell * .5); return; }
   S.ctx.fillStyle = '#0a1a26'; roundRect(x0 + 2, y0 + 2, S.cell - 4, S.cell - 4, 4); S.ctx.fill();
   S.ctx.strokeStyle = color; S.ctx.lineWidth = 2; S.ctx.stroke();
   S.ctx.strokeStyle = '#e8eef4'; S.ctx.lineWidth = Math.max(1.2, u * 0.75); S.ctx.lineCap = 'round';

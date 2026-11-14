@@ -8,9 +8,9 @@ export const pcol = p => PLAYER_COLORS[p];
 
 export const pname = p => S.st.players[p].name;
 
-export const px = x => MARGIN + x * S.cell;
+export const px = x => MARGIN + (x - S.cam.x) * S.cell;
 
-export const py = y => MARGIN + y * S.cell;
+export const py = y => MARGIN + (y - S.cam.y) * S.cell;
 
 export const me = () => S.st.current;
 

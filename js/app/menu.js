@@ -47,7 +47,7 @@ export function showSetup(overwriting) {
     <h2>New game</h2>
     <div class="setup-group">
       <div class="label">Map size</div>
-      <div class="seg">${Object.entries(MAP_SIZES).map(([k, m]) => `
+      <div class="seg">${Object.entries(MAP_SIZES).filter(([, m]) => !m.hidden).map(([k, m]) => `
         <button data-size="${k}" class="${setup.size === k ? 'on' : ''}">${m.name}<small>${m.w}×${m.h}${m.maxPlayers < 4 ? ` · up to ${m.maxPlayers} players` : ''}</small></button>`).join('')}
       </div>
     </div>

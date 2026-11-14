@@ -28,3 +28,4 @@
 .chip.me { border-color: var(--c); }
 .chip.out { opacity: .4; text-decoration: line-through; }
 .small-btn { padding: 2px 8px; font-size: 12px; }
+.voyage { margin-top: 10px; padding: 8px 10px; border: 1px solid #6d5a1f; background: #241d08; border-radius: 6px; color: #f3e2a6; font-size: 13px; }

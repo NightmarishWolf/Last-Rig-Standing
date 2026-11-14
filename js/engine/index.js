@@ -10,9 +10,12 @@
 // ============================================================
 export * from './actions.js';
 export * from './setup.js';
+export * from './terrain.js';
 export * from './geometry.js';
 export * from './visibility.js';
 export * from './movement.js';
+export * from './pathfind.js';
+export * from './orders.js';
 export * from './abilities.js';
 export * from './combat.js';
 export * from './economy.js';

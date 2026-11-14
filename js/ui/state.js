@@ -11,4 +11,14 @@ export const S = {
   ctx: null,
   reachCache: null,     // cached movement range of the selected ship
   toastTimer: null,
+  // camera (see camera.js)
+  cam: { x: 0, y: 0 },  // top-left of the view, in squares
+  view: { w: 0, h: 0 }, // size of the map area on screen, in pixels
+  fit: true,            // small maps are shown whole, with no scrolling
+  cams: {},             // each player's saved camera
+  camOwner: null, camGame: null,
+  drawQueued: false,
+  drag: null,           // mouse drag in progress
+  pathCache: null,      // last voyage preview route
+  terrainCache: null, fogCanvas: null,
 };

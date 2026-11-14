@@ -23,9 +23,14 @@ export const portCost = (st, p) => PORT.baseCost + PORT.costPerPort * forwardPor
 
 export const middleDeposits = st => st.deposits.filter(d => zoneOf(st, d.x, d.y) === 'middle');
 
-export const dominationNeed = st => Math.max(1, Math.ceil(middleDeposits(st).length * DOMINATION.share));
+// Domination is about the rich deposits in No Man's Sea.
+export const dominationDeposits = st => middleDeposits(st).filter(d => d.type === 'rich');
+export const dominationNeed = st => Math.max(1, Math.ceil(dominationDeposits(st).length * DOMINATION.share));
 
-export const middleRigs = (st, p) => st.rigs.filter(r => r.owner === p && zoneOf(st, r.x, r.y) === 'middle').length;
+export const middleRigs = (st, p) => {
+  const rich = new Set(dominationDeposits(st).map(d => d.id));
+  return st.rigs.filter(r => r.owner === p && rich.has(r.depId)).length;
+};
 
 export function commandBonus(st, ship) {
   const cells = shipCells(ship);

@@ -3,6 +3,7 @@ import { doAct } from './abilities.js';
 import { doBuyRig, doBuyShip, doSell } from './economy.js';
 import { shipCells } from './geometry.js';
 import { doMove, doRotate } from './movement.js';
+import { doCancelOrder, doSetOrder, runVoyages } from './orders.js';
 import { doBuyPort } from './ports.js';
 import { forwardPorts } from './stats.js';
 import { checkWin, eliminate, nextTurn } from './turns.js';
@@ -18,8 +19,13 @@ export function applyAction(st, a) {
     case 'buyShip': return doBuyShip(st, a);
     case 'buyRig': return doBuyRig(st, a);
     case 'buyPort': return doBuyPort(st, a);
+    case 'setOrder': return doSetOrder(st, a);
+    case 'cancelOrder': return doCancelOrder(st, a);
     case 'sell': return doSell(st, a);
-    case 'endTurn': nextTurn(st); return ok();
+    case 'endTurn':
+      runVoyages(st, st.current); // ships on a voyage sail on before the turn passes
+      if (st.phase === 'playing') nextTurn(st);
+      return ok();
     case 'surrender': {
       const p = st.current;
       eliminate(st, p, 'has surrendered');

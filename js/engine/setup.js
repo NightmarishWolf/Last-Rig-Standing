@@ -1,14 +1,34 @@
 // Creating a new game: home layouts, islands, oil deposits and starting fleets.
 import { DEPOSITS, MARKET, RIG, START } from '../data/economy.js';
-import { MAP_SIZES, PLAYER_NAMES } from '../data/maps.js';
+import { HOME_SCALE, MAP_SIZES, PLAYER_NAMES, WATER_PER_DEPOSIT } from '../data/maps.js';
 import { SHIPS } from '../data/ships.js';
 import { cellsOf, inRect, inSpawn, isLand, zoneOf } from './geometry.js';
 import { rand, randInt } from './rng.js';
+import { generateTerrain } from './terrain.js';
 import { startTurn } from './turns.js';
 
 export const SPAWN_DEPTH = 3;
 
-// Home waters and spawn strips for each player count.
+// Home waters and spawn strips for big worlds: square home waters, spread apart,
+// each with a spawn strip along its outer map edge.
+function layoutWorld(W, H, n) {
+  const hs = Math.round(Math.min(W, H) * HOME_SCALE);
+  const at = (x0, y0, edge) => {
+    const home = { x0, y0, x1: x0 + hs - 1, y1: y0 + hs - 1 };
+    const spawn = edge === 'left' ? { x0: 0, y0, x1: SPAWN_DEPTH - 1, y1: home.y1 }
+      : edge === 'right' ? { x0: W - SPAWN_DEPTH, y0, x1: W - 1, y1: home.y1 }
+      : { x0, y0: H - SPAWN_DEPTH, x1: home.x1, y1: H - 1 };
+    return { home, spawn };
+  };
+  const midY = Math.round((H - hs) / 2), midX = Math.round((W - hs) / 2);
+  if (n === 2) return [at(0, midY, 'left'), at(W - hs, midY, 'right')];
+  const homes = [at(0, 0, 'left'), at(W - hs, 0, 'right')];
+  if (n === 3) homes.push(at(midX, H - hs, 'bottom'));
+  else homes.push(at(W - hs, H - hs, 'right'), at(0, H - hs, 'left')); // clockwise turn order
+  return homes;
+}
+
+// The original small arena layout (now only used by the tutorial map).
 function layoutHomes(W, H, n) {
   const homes = [];
   if (n === 2) {
@@ -41,7 +61,7 @@ export function newGame(opts = {}) {
   const n = Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
   const { w: W, h: H } = MAP_SIZES[size];
   const seed = opts.seed ?? Math.floor(Math.random() * 1e9);
-  const layout = layoutHomes(W, H, n);
+  const layout = MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
   const st = {
     version: 2, seed, rng: seed, size, W, H,
     turnCount: 1, round: 1, current: 0,
@@ -66,6 +86,69 @@ export function newGame(opts = {}) {
 }
 
 function generateMap(st) {
+  if (MAP_SIZES[st.size].classic) return generateClassic(st);
+  const { W, H } = st;
+  const cfg = MAP_SIZES[st.size];
+  // terrain: try a few worlds until every home shares one ocean
+  let okWorld = false;
+  for (let attempt = 0; attempt < 8 && !okWorld; attempt++) okWorld = generateTerrain(st, cfg.landShare);
+  if (!okWorld) { st.land.fill(0); generateTerrain(st, cfg.landShare * 0.5) || st.land.fill(0); }
+
+  const pickReserves = (type, where) => { const [a, b] = DEPOSITS[type][where]; return randInt(st, a, b); };
+  const placeDeposit = (type, rect, ok, reserves) => {
+    for (let tries = 0; tries < 4000; tries++) {
+      const x = randInt(st, rect.x0, rect.x1), y = randInt(st, rect.y0, rect.y1);
+      if (!ok(x, y) || isLand(st, x, y)) continue;
+      const spacing = tries < 2000 ? 4 : tries < 3200 ? 2 : 1;
+      if (st.deposits.some(d => Math.max(Math.abs(d.x - x), Math.abs(d.y - y)) < spacing)) continue;
+      const dep = { id: 'd' + st.nextId++, x, y, type, reserves, max: reserves };
+      st.deposits.push(dep);
+      return dep;
+    }
+    return null;
+  };
+  // equal home deposits for every player (same types and amounts, independent positions)
+  const homeSet = ['medium', 'small', 'small', 'small', 'medium', ...cfg.extraHome];
+  const homeReserves = homeSet.map(t => pickReserves(t, 'home'));
+  st.players.forEach((pl, p) => {
+    homeSet.forEach((t, i) => {
+      const dep = placeDeposit(t, pl.home, (x, y) => !inRect(pl.spawn, x, y), homeReserves[i]);
+      if (i === 0 && dep) {
+        pl.known[dep.id] = true; // starting rig on the first medium deposit
+        st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: RIG.hp, depId: dep.id });
+      }
+    });
+  });
+  // No Man's Sea: about one deposit per WATER_PER_DEPOSIT open-water squares, ~40% rich
+  let water = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!isLand(st, x, y) && zoneOf(st, x, y) === 'middle') water++;
+  const count = Math.max(6, Math.round(water / WATER_PER_DEPOSIT));
+  const midTypes = ['rich', 'rich'];
+  while (midTypes.length < count) midTypes.push(rand(st) < 0.4 ? 'rich' : 'medium');
+  const whole = { x0: 0, y0: 0, x1: W - 1, y1: H - 1 };
+  midTypes.forEach(t => placeDeposit(t, whole, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle')));
+  placeStartingFleets(st);
+}
+
+// Starting fleets: 2 patrol boats each, spread out along the outer edge of the spawn strip
+function placeStartingFleets(st) {
+  st.players.forEach((pl, p) => {
+    const spots = [];
+    for (let y = pl.spawn.y0; y <= pl.spawn.y1; y++)
+      for (let x = pl.spawn.x0; x <= pl.spawn.x1; x++) {
+        const cells = cellsOf('patrol', x, y, 0);
+        if (cells.every(([a, b]) => inSpawn(st, p, a, b) && !isLand(st, a, b))) spots.push([x, y]);
+      }
+    const horizontal = pl.spawn.x1 - pl.spawn.x0 > pl.spawn.y1 - pl.spawn.y0;
+    const outerX = pl.spawn.x0 === 0 ? 0 : st.W - 2;
+    const edge = spots.filter(([x, y]) => (horizontal ? y === pl.spawn.y1 : x === outerX));
+    const pool = edge.length >= 2 ? edge : spots;
+    [Math.floor(pool.length * 0.4), Math.floor(pool.length * 0.6)].forEach(i => addShip(st, p, 'patrol', pool[i][0], pool[i][1], 0, true));
+  });
+}
+
+// The original small-arena generator (tutorial only).
+function generateClassic(st) {
   const { W, H } = st;
   const nearHome = (x, y) => st.players.some(pl => x >= pl.home.x0 - 1 && x <= pl.home.x1 + 1 && y >= pl.home.y0 - 1 && y <= pl.home.y1 + 1);
   // Islands only in No Man's Sea

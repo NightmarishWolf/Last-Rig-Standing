@@ -5,6 +5,8 @@ import { draw } from './board/render.js';
 import { centerOffset, me, reach, selected } from './helpers.js';
 import { dispatch, endTurnNow, refresh } from './index.js';
 import { S } from './state.js';
+import { requestDraw } from './board/render.js';
+import { centerOn, panBy, zoomAt } from './camera.js';
 
 // ---------- input ----------
 export function onBoardClick(c) {
@@ -42,6 +44,8 @@ export function onBoardClick(c) {
     const [ox, oy] = centerOffset(s.type, s.rot);
     const ax = c.x - ox, ay = c.y - oy;
     if (reach().has(ax + ',' + ay)) { dispatch({ type: 'move', shipId: s.id, x: ax, y: ay }); return refresh(); }
+    // further away: set sail on a voyage (it keeps going each turn until it arrives)
+    if (!S.fit && E.findPath(S.st, s, ax, ay)?.length) { dispatch({ type: 'setOrder', shipId: s.id, x: ax, y: ay }); return refresh(); }
     return; // unreachable spot: keep the ship selected
   }
 }
@@ -55,6 +59,30 @@ export function cancelMode() {
 export function onKey(e) {
   if (!document.getElementById('overlay').classList.contains('hidden')) return;
   if (e.key === 'Escape') cancelMode();
+  // camera: WASD / arrow keys scroll (hold Shift for faster), + and - zoom
+  const pan = { ArrowLeft: [1, 0], a: [1, 0], A: [1, 0], ArrowRight: [-1, 0], d: [-1, 0], D: [-1, 0],
+    ArrowUp: [0, 1], w: [0, 1], W: [0, 1], ArrowDown: [0, -1], s: [0, -1], S: [0, -1] }[e.key];
+  if (pan && !S.fit) {
+    const step = S.cell * (e.shiftKey ? 18 : 6);
+    panBy(pan[0] * step, pan[1] * step); requestDraw(); e.preventDefault(); return;
+  }
+  if ((e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') && !S.fit) {
+    zoomAt(e.key === '-' || e.key === '_' ? 1 / 1.25 : 1.25, S.view.w / 2, S.view.h / 2); requestDraw(); return;
+  }
+  // Tab: next ship that can still move or act. Space: centre on the selected ship.
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const mine = S.st.ships.filter(s => s.owner === me());
+    const ready = mine.filter(s => !s.order && (s.movesLeft > 0 || !s.acted));
+    const list = ready.length ? ready : mine;
+    if (!list.length) return;
+    const i = list.findIndex(s => s.id === S.selectedId);
+    const next = list[(i + 1) % list.length];
+    S.selectedId = next.id; S.mode = { kind: 'move' };
+    if (!S.fit) centerOn(next.x, next.y);
+    return refresh();
+  }
+  if (e.key === ' ' && selected()) { e.preventDefault(); if (!S.fit) { centerOn(selected().x, selected().y); requestDraw(); } return; }
   if (e.key === 'r' || e.key === 'R') {
     if (S.mode.kind === 'placeShip') { S.mode.rot = (S.mode.rot + 1) % 4; draw(); }
     else if (selected()) { dispatch({ type: 'rotate', shipId: S.selectedId }); refresh(); }
@@ -78,5 +106,7 @@ export function onPanelClick(e) {
   if (d.sell) dispatch({ type: 'sell', amount: d.sell === 'all' ? S.st.players[me()].oil : Number(d.sell) });
   if (d.end) return endTurnNow();
   if (d.deselect) { S.selectedId = null; S.mode = { kind: 'idle' }; }
+  if (d.cancelOrder) dispatch({ type: 'cancelOrder', shipId: S.selectedId });
+  if (d.center && selected()) centerOn(selected().x, selected().y);
   refresh();
 }
