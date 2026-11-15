@@ -54,6 +54,7 @@ export function resolveShot(st, ship, act, tx, ty) {
       if (cv) { cv.screenUsed = true; log(st, e, `Your Corvette screened a hit meant for your ${SHIPS[target.type].name}.`); target = cv; }
       const dmg = dmgOf(target);
       target.hp -= dmg;
+      target.combatRound = st.round; // seen combat (can't be sold for a while)
       anyHit = true;
       log(st, e, `Your ${SHIPS[target.type].name} was hit for ${dmg} damage by ${pname(st, p)} (${Math.max(0, target.hp)}/${shipStat(st, e, target.type, 'hp')} HP).`);
       if (target.hp <= 0) { sunkName = SHIPS[target.type].name; sink(st, target); }

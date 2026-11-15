@@ -53,3 +53,8 @@ export const ECONOMY = {
 // Long-range strikes (Cruise Missile Batteries, Airbases, Sub-Launched Missiles):
 // aimed within this many squares of an enemy Jammer Ship, they have this chance to be scrambled.
 export const STRIKES = { jamChance: 0.5, satellite: { size: 7, cooldown: 4 } };
+
+// Selling ships back: the share of the ship's price you get (scaled by how damaged it is),
+// how many rounds it must have been out of combat, and where it can be sold
+// (your home waters, or inside one of your rig bases' claims).
+export const SHIP_SALE = { share: 0.5, quietRounds: 3 };

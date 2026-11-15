@@ -280,6 +280,7 @@ function shipCard(s) {
         ${S.fit ? '' : '<button data-center="1" class="ghost">Centre view (Space)</button>'}
         <button data-deselect="1" class="ghost">Deselect</button>
       </div>
+      ${(why => `<div class="row"><button data-sell-ship="${s.id}" class="ghost" ${why ? 'disabled' : ''} title="${why || 'Half its price back (less if damaged). Only in your home waters or base claims, and not within 3 rounds of combat.'}">💲 Sell ship ($${E.shipSaleValue(st, s)})</button>${why ? `<span class="small muted">${why}</span>` : ''}</div>`)(E.shipSaleProblem(st, s))}
     </div>`;
 }
 

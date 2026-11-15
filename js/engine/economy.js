@@ -1,9 +1,10 @@
 // Launch zones and selling oil. (Building ships: production.js. Founding bases and rigs: bases.js.)
 import { PLATFORMS } from '../data/bases.js';
-import { MARKET } from '../data/economy.js';
-import { activePlatforms, sellMultOf } from './bases.js';
-import { inSpawn } from './geometry.js';
-import { pstat } from './modifiers.js';
+import { MARKET, SHIP_SALE } from '../data/economy.js';
+import { SHIPS } from '../data/ships.js';
+import { activePlatforms, claimAt, sellMultOf } from './bases.js';
+import { inSpawn, shipCells, zoneOf } from './geometry.js';
+import { pstat, shipStat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
 import { fail, log, ok } from './util.js';
 
@@ -33,5 +34,33 @@ export function doSell(st, a) {
   const { total, price } = sellValue(st, n, p);
   me.oil -= n; me.money += total; st.market.price = price;
   log(st, p, `Sold ${n} oil for $${total}.`);
+  return ok();
+}
+
+// ---------- selling ships ----------
+// Half the price back (less for damaged ships), if the ship has been out of combat for a few rounds
+// and is in your home waters or inside one of your base claims.
+export function shipSaleValue(st, ship) {
+  const max = shipStat(st, ship.owner, ship.type, 'hp');
+  return Math.floor(shipStat(st, ship.owner, ship.type, 'cost') * SHIP_SALE.share * Math.max(0, ship.hp) / max);
+}
+export function shipSaleProblem(st, ship) {
+  const p = ship.owner;
+  const quiet = st.round - (ship.combatRound ?? -99);
+  if (quiet < SHIP_SALE.quietRounds) return `Saw combat recently: can be sold in ${SHIP_SALE.quietRounds - quiet} round${SHIP_SALE.quietRounds - quiet > 1 ? 's' : ''}.`;
+  const cells = shipCells(ship);
+  const inside = cells.some(([x, y]) => zoneOf(st, x, y) === p || claimAt(st, x, y)?.owner === p);
+  if (!inside) return 'Sail it into your home waters or one of your rig bases\' claims to sell it.';
+  return null;
+}
+export function doSellShip(st, a) {
+  const ship = st.ships.find(s => s.id === a.shipId);
+  if (!ship || ship.owner !== st.current) return fail('Not your ship.');
+  const why = shipSaleProblem(st, ship);
+  if (why) return fail(why);
+  const value = shipSaleValue(st, ship);
+  st.ships = st.ships.filter(s => s !== ship);
+  st.players[ship.owner].money += value;
+  log(st, ship.owner, `Sold a ${SHIPS[ship.type].name} for $${value}.`);
   return ok();
 }

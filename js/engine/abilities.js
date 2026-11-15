@@ -62,6 +62,7 @@ export function doAct(st, a) {
       // long-range weapons need a target square you can actually see, and cost oil per launch
       if (act.longRange && !seesSquare(st, p, x, y)) return fail("You can't see that square: scout it first (a recon drone, a scan or a ship's sight).");
       spend(st, ship, act);
+      ship.combatRound = st.round; // firing counts as combat
       if (act.oil) st.players[p].oil -= act.oil;
       if (act.money) st.players[p].money -= act.money;
       if (firstUse) addFlash(st, ship);

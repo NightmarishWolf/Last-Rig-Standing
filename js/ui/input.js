@@ -6,6 +6,7 @@ import { centerOffset, me, planRot, reach, select, selected } from './helpers.js
 import { dispatch, endTurnNow, refresh } from './index.js';
 import { S } from './state.js';
 import { currentYard, nearbyLoners } from './panel.js';
+import { showConfirm } from './dialogs.js';
 import { toast } from './status.js';
 import { closeResearch, openResearch, researchOpen, renderResearch } from './research.js';
 import { requestDraw } from './board/render.js';
@@ -219,6 +220,11 @@ export function onPanelClick(e) {
   if (d.platform) S.mode = S.mode.kind === 'placePlatform' && S.mode.platform === d.platform ? { kind: 'idle' } : { kind: 'placePlatform', platform: d.platform, baseId: S.selectedBase };
   if (d.strike) S.mode = S.mode.kind === 'baseStrike' && S.mode.platformId === d.strike ? { kind: 'idle' } : { kind: 'baseStrike', platformId: d.strike };
   if (d.satellite) S.mode = S.mode.kind === 'satellite' ? { kind: 'idle' } : { kind: 'satellite' };
+  if (d.sellShip) {
+    const sh = S.st.ships.find(x => x.id === d.sellShip);
+    showConfirm('Sell this ship?', `Your ${SHIPS[sh.type].name} will be scrapped for $${E.shipSaleValue(S.st, sh)}.`, 'Sell', () => { dispatch({ type: 'sellShip', shipId: sh.id }); S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }, () => {});
+    return;
+  }
   if (d.upgrade) dispatch({ type: 'upgradeBase', baseId: d.upgrade });
   if (d.moveCapital) dispatch({ type: 'moveCapital', baseId: d.moveCapital });
   if (d.clearPlan) S.plan = [];

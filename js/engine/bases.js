@@ -256,6 +256,7 @@ export function processBases(st, p, visibleShips) {
     if (!best) continue;
     const dmg = Math.max(0, def.dmg - shipStat(st, best.owner, best.type, 'armor'));
     best.hp -= dmg;
+    best.combatRound = st.round;
     log(st, p, `Your ${def.name} at ${coord(o.x, o.y)} hit an enemy ship for ${dmg}.`);
     log(st, best.owner, `Your ship was hit for ${dmg} by ${pname(st, p)}'s ${def.name} at ${coord(o.x, o.y)}!`);
     if (best.hp <= 0) { sink(st, best); log(st, p, `Your ${def.name} sank an enemy ship!`); }
