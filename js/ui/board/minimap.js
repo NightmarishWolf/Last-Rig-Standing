@@ -25,14 +25,14 @@ export function drawMinimap(v) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.imageSmoothingEnabled = true;
   g.drawImage(terrainImage(me()), 0, 0, w, h);
-  if (S.fogCanvas) g.drawImage(S.fogCanvas, 0, 0, w, h);
+  if (S.fogCanvas && !S.spectate) g.drawImage(S.fogCanvas, 0, 0, w, h);
   const dot = (x, y, col, r = 1.6) => { g.fillStyle = col; g.fillRect(x * k - r / 2, y * k - r / 2, Math.max(r, k), Math.max(r, k)); };
   for (const d of v.deposits) if (d.reserves > 0) dot(d.x, d.y, '#f0a531', 1.4);
   for (const r of v.myRigs) dot(r.x, r.y, pcol(me()), 3);
   for (const r of v.enemyRigs) dot(r.x, r.y, pcol(r.owner), 3);
   for (const o of [...v.myPorts, ...v.enemyPorts]) dot(o.x, o.y, '#ffffff', 3);
   for (const b of [...v.myBases, ...v.enemyBases]) if (!b.wrecked) { g.strokeStyle = pcol(b.owner); g.lineWidth = 1.5; const r = E.baseRadius(S.st, b) + 0.5; g.strokeRect((b.x - r + 0.5) * k, (b.y - r + 0.5) * k, 2 * r * k, 2 * r * k); }
-  for (const s of v.enemyShips) for (const [x, y] of s.cells) dot(x, y, '#ff4d4d', 2.5);
+  for (const s of v.enemyShips) for (const [x, y] of s.cells) dot(x, y, S.spectate ? pcol(s.owner) : '#ff4d4d', 2.5);
   for (const s of v.myShips) { const c = E.shipCells(s); dot(c[0][0], c[0][1], s.id === S.selectedId ? '#ffffff' : pcol(me()), 3); }
   // the camera's view
   const vs = viewSquares();

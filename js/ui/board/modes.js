@@ -8,10 +8,13 @@ import { COL } from '../constants.js';
 import { centerOffset, me, pcol, planRot, px, py, reach, selected } from '../helpers.js';
 import { S } from '../state.js';
 import { visibleRange } from '../camera.js';
+import { drawFleetOverlay } from './fleets.js';
 
 export const voyageLabel = (s, len) => {
-  const first = Math.max(0, s.movesLeft);
-  const turns = len <= first ? 1 : 1 + Math.ceil((len - first) / SHIPS[s.type].move);
+  const f = E.fleetOf(S.st, s.id); // a fleet ship goes at the fleet's speed
+  const speed = f ? E.fleetSpeed(S.st, f) : SHIPS[s.type].move;
+  const first = Math.max(0, Math.min(s.movesLeft, speed));
+  const turns = len <= first ? 1 : 1 + Math.ceil((len - first) / speed);
   return `${turns} turn${turns > 1 ? 's' : ''}`;
 };
 
@@ -100,6 +103,7 @@ export function drawModeOverlay() {
   const s = selected();
   const R = visibleRange();
   drawVoyage(s);
+  drawFleetOverlay();
   if (s) {
     outlineArea(sightSquares(E.shipCells(s), SHIPS[s.type].sight), 'rgba(255,255,255,0.75)', 1.5, [5, 4]);
     const sonar = SHIPS[s.type].passives?.sonar;
@@ -150,25 +154,6 @@ export function drawModeOverlay() {
       S.ctx.strokeRect(px(S.hover.x + lo) + 1, py(S.hover.y + lo) + 1, S.cell * (hi - lo + 1) - 2, S.cell * (hi - lo + 1) - 2);
       S.ctx.lineWidth = 1;
     }
-  }
-  if (S.mode.kind === 'placeShip') {
-    // where ships can launch: your spawn strip plus the area around forward rigs
-    const zone = new Set();
-    const sp = S.st.players[me()].spawn;
-    for (let y = sp.y0; y <= sp.y1; y++) for (let x = sp.x0; x <= sp.x1; x++) zone.add(x + ',' + y);
-    for (const r of E.forwardPorts(S.st, me()))
-      for (let dy = -PORT.range; dy <= PORT.range; dy++) for (let dx = -PORT.range; dx <= PORT.range; dx++)
-        if (r.x + dx >= 0 && r.y + dy >= 0 && r.x + dx < S.st.W && r.y + dy < S.st.H && !E.isLand(S.st, r.x + dx, r.y + dy)) zone.add((r.x + dx) + ',' + (r.y + dy));
-    S.ctx.fillStyle = 'rgba(43,179,163,0.14)';
-    for (const k of zone) { const [x, y] = k.split(',').map(Number); S.ctx.fillRect(px(x), py(y), S.cell, S.cell); }
-    outlineArea(zone, 'rgba(95,211,198,0.8)', 1.5, [4, 3]);
-  }
-  if (S.mode.kind === 'placeShip' && S.hover) {
-    const [ox, oy] = centerOffset(S.mode.ship, S.mode.rot);
-    const cells = E.cellsOf(S.mode.ship, S.hover.x - ox, S.hover.y - oy, S.mode.rot);
-    const okSpot = E.inLaunchZone(S.st, me(), cells) &&
-      E.placementOk(S.st, me(), cells, null, E.visibility(S.st, me()));
-    ghost(cells, okSpot ? 'rgba(43,179,163,0.6)' : 'rgba(226,85,85,0.6)');
   }
   if (S.mode.kind === 'placePort') {
     // every coast square you can build on right now

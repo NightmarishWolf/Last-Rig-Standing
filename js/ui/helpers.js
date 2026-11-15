@@ -12,7 +12,9 @@ export const px = x => MARGIN + (x - S.cam.x) * S.cell;
 
 export const py = y => MARGIN + (y - S.cam.y) * S.cell;
 
-export const me = () => S.st.current;
+// The player whose eyes the screen shows: normally whoever's turn it is; during computer turns,
+// the one human watching (S.viewer).
+export const me = () => S.viewer ?? S.st.current;
 
 export const selected = () => S.st.ships.find(s => s.id === S.selectedId);
 

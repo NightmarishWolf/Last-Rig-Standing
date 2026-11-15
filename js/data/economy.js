@@ -26,9 +26,9 @@ export const RIG = {
 // Home deposits are small and run dry; No Man's Sea deposits last much longer.
 // (Every player's home gets the exact same amounts, so it stays fair.)
 export const DEPOSITS = {
-  small:  { rate: 2, label: 'S', name: 'Small',  home: [16, 26], middle: [40, 70] },
-  medium: { rate: 3, label: 'M', name: 'Medium', home: [24, 40], middle: [60, 100] },
-  rich:   { rate: 5, label: 'R', name: 'Rich',   home: [40, 60], middle: [100, 160] },
+  small:  { rate: 2, label: 'S', name: 'Small',  home: [64, 104], middle: [80, 140] },
+  medium: { rate: 3, label: 'M', name: 'Medium', home: [96, 160], middle: [120, 200] },
+  rich:   { rate: 5, label: 'R', name: 'Rich',   home: [160, 240], middle: [200, 320] },
 };
 
 export const MARKET = {
@@ -36,9 +36,10 @@ export const MARKET = {
   minPrice: 4,
   dropPerUnit: 0.25, // every unit sold lowers the price this much
   recoverPerTurn: 1,
+  recoverShare: 0.15, // each turn the price also climbs back this share of the way to basePrice (so busy markets recover)
 };
 
-export const START = { money: 400, oil: 12 };
+export const START = { money: 400, oil: 40 };
 
 export const ECONOMY = {
   upkeepRate: 0.05,  // every ship costs this share of its price in money, every turn
@@ -47,4 +48,4 @@ export const ECONOMY = {
 
 // Domination victory (optional, chosen on the new-game screen):
 // own rigs on at least `share` of No Man's Sea's deposits for `rounds` rounds in a row.
-export const DOMINATION = { share: 0.5, rounds: 5 };
+// (Victory settings, including Domination, now live in victory.js.)

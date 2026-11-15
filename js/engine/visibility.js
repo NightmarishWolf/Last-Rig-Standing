@@ -57,7 +57,7 @@ export function visibility(st, p) {
   }
   for (const o of st.platforms || []) {
     if (o.owner === p) continue;
-    if ((rev.platforms || []).includes(o.id) || seenBy([[o.x, o.y]])) platforms.add(o.id);
+    if (PLATFORMS[o.kind].public || (rev.platforms || []).includes(o.id) || seenBy([[o.x, o.y]])) platforms.add(o.id);
   }
   return { ships, rigs, ports, platforms };
 }

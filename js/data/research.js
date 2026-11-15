@@ -16,7 +16,7 @@
 //     rp, heal, baseSight, stealth, flashExact, platformRange, platformRepair
 // ============================================================
 
-export const ERA_COST = { 1: 12, 2: 25, 3: 50, 4: 90 }; // research points per tech
+export const ERA_COST = { 1: 12, 2: 25, 3: 50, 4: 90, 5: 150 }; // research points per tech (Era V: Post-Oil)
 export const FUNDING = { costPerRp: 15, maxRp: 20 };   // buy extra research with money each turn
 
 export const BRANCHES = {
@@ -27,6 +27,7 @@ export const BRANCHES = {
   armor:  { name: 'Armor & Survival', icon: '🛡️' },
   ships:  { name: 'Shipbuilding', icon: '⚓' },
   rigs:   { name: 'Rig Engineering', icon: '🏗️' },
+  future: { name: 'Post-Oil', icon: '⚛️' },
 };
 
 // Everyone starts with these.
@@ -137,8 +138,8 @@ export const TECHS = [
   T('forward_bases', 'Forward Bases', 'ships', 1, [], [], { port: true }, null, 'Build forward ports on island coasts.'),
   T('fleet_logistics', 'Fleet Logistics', 'ships', 2, ['forward_bases'], [{ player: 'upkeepMult', mult: 0.85 }]),
   T('salvage_ops', 'Salvage Operations', 'ships', 2, ['forward_bases'], [], { ships: ['salvage'] }),
-  T('quantity', 'Quantity', 'ships', 2, ['destroyer_program'], [{ ship: 'all', stat: 'cost', mult: 0.85 }], {}, 'ships2',
-    'Mass production: every ship costs 15% less.'),
+  T('quantity', 'Quantity', 'ships', 2, ['destroyer_program'], [{ ship: 'all', stat: 'cost', mult: 0.85 }, { ship: 'all', stat: 'build', add: -1 }], {}, 'ships2',
+    'Mass production: every ship costs 15% less and builds 1 turn faster.'),
   T('quality', 'Quality', 'ships', 2, ['destroyer_program'], [{ ship: 'all', stat: 'hp', add: 1 }], {}, 'ships2',
     'Built to last: every ship gets +1 HP.'),
   T('cruiser_program', 'Cruiser Program', 'ships', 3, ['destroyer_program', 'fleet_logistics'], [{ ship: 'cruiser', stat: 'cost', mult: 0.9 }],
@@ -147,8 +148,8 @@ export const TECHS = [
   T('command_control', 'Command & Control', 'ships', 3, ['cruiser_program'], [], { ships: ['command'] }),
   T('battleship_program', 'Battleship Program', 'ships', 4, ['cruiser_program'], [], { ships: ['battleship'] }),
   T('dreadnought_program', 'Dreadnought Program', 'ships', 4, ['battleship_program'], [], { ships: ['dreadnought'] }),
-  T('battle_fleets', 'Battle Fleets', 'ships', 4, ['battleship_program'], [{ ship: 'capital', stat: 'cost', mult: 0.85 }, { ship: 'capital', stat: 'hp', add: 1 }], {}, 'ships4',
-    'Big ships: capital ships cost 15% less and get +1 HP.'),
+  T('battle_fleets', 'Battle Fleets', 'ships', 4, ['battleship_program'], [{ ship: 'capital', stat: 'cost', mult: 0.85 }, { ship: 'capital', stat: 'hp', add: 1 }, { ship: 'capital', stat: 'build', add: -1 }], {}, 'ships4',
+    'Big ships: capital ships cost 15% less, get +1 HP and build 1 turn faster.'),
   T('wolf_packs', 'Wolf Packs', 'ships', 4, ['command_control'], [{ ship: 'sub', stat: 'cost', mult: 0.8 }, { ship: 'light', stat: 'cost', mult: 0.8 }], {}, 'ships4',
     'Swarms: submarines and light ships cost 20% less.'),
 
@@ -181,6 +182,16 @@ export const TECHS = [
     'No platform upkeep, and platforms slowly repair themselves.'),
   T('pipeline_network', 'Pipeline Network', 'rigs', 4, ['trunk_lines'], [{ player: 'oilCap', add: 100 }, { player: 'rigRate', add: 1 }], {}, 'rigs4',
     'Connected fields: +100 oil storage and every rig pumps +1.'),
+
+  // ---------------- ⚛️ POST-OIL (Era V: the road to the Post-Oil victory) ----------------
+  T('ocean_thermal', 'Ocean Thermal Energy', 'future', 5, ['deep_water', 'base_complex'], [{ player: 'rp', add: 4 }],
+    {}, null, 'Power from the deep: +4 research per turn.'),
+  T('superconductors', 'Superconductors', 'future', 5, ['satellites', 'ocean_thermal'], [{ player: 'upkeepMult', mult: 0.9 }],
+    {}, null, 'Cheaper to run everything: 10% less upkeep.'),
+  T('fusion_theory', 'Fusion Theory', 'future', 5, ['ocean_thermal', 'enhanced_recovery'], [{ player: 'rp', add: 4 }],
+    {}, null, 'The end of the oil age is in sight: +4 research per turn.'),
+  T('fusion_engineering', 'Fusion Engineering', 'future', 5, ['fusion_theory', 'superconductors', 'mega_hub'], [], { platforms: ['fusion'] },
+    null, 'Build the Deep-Sea Fusion Plant at a Hub base. Finish it to win a Post-Oil victory.'),
 ];
 
 export const TECH = Object.fromEntries(TECHS.map(t => [t.id, t]));

@@ -1,18 +1,26 @@
 // Turn flow: start-of-turn production and upkeep, domination, elimination, next player.
-import { DEPOSITS, DOMINATION, MARKET } from '../data/economy.js';
+import { DEPOSITS, MARKET } from '../data/economy.js';
+import { processConquest, processDomination, processLastRig } from './victory.js';
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
 import { shipCells } from './geometry.js';
-import { commandBonus, dominationNeed, middleRigs, upkeepOf } from './stats.js';
+import { commandBonus, upkeepOf } from './stats.js';
 import { oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
 import { shipStat } from './modifiers.js';
 import { processResearch } from './research.js';
+import { processYards } from './production.js';
 import { visibility } from './visibility.js';
 import { alivePlayers, log, others, passives, rigAt } from './util.js';
 
 // ---------- turns ----------
 export function startTurn(st, p, first = false) {
   const me = st.players[p];
+  // Conquest: lost your Admiralty and ran out of time to recover? You're out.
+  if (processConquest(st, p) === 'eliminate') {
+    eliminate(st, p, 'lost their Admiralty and is out of the war');
+    checkWin(st);
+    return 'skip';
+  }
   // keep only what happened since this player's last turn
   const since = o => o.turn > me.prevTurn;
   me.incoming = me.incoming.filter(since);
@@ -23,10 +31,13 @@ export function startTurn(st, p, first = false) {
   me.reveals = { ships: [], rigs: [], ports: [], platforms: [] };
   me.prevTurn = st.turnCount;
   // the market recovers by MARKET.recoverPerTurn each full round
-  st.market.price = Math.min(MARKET.basePrice, st.market.price + MARKET.recoverPerTurn * 2 / alivePlayers(st).length);
+  const gap = MARKET.basePrice - st.market.price;
+  st.market.price = Math.min(MARKET.basePrice, st.market.price + Math.max(MARKET.recoverPerTurn * 2 / alivePlayers(st).length, gap * (MARKET.recoverShare || 0)));
 
   // bases: finish construction, heal, repair, gun platforms fire
   processBases(st, p, visibility(st, p).ships);
+  // shipyards: build, and launch finished ships (ready to sail this turn)
+  processYards(st, p);
   // oil from rigs (central rigs and Wellheads), plus drillships parked on deposits
   let produced = 0;
   for (const r of st.rigs.filter(r => r.owner === p)) {
@@ -43,6 +54,7 @@ export function startTurn(st, p, first = false) {
       me.known[d.id] = true;
     }
   }
+  if (me.bonus?.oil && produced) produced = Math.round(produced * me.bonus.oil); // Admiral+ bots: extra oil (not taken from the ground)
   const cap = oilCapOf(st, p);
   const room = Math.max(0, cap - me.oil);
   const spilled = Math.max(0, produced - room);
@@ -70,16 +82,8 @@ export function startTurn(st, p, first = false) {
   const dry = st.rigs.filter(r => r.owner === p && st.deposits.find(d => d.id === r.depId)?.reserves === 0).length;
   if (first) log(st, p, 'Your fleet is ready. Survey for oil, build rigs, and outlast the enemy.');
   else log(st, p, `Round ${st.round}: rigs pumped ${produced} oil${spilled ? ` (${spilled} spilled, storage full at ${cap})` : ''}. Upkeep −$${paid}.${dry ? ` ${dry} rig${dry > 1 ? 's have' : ' has'} run dry.` : ''}`);
-  // domination: hold at least half of No Man's Sea's deposits, round after round
-  if (st.domination) {
-    const have = middleRigs(st, p), need = dominationNeed(st);
-    me.domStreak = have >= need ? (me.domStreak || 0) + 1 : 0;
-    if (me.domStreak > 0) {
-      log(st, p, `You control No Man's Sea (${have}/${need} rigs): domination ${me.domStreak}/${DOMINATION.rounds}.`);
-      for (const o of others(st, p)) log(st, o, `Warning: ${me.name} controls No Man's Sea! Domination ${me.domStreak}/${DOMINATION.rounds}.`);
-    }
-    if (me.domStreak >= DOMINATION.rounds) { st.phase = 'over'; st.winner = p; st.winReason = 'domination'; return; }
-  }
+  processDomination(st, p);
+  if (st.phase !== 'playing') return;
   checkWin(st);
 }
 
@@ -97,13 +101,17 @@ export function eliminate(st, p, reason) {
   st.platforms = (st.platforms || []).filter(o => o.owner !== p);
   st.bases = (st.bases || []).filter(b => b.owner !== p);
   st.mines = st.mines.filter(m => m.owner !== p);
+  st.fleets = (st.fleets || []).filter(f => f.owner !== p);
+  pl.builds = [];
   for (const o of alivePlayers(st)) log(st, o, `${pl.name} ${reason}.`);
 }
 
 export function checkWin(st) {
   if (st.phase !== 'playing') return;
   for (const p of alivePlayers(st)) {
-    const alive = st.ships.some(s => s.owner === p) || st.rigs.some(r => r.owner === p) || st.players[p].money >= 60;
+    // still in the war: a ship, a rig that still pumps oil (dry rigs don't count), or money to rebuild with
+    const pumping = st.rigs.some(r => r.owner === p && (st.deposits.find(d => d.id === r.depId)?.reserves || 0) > 0);
+    const alive = st.ships.some(s => s.owner === p) || pumping || st.players[p].money >= 60;
     if (!alive) eliminate(st, p, 'has been wiped out');
   }
   const left = alivePlayers(st);
@@ -113,11 +121,14 @@ export function checkWin(st) {
 export function nextTurn(st) {
   const n = st.players.length;
   let p = st.current;
+  const round0 = st.round;
   do {
     p = (p + 1) % n;
     if (p === 0) st.round++;
   } while (st.players[p].out);
+  if (st.round !== round0) { processLastRig(st); if (st.phase !== 'playing') return; }
   st.turnCount++;
   st.current = p;
-  startTurn(st, p, st.round === 1);
+  // a player knocked out at the start of their own turn passes straight on
+  if (startTurn(st, p, st.round === 1) === 'skip' && st.phase === 'playing') nextTurn(st);
 }

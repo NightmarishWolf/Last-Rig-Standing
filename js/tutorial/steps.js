@@ -66,17 +66,36 @@ export const STEPS = [
   {
     title: 'Buy a ship',
     text: `In the <b>Shipyard</b> (scroll down the panel), click <b>$100</b> next to <b>Patrol Boat</b>.<br>
-      Then click inside your <b>spawn zone</b>, the lighter strip along your left edge. Press <b>R</b> to turn it while placing.`,
+      You pay now and your <b>Home Yard</b> starts building it. Bigger ships take more turns to build.`,
     highlight: '[data-buy="patrol"]',
-    markers: [{ x0: 0, y0: 0, x1: 2, y1: 13, label: 'Spawn zone' }],
-    check: st => st.ships.filter(s => s.owner === 0).length >= 3,
+    check: st => (st.players[0].builds || []).length > 0 || st.ships.filter(s => s.owner === 0).length >= 3,
   },
   {
     title: 'End your turn',
-    text: `New ships are ready next turn. Click <b>End turn</b>.<br>
+    text: `The new Patrol Boat is in the yard's build line (see the Shipyard). It launches in your <b>spawn zone</b>, the lighter strip along your left edge, at the start of your next turn. Click <b>End turn</b>.<br>
       In a real game you'd pass the device to the next player now. Here the enemy just sits still.`,
     highlight: '[data-end]',
+    markers: [{ x0: 0, y0: 0, x1: 2, y1: 13, label: 'Spawn zone' }],
     check: st => st.round >= 2 && st.current === 0,
+  },
+  {
+    title: 'Research',
+    text: `Your new Patrol Boat has launched. Now click <b>🔬 Choose research</b> at the top (or press <b>T</b>) and click any glowing tech to start it.<br>
+      Research points come in every turn. Close the tree with <b>Esc</b>.`,
+    highlight: '#btn-research',
+    check: st => !!st.players[0].research.current || st.players[0].research.queue.length > 0 || Object.keys(st.players[0].research.done).length > 1,
+  },
+  {
+    title: 'Form a fleet',
+    text: `Ships can sail together as a <b>fleet</b>. Click your <b>new Patrol Boat</b>, then <b>⚑ Form a fleet…</b> in the panel, click your <b>other Patrol Boat</b> near it, and click <b>Create fleet</b>.`,
+    markers: [{ x0: 0, y0: 2, x1: 2, y1: 8, label: 'Your boats' }],
+    check: st => (st.fleets || []).some(f => f.owner === 0),
+  },
+  {
+    title: 'Standing orders',
+    text: `With a fleet ship selected, click <b>⚓ Guard</b> under <b>Standing orders</b>. Ships and fleets with standing orders (Patrol, Escort, Guard, Explore) carry them out by themselves every time you end your turn.`,
+    highlight: '[data-standing="guard"]',
+    check: st => (st.fleets || []).some(f => f.owner === 0 && f.standing) || st.ships.some(s => s.owner === 0 && s.standing),
   },
   {
     title: 'Scout ahead',

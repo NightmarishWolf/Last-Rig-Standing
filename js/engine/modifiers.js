@@ -43,7 +43,7 @@ const apply = (base, ...mods) => {
   return (base + add) * mult;
 };
 
-const ROUNDED = { move: true, hp: true, sight: true, armor: true, cost: true, sonar: true, jam: true };
+const ROUNDED = { move: true, hp: true, sight: true, armor: true, cost: true, build: true, sonar: true, jam: true };
 
 // A ship stat for player p: move, hp, sight, armor, oil (per square), cost, sonar, jam.
 export function shipStat(st, p, type, stat) {
@@ -52,7 +52,7 @@ export function shipStat(st, p, type, stat) {
   if (p === null || p === undefined) return base;
   const b = bonuses(st, p).ship;
   const v = apply(base, b.all?.[stat], b[def.cls]?.[stat], b[type]?.[stat]);
-  return ROUNDED[stat] ? Math.max(stat === 'hp' || stat === 'move' ? 1 : 0, Math.round(v)) : Math.max(0, v);
+  return ROUNDED[stat] ? Math.max(stat === 'hp' || stat === 'move' || stat === 'build' ? 1 : 0, Math.round(v)) : Math.max(0, v);
 }
 
 // A weapon/scan stat for player p: range, dmg, shots.

@@ -35,8 +35,9 @@ class Heap {
 // Shortest sea route for `ship` to end with its anchor at (tx, ty) facing `tr`
 // (tr = null: any facing is fine, used for waypoints). Turning 90° counts as one step.
 // `from` lets you plan from somewhere other than where the ship is now ({x, y, r}).
+// `maxSteps` gives up on routes longer than that (keeps short hops cheap on huge maps).
 // Returns [{x, y, r}, ...] (not including the start), [] if already there, or null if there is no route.
-export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st, ship.owner, ship.id), from = null) {
+export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st, ship.owner, ship.id), from = null, maxSteps = Infinity) {
   const { W, H } = st, N = W * H;
   const shapes = [0, 1, 2, 3].map(r => cellsOf(ship.type, 0, 0, r));
   // for each facing: the two possible 90° turns as [dx, dy, newFacing]
@@ -71,7 +72,7 @@ export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st,
       else { const t = k === 4 ? t1 : t2; nx += t[0]; ny += t[1]; nr = t[2]; }
       if (nx < 0 || ny < 0 || nx >= W || ny >= H || !fits(nx, ny, nr)) continue;
       const j = idx(nx, ny, nr);
-      if (c >= cost[j]) continue;
+      if (c >= cost[j] || c > maxSteps) continue;
       cost[j] = c; prev[j] = i;
       heap.push(c + Math.abs(nx - tx) + Math.abs(ny - ty) + (anyFacing || nr === tr ? 0 : 1), j);
     }

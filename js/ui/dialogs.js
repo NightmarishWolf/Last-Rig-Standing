@@ -1,5 +1,7 @@
 // Full-screen boxes: generic overlay, confirm box and the Rules screen.
-import { DOMINATION, ECONOMY, PORT } from '../data/economy.js';
+import { ECONOMY, PORT } from '../data/economy.js';
+import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
+import { FLEET } from '../data/production.js';
 
 export function showOverlay(html, bind) {
   const ov = document.getElementById('overlay');
@@ -7,6 +9,8 @@ export function showOverlay(html, bind) {
   ov.classList.remove('hidden');
   bind?.(document.getElementById('overlay-card'), () => ov.classList.add('hidden'));
 }
+
+export function closeOverlay() { document.getElementById('overlay').classList.add('hidden'); }
 
 export function showConfirm(title, text, yesLabel, onYes, onNo) {
   showOverlay(`<h2>${title}</h2><p class="muted">${text}</p>
@@ -20,7 +24,8 @@ export function showConfirm(title, text, yesLabel, onYes, onNo) {
 export function showRules() {
   showOverlay(`<div class="rules">
     <h2>How to play Last Rig Standing</h2>
-    <p>Two to four admirals, one sea. Oil moves your ships and pays for your war. A player who runs out of ships, rigs and money is out. Last rig standing wins.</p>
+    <p>Two to four admirals, one sea. Oil moves your ships and pays for your war. A player left with no ships, no rig that still pumps oil, and under $60 is out. Last rig standing wins.</p>
+    <p>Any seat can be a <b>computer player</b> (pick it on the New game screen): Easy, Normal, Hard or Admiral+, each with a personality. Bots follow the same rules and never see through the fog of war. You'll watch their moves that your fleet can see; <b>Skip ⏩</b> finishes a bot's turn instantly. Make every seat a computer to spectate.</p>
     <h4>Your turn</h4>
     <ul>
       <li>Each ship can <b>move</b> (up to its Move, paying oil per square) and take <b>one action</b> (attack, scan, survey…). Once a ship attacks it can't move, unless it has Hit and Run.</li>
@@ -28,17 +33,19 @@ export function showRules() {
       <li><b>Voyages:</b> click anywhere beyond a ship's teal movement area to send it on a multi-turn voyage. It sails on by itself every time you end your turn, until it arrives. Clicking a normal move or <b>Cancel voyage</b> stops it.</li>
       <li><b>Waypoints:</b> hold <b>Shift</b> and click to add stops along the way (A, then B, then C) to route ships around islands, mines or enemy waters, then click normally to set the final destination. Esc clears the stops.</li>
       <li><b>Getting around:</b> drag the map or use WASD / arrow keys to scroll, the mouse wheel or +/- to zoom, and click the minimap to jump. <b>Tab</b> selects your next ready ship, <b>Space</b> centres on the selected one.</li>
-      <li>Buy ships in the Shipyard. They launch in your spawn zone (the lighter strip at your edge of the map) and are ready next turn.</li>
-      <li>Sell oil for money. Selling a lot at once drops the price; it recovers each turn.</li>
+      <li><b>Shipyards:</b> buy ships in the Shipyard. You pay up front, and the yard builds them over a few turns (⏱ in the list: bigger ships take longer). Finished ships appear next to the yard at the start of your turn, ready to sail. Your <b>Home Yard</b> (your spawn strip) builds 2 at a time; forward ports build 1; Dry Docks build 2, each a turn faster. Extra ships wait in line, and you can cancel (full refund before work starts, half after).</li>
+      <li><b>Fleets:</b> select a ship and click <b>Form a fleet…</b>, then click the ships to bring along (within ${FLEET.joinRange} squares). The biggest ship is the flagship (★). Click the map with any fleet ship selected and the whole fleet sails there in formation, at the speed of its slowest ship. Stragglers catch up; <b>Regroup</b> calls them back now.</li>
+      <li><b>Standing orders</b> run by themselves each time you end your turn: 🔁 <b>Patrol</b> a loop of points, 🛡️ <b>Escort</b> another ship, ⚓ <b>Guard</b> a spot, or 🧭 <b>Explore</b> unknown waters (surveying on the way). Patrol, Escort and Guard also fire at enemy ships in range. They work for single ships and for whole fleets.</li>
+      <li>Sell oil for money. Selling a lot at once drops the price for everyone; it climbs back toward normal each turn (faster the further it fell).</li>
       <li><b>Upkeep:</b> every ship costs 5% of its price in money each turn. Ships you can't pay for lose 1 HP. Big idle fleets drain you.</li>
       <li><b>Storage:</b> you can hold ${ECONOMY.oilCap} oil. Anything pumped past that spills, so use it or sell it.</li>
-      <li><b>Forward ports:</b> build one on an <b>island coast</b> (island land touching water) with one of your ships right next to it. New ships can then launch within ${PORT.range} squares of the port. Ports have ${PORT.hp} HP, see ${PORT.sight} squares, and can be shot.</li>
+      <li><b>Forward ports:</b> build one on an <b>island coast</b> (island land touching water) with one of your ships right next to it. The port is also a small shipyard: ships built there appear within ${PORT.range} squares of it. Ports have ${PORT.hp} HP, see ${PORT.sight} squares, and can be shot.</li>
     </ul>
     <h4>Oil</h4>
     <ul>
       <li>Deposits are hidden and move every game. Use <b>Survey</b> to find them. S/M/R = small/medium/rich. Water you've surveyed turns <b style="color:#a9d77a">green</b>, so you know where you've already looked.</li>
       <li>Every deposit starts with a random amount of oil. Hover over a deposit or rig to see what's left (e.g. 18/35). Rigs pump the same rate until the deposit runs dry.</li>
-      <li>Home deposits are small and run dry within a few rounds (every player's home gets the exact same amounts). No Man's Sea deposits hold several times more, so sooner or later you have to go fight for them.</li>
+      <li>Home deposits are modest and run dry after a while (every player's home gets the exact same amounts). No Man's Sea deposits hold several times more, so sooner or later you have to go fight for them.</li>
       <li>Build a rig on a discovered deposit next to one of your ships to found a <b>rig base</b>. You start with one: your <b>Admiralty</b> (★).</li>
     </ul>
     <h4>Rig bases</h4>
@@ -64,7 +71,13 @@ export function showRules() {
       <li>Moving into an unseen enemy stops your ship and reveals it. Mines are invisible to the enemy.</li>
     </ul>
     <h4>Winning</h4>
-    <p>Knock everyone else out (no ships, no rigs, under $60), or, if Domination is on, hold rigs on at least half of No Man's Sea's rich deposits for ${DOMINATION.rounds} rounds in a row.</p>
+    <ul>
+      <li><b>⚔️ Conquest</b> (always on): be the last admiral standing. Losing your <b>Admiralty</b> (wrecked or captured) gives you ${CONQUEST.exileTurns} turns to rebuild it or move it to another base ($${CONQUEST.moveCapitalCost}), or you're out. Players with no ships, no rigs and almost no money are out too.</li>
+      <li><b>🗺️ Domination:</b> control ${Math.round(DOMINATION.share * 100)}% of all the sea claimed by bases (and at least ${Math.round(DOMINATION.minMapShare * 100)}% of the map's water) for ${DOMINATION.rounds} rounds in a row.</li>
+      <li><b>⚛️ Post-Oil:</b> research Era V up to Fusion Engineering, then build the Deep-Sea Fusion Plant at a Hub base. It takes 10 turns, and everyone is warned and can see it, so defend it.</li>
+      <li><b>🛢️ Last Rig Standing:</b> when the world is down to ${Math.round(LAST_RIG.threshold * 100)}% of its oil, a ${LAST_RIG.rounds}-round countdown starts. When it ends, whoever controls the most oil still in the ground (under their rigs or inside their claims) wins.</li>
+      <li><b>Capturing:</b> rebuild an enemy's wrecked base yourself and it's yours, with its platforms.</li>
+    </ul>
     <h4>Wrecks</h4>
     <p>Sunk ships leave wrecks. A Salvage Ship can recover half their value, from any side. When a player is knocked out, their whole fleet becomes wrecks.</p>
     <div class="row" style="margin-top:16px"><button class="primary" data-close>Got it</button></div>

@@ -1,0 +1,6 @@
+{
+  "name": "last-rig-standing",
+  "private": true,
+  "type": "module",
+  "scripts": { "simulate": "node tools/simulate.mjs" }
+}

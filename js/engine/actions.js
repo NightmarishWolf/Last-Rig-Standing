@@ -1,8 +1,12 @@
 // The two public entry points: applyAction() changes the game, getView() is what one player may see.
 import { doAct } from './abilities.js';
-import { doBuyShip, doSell } from './economy.js';
+import { doSell } from './economy.js';
+import { doBuyShip, doCancelBuild } from './production.js';
+import { doCancelFleetOrder, doDisbandFleet, doFormFleet, doJoinFleet, doLeaveFleet, doReformFleet, doRegroupFleet, doSetFleetOrder, fleetsOf, runFleetOrders, tidyFleets } from './fleets.js';
+import { doSetStanding, runStanding } from './standing.js';
 import { baseById, doBuildPlatform, doBuyRig, doUpgradeBase } from './bases.js';
 import { doDequeue, doFunding, doQueue, doResearch } from './research.js';
+import { doMoveCapital } from './victory.js';
 import { shipCells } from './geometry.js';
 import { doMove, doRotate } from './movement.js';
 import { doCancelOrder, doSetOrder, runVoyages } from './orders.js';
@@ -14,11 +18,18 @@ import { visibility } from './visibility.js';
 
 export function applyAction(st, a) {
   if (st.phase !== 'playing') return fail('Game over.');
+  const r = runAction(st, a);
+  tidyFleets(st); // ships sunk along the way leave their fleets
+  return r;
+}
+
+function runAction(st, a) {
   switch (a.type) {
     case 'move': return doMove(st, a);
     case 'rotate': return doRotate(st, a);
     case 'act': return doAct(st, a);
-    case 'buyShip': return doBuyShip(st, a);
+    case 'buyShip': return doBuyShip(st, a);          // { ship, yard }: queue at a shipyard, paid now
+    case 'cancelBuild': return doCancelBuild(st, a);
     case 'buyRig': return doBuyRig(st, a);
     case 'buyPort': return doBuyPort(st, a);
     case 'buildPlatform': return doBuildPlatform(st, a);
@@ -27,11 +38,24 @@ export function applyAction(st, a) {
     case 'queueResearch': return doQueue(st, a);
     case 'dequeueResearch': return doDequeue(st, a);
     case 'setFunding': return doFunding(st, a);
+    case 'moveCapital': return doMoveCapital(st, a);
     case 'setOrder': return doSetOrder(st, a);
     case 'cancelOrder': return doCancelOrder(st, a);
+    case 'formFleet': return doFormFleet(st, a);
+    case 'joinFleet': return doJoinFleet(st, a);
+    case 'leaveFleet': return doLeaveFleet(st, a);
+    case 'disbandFleet': return doDisbandFleet(st, a);
+    case 'reformFleet': return doReformFleet(st, a);
+    case 'regroupFleet': return doRegroupFleet(st, a);
+    case 'setFleetOrder': return doSetFleetOrder(st, a);
+    case 'cancelFleetOrder': return doCancelFleetOrder(st, a);
+    case 'setStanding': return doSetStanding(st, a);
     case 'sell': return doSell(st, a);
     case 'endTurn':
-      runVoyages(st, st.current); // ships on a voyage sail on before the turn passes
+      // before the turn passes: voyages sail on, then fleets, then standing orders
+      runVoyages(st, st.current);
+      if (st.phase === 'playing') runFleetOrders(st, st.current);
+      if (st.phase === 'playing') runStanding(st, st.current);
       if (st.phase === 'playing') nextTurn(st);
       return ok();
     case 'surrender': {
@@ -62,6 +86,8 @@ export function getView(st, p) {
     myPlatforms: (st.platforms || []).filter(o => o.owner === p),
     enemyPlatforms: (st.platforms || []).filter(o => o.owner !== p && vis.platforms.has(o.id)),
     myBases: (st.bases || []).filter(b => b.owner === p),
+    myFleets: fleetsOf(st, p),
+    builds: me.builds || [],
     // enemy bases are known once you've seen their central rig (or its wreck)
     enemyBases: (st.bases || []).filter(b => b.owner !== p && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
     deposits: st.deposits.filter(d => me.known[d.id]),

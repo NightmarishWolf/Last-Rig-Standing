@@ -1,6 +1,6 @@
 // Canvas basics: sizing the board, mouse-to-square, and drawing shapes and outlines.
 import { MARGIN } from '../constants.js';
-import { px, py } from '../helpers.js';
+import { me, px, py } from '../helpers.js';
 import { S } from '../state.js';
 import { clampCam, switchCameraTo } from '../camera.js';
 
@@ -23,7 +23,7 @@ export function resize() {
     S.fit = false; w = avail; h = Math.max(300, maxH);
   }
   S.view.w = w - MARGIN; S.view.h = h - MARGIN;
-  if (!S.fit) { switchCameraTo(S.st.current); clampCam(); }
+  if (!S.fit) { switchCameraTo(S.spectate ? 'all' : me()); clampCam(); }
   const dpr = window.devicePixelRatio || 1;
   S.canvas.width = w * dpr; S.canvas.height = h * dpr;
   S.canvas.style.width = w + 'px'; S.canvas.style.height = h + 'px';

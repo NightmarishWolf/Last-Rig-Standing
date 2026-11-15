@@ -56,33 +56,43 @@ export function doMove(st, a) {
   return ok();
 }
 
+// One step for one ship (no oil charged here). Returns 'ok', 'blocked' (an unseen enemy is
+// in the way: the ship stays put) or 'stopped' (it moved but hit a mine, and may have sunk).
+export function stepShip(st, ship, x, y, r) {
+  const p = ship.owner;
+  const cells = cellsOf(ship.type, x, y, r);
+  const blk = hiddenBlocker(st, p, cells, ship.id);
+  if (blk) {
+    revealBlocker(st, p, blk);
+    log(st, p, `${SHIPS[ship.type].name} ran into an unseen enemy ${blk.kind === 'ship' ? 'contact' : 'rig'} and stopped.`);
+    return 'blocked';
+  }
+  ship.x = x; ship.y = y; ship.rot = r;
+  const mine = st.mines.find(m => m.owner !== p && cells.some(([cx, cy]) => cx === m.x && cy === m.y));
+  if (mine) {
+    st.mines = st.mines.filter(m => m !== mine);
+    const dmg = Math.max(0, mine.dmg - shipStat(st, p, ship.type, 'armor'));
+    ship.hp -= dmg;
+    log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`);
+    if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
+    if (ship.hp <= 0) sink(st, ship);
+    return 'stopped';
+  }
+  return 'ok';
+}
+
 // Sail a ship along a list of {x, y} steps: stops early on hidden enemies or mines,
 // pays oil for the squares actually sailed. Returns how many steps were taken.
 export function sailPath(st, ship, path) {
-  const p = ship.owner, fullCost = moveCost(st, ship, path.length);
+  const fullCost = moveCost(st, ship, path.length);
   let steps = 0;
   for (const step of path) {
-    const r = step.r ?? ship.rot;
-    const cells = cellsOf(ship.type, step.x, step.y, r);
-    const blk = hiddenBlocker(st, p, cells, ship.id);
-    if (blk) {
-      revealBlocker(st, p, blk);
-      log(st, p, `${SHIPS[ship.type].name} ran into an unseen enemy ${blk.kind === 'ship' ? 'contact' : 'rig'} and stopped.`);
-      break;
-    }
-    ship.x = step.x; ship.y = step.y; ship.rot = r; steps++;
-    const mine = st.mines.find(m => m.owner !== p && cells.some(([cx, cy]) => cx === m.x && cy === m.y));
-    if (mine) {
-      st.mines = st.mines.filter(m => m !== mine);
-      const dmg = Math.max(0, mine.dmg - shipStat(st, p, ship.type, 'armor'));
-      ship.hp -= dmg;
-      log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`);
-      if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
-      if (ship.hp <= 0) sink(st, ship);
-      break;
-    }
+    const res = stepShip(st, ship, step.x, step.y, step.r ?? ship.rot);
+    if (res === 'blocked') break;
+    steps++;
+    if (res === 'stopped') break;
   }
-  st.players[p].oil -= steps === path.length ? fullCost : moveCost(st, ship, steps);
+  st.players[ship.owner].oil -= steps === path.length ? fullCost : moveCost(st, ship, steps);
   ship.movesLeft -= steps;
   return steps;
 }

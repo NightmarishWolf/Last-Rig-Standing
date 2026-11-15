@@ -1,5 +1,6 @@
 // Creating a new game: home layouts, islands, oil deposits and starting fleets.
 import { DEPOSITS, MARKET, RIG, START } from '../data/economy.js';
+import { BOT_NAMES, DIFFICULTY, PERSONALITIES } from '../data/bots.js';
 import { HOME_SCALE, MAP_SIZES, PLAYER_NAMES, WATER_PER_DEPOSIT } from '../data/maps.js';
 import { SHIPS } from '../data/ships.js';
 import { cellsOf, inRect, inSpawn, isLand, zoneOf } from './geometry.js';
@@ -57,8 +58,20 @@ function layoutHomes(W, H, n) {
   return homes;
 }
 
+// A seat: 'human' (default), or { seat: 'ai', difficulty, personality } for a computer player.
+function seatOf(o, i, seed) {
+  if (!o || o === 'human' || o.seat === 'human') return { name: PLAYER_NAMES[i], seat: 'human', out: false };
+  const difficulty = DIFFICULTY[o.difficulty] ? o.difficulty : 'normal';
+  const personality = PERSONALITIES[o.personality] ? o.personality : 'admiral';
+  return {
+    name: PLAYER_NAMES[i], seat: 'ai', out: false,
+    ai: { difficulty, personality, rng: (seed * 31 + i * 7919) % 2147483647 || 1, mem: {} },
+    bonus: DIFFICULTY[difficulty].bonus || null,
+  };
+}
+
 // ---------- new game ----------
-// opts: { size: 'standard', players: 2, seats: ['human', 'human', ...], seed }
+// opts: { size: 'standard', players: 2, seats: ['human', { seat: 'ai', difficulty, personality }, ...], seed }
 export function newGame(opts = {}) {
   const size = MAP_SIZES[opts.size] ? opts.size : 'standard';
   const n = Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
@@ -69,21 +82,30 @@ export function newGame(opts = {}) {
     version: 3, seed, rng: seed, size, W, H,
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
-    domination: opts.domination ?? true, // Domination victory on/off
+    victory: { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is)
     winReason: null,
     phase: 'playing', winner: null, nextId: 1,
     land: new Array(W * H).fill(0),
-    deposits: [], ships: [], rigs: [], ports: [], mines: [], wrecks: [], bases: [], platforms: [],
+    deposits: [], ships: [], rigs: [], ports: [], mines: [], wrecks: [], bases: [], platforms: [], fleets: [],
     market: { price: MARKET.basePrice },
     players: layout.map((l, i) => ({
-      name: PLAYER_NAMES[i], seat: (opts.seats && opts.seats[i]) || 'human', out: false,
+      ...seatOf(opts.seats && opts.seats[i], i, seed),
       home: l.home, spawn: l.spawn,
-      money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0, domStreak: 0, research: newResearch(),
+      money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0, domStreak: 0, exile: null, research: newResearch(),
+      builds: [], explored: {},
       shots: [], incoming: [], flashes: [], spoofs: [], scans: [],
       reveals: { ships: [], rigs: [], ports: [], platforms: [] }, log: [],
     })),
   };
+  // the same bot never shows up twice
+  const usedNames = new Set();
+  for (const pl of st.players) if (pl.seat === 'ai') {
+    let k = (pl.ai.rng + st.players.indexOf(pl)) % BOT_NAMES.length;
+    while (usedNames.has(k)) k = (k + 1) % BOT_NAMES.length;
+    usedNames.add(k); pl.name = BOT_NAMES[k];
+  }
   generateMap(st);
+  st.oilTotal = st.deposits.reduce((t, d) => t + d.reserves, 0); // for Last Rig Standing
   startTurn(st, 0, true);
   return st;
 }
@@ -133,7 +155,7 @@ function generateMap(st) {
   placeStartingFleets(st);
 }
 
-// Starting fleets: 2 patrol boats each, spread out along the outer edge of the spawn strip
+// Starting fleets: 2 patrol boats and 2 survey ships each, spread out along the outer edge of the spawn strip
 function placeStartingFleets(st) {
   st.players.forEach((pl, p) => {
     const spots = [];
@@ -147,8 +169,16 @@ function placeStartingFleets(st) {
     const edge = spots.filter(([x, y]) => (horizontal ? y === pl.spawn.y1 : x === outerX));
     const pool = edge.length >= 2 ? edge : spots;
     [Math.floor(pool.length * 0.4), Math.floor(pool.length * 0.6)].forEach(i => addShip(st, p, 'patrol', pool[i][0], pool[i][1], 0, true));
+    // survey ships further out along the strip (they're one square, so any free spot will do)
+    for (const f of [0.2, 0.8]) {
+      const free = ([x, y]) => !st.ships.some(s => E_cells(s).some(([a, b]) => Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1));
+      const order = [...spots].sort((a, b) => Math.abs(spots.indexOf(a) - spots.length * f) - Math.abs(spots.indexOf(b) - spots.length * f));
+      const pick = [Math.floor(pool.length * f)].map(i => pool[i]).find(c => c && free(c)) || order.find(free);
+      if (pick) addShip(st, p, 'survey', pick[0], pick[1], 0, true);
+    }
   });
 }
+const E_cells = s => cellsOf(s.type, s.x, s.y, s.rot);
 
 // The original small-arena generator (tutorial only).
 function generateClassic(st) {

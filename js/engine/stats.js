@@ -1,5 +1,5 @@
 // Derived numbers: prices, upkeep, movement cost and domination counts.
-import { DOMINATION, ECONOMY, PORT } from '../data/economy.js';
+import { ECONOMY, PORT } from '../data/economy.js';
 import { SHIPS } from '../data/ships.js';
 import { baseFoundCost, platformUpkeep } from './bases.js';
 import { dist, shipCells, zoneOf } from './geometry.js';
@@ -24,15 +24,6 @@ export const forwardPorts = (st, p) => (st.ports || []).filter(o => o.owner === 
 export const portCost = (st, p) => PORT.baseCost + PORT.costPerPort * forwardPorts(st, p).length;
 
 export const middleDeposits = st => st.deposits.filter(d => zoneOf(st, d.x, d.y) === 'middle');
-
-// Domination is about the rich deposits in No Man's Sea.
-export const dominationDeposits = st => middleDeposits(st).filter(d => d.type === 'rich');
-export const dominationNeed = st => Math.max(1, Math.ceil(dominationDeposits(st).length * DOMINATION.share));
-
-export const middleRigs = (st, p) => {
-  const rich = new Set(dominationDeposits(st).map(d => d.id));
-  return st.rigs.filter(r => r.owner === p && rich.has(r.depId)).length;
-};
 
 export function commandBonus(st, ship) {
   const cells = shipCells(ship);

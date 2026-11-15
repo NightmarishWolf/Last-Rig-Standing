@@ -14,7 +14,8 @@ import { DEPOSITS, RIG } from '../data/economy.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { maxBaseLevel, platformUnlocked } from './research.js';
-import { fail, log, ok, pname, shipAt } from './util.js';
+import { fail, log, ok, others, pname, shipAt } from './util.js';
+import { fusionFinished, victoryOn } from './victory.js';
 import { hiddenBlocker, revealBlocker } from './visibility.js';
 import { sink } from './combat.js';
 
@@ -102,7 +103,7 @@ export function doBuyRig(st, a) {
     log(st, p, `Rebuilt ${baseName(st, old)}. Its platforms are back online.`);
     return ok();
   }
-  if (old) removeBase(st, old);
+  if (old) return captureBase(st, p, old, dep);
   foundBase(st, p, dep, false);
   log(st, p, `Founded a rig base at ${coord(a.x, a.y)}. It claims the ${claimSize(st, st.bases[st.bases.length - 1])}×${claimSize(st, st.bases[st.bases.length - 1])} water around it.`);
   return ok();
@@ -115,7 +116,19 @@ export function foundBase(st, p, dep, capital) {
   return b;
 }
 
-function removeBase(st, b) {
+// Rebuilding someone else's wrecked base captures it, with all its platforms and rigs.
+function captureBase(st, p, b, dep) {
+  const from = b.owner, wasCapital = b.capital;
+  b.owner = p; b.capital = false; b.wrecked = false;
+  for (const o of platformsOf(st, b)) o.owner = p;
+  for (const r of st.rigs.filter(r => r.baseId === b.id)) r.owner = p;
+  st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: baseMaxHp(st, b), depId: dep.id, baseId: b.id, center: true });
+  log(st, p, `You captured ${pname(st, from)}'s ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}, with ${platformsOf(st, b).length} platforms!`);
+  log(st, from, `${pname(st, p)} captured your ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}!`);
+  return ok();
+}
+
+export function removeBase(st, b) {
   st.platforms = (st.platforms || []).filter(o => o.baseId !== b.id);
   st.rigs = st.rigs.filter(r => r.baseId !== b.id);
   st.bases = st.bases.filter(o => o !== b);
@@ -141,6 +154,11 @@ export function platformProblem(st, p, kind, x, y) {
   if (def.onDeposit) {
     if (!dep || !st.players[p].known[dep.id]) return 'Wellheads go on oil deposits you have discovered.';
   } else if (dep) return 'Keep deposits free for Wellheads.';
+  if (def.megaproject) {
+    if (!victoryOn(st, 'postoil')) return 'The Post-Oil victory is switched off in this game.';
+    if (b.level < def.needsLevel) return `Needs a level ${def.needsLevel} base (Hub).`;
+    if ((st.platforms || []).some(o => o.owner === p && o.kind === kind)) return 'You are already building one.';
+  }
   if (!def.onDeposit && slotsUsed(st, b) >= baseSlots(st, b)) return `${baseName(st, b)} has no free platform slots (upgrade the base or research more).`;
   if (platformAt(st, x, y) || st.rigs.some(r => r.x === x && r.y === y && r.owner === p)) return 'Something is already built there.';
   if ((st.ports || []).some(o => o.x === x && o.y === y)) return 'Something is already built there.';
@@ -160,6 +178,7 @@ export function doBuildPlatform(st, a) {
   o.hp = platformMaxHp(st, o);
   (st.platforms ||= []).push(o);
   log(st, p, `Started building a ${def.name} at ${coord(a.x, a.y)} (${def.turns} turns).`);
+  if (def.megaproject) for (const o of others(st, p)) log(st, o, `⚛ ${pname(st, p)} has started a ${def.name} at ${coord(a.x, a.y)}! It finishes in ${def.turns} turns unless someone destroys it.`);
   return ok();
 }
 
@@ -192,7 +211,11 @@ export function processBases(st, p, visibleShips) {
   for (const o of (st.platforms || []).filter(o => o.owner === p && o.buildLeft > 0)) {
     if (baseById(st, o.baseId)?.wrecked) continue;
     o.buildLeft--;
-    if (o.buildLeft > 0) continue;
+    if (o.buildLeft > 0) {
+      if (PLATFORMS[o.kind].megaproject) for (const e of others(st, p)) log(st, e, `⚛ ${pname(st, p)}'s ${PLATFORMS[o.kind].name} at ${coord(o.x, o.y)}: ${o.buildLeft} turn${o.buildLeft > 1 ? 's' : ''} left!`);
+      continue;
+    }
+    if (PLATFORMS[o.kind].megaproject) { fusionFinished(st, p, o); return; }
     if (o.kind === 'wellhead') {
       st.platforms = st.platforms.filter(x => x !== o);
       const dep = st.deposits.find(d => d.x === o.x && d.y === o.y);

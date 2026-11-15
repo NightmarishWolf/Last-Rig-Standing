@@ -42,7 +42,7 @@ export function rpIncome(st, p) {
   const labs = (st.platforms || []).filter(o => o.owner === p && o.kind === 'lab' && !o.buildLeft &&
     !st.bases.find(b => b.id === o.baseId)?.wrecked).length * PLATFORMS.lab.rp;
   const funding = R(st, p).funding || 0;
-  const bonus = pstat(st, p, 'rp');
+  const bonus = pstat(st, p, 'rp') + (st.players[p].bonus?.rp || 0);
   return { admiralty, labs, funding, bonus, total: admiralty + labs + funding + bonus };
 }
 

@@ -3,9 +3,15 @@
 export const S = {
   st: null,             // the game state being shown
   hooks: null,          // callbacks from the app (save, handoff, gameOver, showMenu, tutorial hooks)
-  mode: { kind: 'idle' }, // idle | move | target | placeShip | placeRig | placePort
+  mode: { kind: 'idle' }, // idle | move | target | placeRig | placePort | placePlatform | fleetPick | patrolPick | escortPick
   selectedId: null,     // id of the selected ship
   selectedBase: null,   // id of the selected rig base
+  yard: 'home',         // the shipyard tab open in the panel
+  // computer turns (see app/bots.js)
+  botTurn: false,       // a bot is playing: the board and panel don't take clicks
+  viewer: null,         // the human watching a bot turn (their fog of war is shown)
+  spectate: false,      // every seat is a bot: whole map, no fog
+  tween: null, fx: [],  // animations in progress (board/fx.js)
   planRot: null,        // facing you're planning for the selected ship (R); it only turns when it moves
   plan: [],             // waypoints added with Shift+click, before the final destination
   hover: null,          // { x, y } square under the mouse

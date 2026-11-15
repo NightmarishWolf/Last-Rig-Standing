@@ -58,6 +58,7 @@ export function switchCameraTo(p) {
   const saved = S.cams[p];
   if (saved) { S.cell = saved.cell; S.cam.x = saved.x; S.cam.y = saved.y; clampCam(); return; }
   S.cell = ZOOM.start;
+  if (p === 'all') { S.cell = minZoom(); centerOn(Math.floor(S.st.W / 2), Math.floor(S.st.H / 2)); return; } // spectator: the whole map
   const sp = S.st.players[p].spawn, home = S.st.players[p].home;
   // look at the home waters, with the spawn strip in view
   centerOn(Math.round((sp.x0 + sp.x1 + home.x0 + home.x1) / 4), Math.round((home.y0 + home.y1) / 2));

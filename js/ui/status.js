@@ -25,13 +25,17 @@ export function updateStatus() {
         if (S.fit) return 'Click a highlighted spot to move, or pick an action in the panel.';
         const path = voyagePreview(s, S.hover.x - ox, S.hover.y - oy, pr);
         if (!path || !path.length) return 'No sea route to there. Pick another spot, or an action in the panel.';
+        const f = E.fleetOf(S.st, s.id);
+        if (f) return `Click to send <b>Fleet ${f.name}</b> here (about ${path.length} squares at speed ${E.fleetSpeed(S.st, f)}). The whole fleet sails in formation each time you end your turn. <b>Shift+click</b> to add a waypoint instead.`;
         return `Click to set sail: <b>${path.length} squares</b>, ${voyageLabel(s, path.length)}, about <b class="oil">${E.moveCost(S.st, s, path.length)} oil</b> in total. The ship sails on by itself each time you end your turn. <b>Shift+click</b> to add a waypoint instead.`;
       })();
     } else t = `<b>${SHIPS[s.type].name}</b> selected. White dashed box = what it can see (sight ${SHIPS[s.type].sight}). Click a highlighted spot to move. <b>R</b> plans a turn (it only turns when it moves). <b>Shift+click</b> adds waypoints to route around things. Esc to deselect.`;
   } else if (S.mode.kind === 'target' && s) {
     const a = SHIPS[s.type].actions.find(x => x.id === S.mode.actionId);
     t = `<b>${a.name}</b>: click a target in the highlighted range. Right-click or Esc to cancel.`;
-  } else if (S.mode.kind === 'placeShip') t = `Place your <b>${SHIPS[S.mode.ship].name}</b> in the outlined launch zone: your spawn strip, or near one of your forward ports. R to turn, Esc to cancel.`;
+  } else if (S.mode.kind === 'fleetPick') t = `<b>Forming a fleet:</b> click your ships to add or remove them (${S.mode.ids.length} picked), then <b>Create fleet</b> in the panel. Esc to cancel.`;
+  else if (S.mode.kind === 'patrolPick') t = `<b>Patrol:</b> click the points to patrol between (${S.mode.points.length} so far), then <b>Start patrol</b> in the panel. Esc to cancel.`;
+  else if (S.mode.kind === 'escortPick') t = `<b>Escort:</b> click one of your ships to look after. Esc to cancel.`;
   else if (S.mode.kind === 'placePlatform') {
     const why = S.hover && E.platformProblem(S.st, me(), S.mode.platform, S.hover.x, S.hover.y);
     const def = PLATFORMS[S.mode.platform];

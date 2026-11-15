@@ -14,7 +14,7 @@ export const MAP_SIZES = {
 // How big each player's home waters are, as a share of the map's shorter side.
 export const HOME_SCALE = 0.3;
 // Roughly one No Man's Sea deposit per this many open-water squares.
-export const WATER_PER_DEPOSIT = 180;
+export const WATER_PER_DEPOSIT = 90;
 
 // Each player's colour (ships, rigs, labels).
 export const PLAYER_COLORS = ['#2bb3a3', '#f08a3c', '#a87cf0', '#d9c84a'];

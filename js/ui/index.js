@@ -62,7 +62,12 @@ export function initUI(state, h) {
   resize();
 }
 
-export function setState(state) { S.st = state; S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }
+export function setState(state) {
+  S.st = state; S.selectedId = null; S.mode = { kind: 'idle' };
+  S.botTurn = false; S.viewer = null; S.tween = null; S.fx = [];
+  S.spectate = !state.tutorial && state.players.every(p => p.seat === 'ai'); // all bots: watch the whole map
+  refresh();
+}
 
 export function refresh() {
   if (S.planFor !== S.selectedId) { S.planRot = null; S.plan = []; S.planFor = S.selectedId; }

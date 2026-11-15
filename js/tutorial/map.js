@@ -21,7 +21,7 @@ function ship(id, owner, type, x, y) {
 export function newTutorialGame() {
   const st = E.newGame({ size: 'tutorial', players: 2, seed: 2026 });
   st.tutorial = true;
-  st.domination = false;
+  st.victory = {}; // tutorial: only the basic (Conquest) rules
   // a few islands, out of the way
   st.land.fill(0);
   [[14, 1], [14, 2], [15, 2], [13, 11], [14, 11], [15, 11], [15, 10], [11, 8], [12, 8]].forEach(([x, y]) => { st.land[y * st.W + x] = 1; });

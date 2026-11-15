@@ -43,13 +43,17 @@ export const PLATFORMS = {
   radar: { name: 'Radar Mast', code: 'R', cost: 150, turns: 2, hp: 2, upkeep: 2, sight: 5, tech: 'radar_masts',
     text: 'Sees 5 squares around it.' },
   drydock: { name: 'Dry Dock', code: 'D', cost: 400, turns: 4, hp: 4, upkeep: 6, launch: 2, repair: 2, tech: 'dry_docks',
-    text: 'Launch new ships within 2 squares, and repair your ships next to it (+2 HP per turn).' },
+    text: 'A shipyard: builds 2 ships at once, each 1 turn faster, and repairs your ships next to it (+2 HP per turn).' },
   refinery: { name: 'Refinery', code: 'F', cost: 300, turns: 4, hp: 3, upkeep: 5, sell: 0.1, tech: 'refineries',
     text: 'Oil sells for 10% more (up to +30% from refineries).' },
   aa: { name: 'AA Platform', code: 'A', cost: 220, turns: 3, hp: 3, upkeep: 4, airDefense: 3, tech: 'aa_platforms',
     text: 'Intercepts one missile or airstrike aimed within 3 squares each round.' },
   helipad: { name: 'Helipad', code: 'H', cost: 250, turns: 3, hp: 2, upkeep: 4, sight: 8, tech: 'helipads',
     text: 'Helicopter patrols: sees 8 squares around it.' },
+  // The Post-Oil megaproject: finishing it wins the game. Everyone can see it the moment it's started.
+  fusion: { name: 'Deep-Sea Fusion Plant', code: '⚛', cost: 2500, turns: 10, hp: 14, upkeep: 20, tech: 'fusion_engineering',
+    megaproject: true, needsLevel: 4, public: true,
+    text: 'Post-Oil victory: finish it (10 turns) at a Hub base and you win. Every rival is warned when you start.' },
   missile: { name: 'Missile Battery', code: 'M', cost: 380, turns: 4, hp: 3, upkeep: 6, range: 5, dmg: 3, tech: 'missile_batteries',
     text: 'At the start of your turn, fires at the nearest enemy ship it can see (range 5, 3 dmg).' },
 };

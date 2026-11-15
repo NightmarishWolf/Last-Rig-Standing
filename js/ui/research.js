@@ -8,8 +8,8 @@ import { SHIPS } from '../data/ships.js';
 import { me } from './helpers.js';
 import { S } from './state.js';
 
-const ERA_NAMES = { 1: 'Era I', 2: 'Era II', 3: 'Era III', 4: 'Era IV' };
-const STAT_NAMES = { move: 'move', hp: 'HP', sight: 'sight', armor: 'armor', oil: 'oil use', cost: 'cost', sonar: 'sonar', jam: 'jamming' };
+const ERA_NAMES = { 1: 'Era I', 2: 'Era II', 3: 'Era III', 4: 'Era IV', 5: 'Era V · Post-Oil' };
+const STAT_NAMES = { move: 'move', hp: 'HP', sight: 'sight', armor: 'armor', oil: 'oil use', cost: 'cost', build: 'build time', sonar: 'sonar', jam: 'jamming' };
 const PLAYER_TEXT = {
   oilCap: v => `+${v} oil storage`, sellMult: v => `oil sells for ${Math.round((v - 1) * 100)}% more`, priceDropMult: v => `selling drops the price ${Math.round((1 - v) * 100)}% slower`,
   upkeepMult: v => `${Math.round((1 - v) * 100)}% less upkeep`, surveyRadius: v => `+${v} survey radius`, rigRate: v => `every rig pumps +${v}`,
@@ -74,7 +74,8 @@ export function renderResearch() {
     <div class="rs-tree"><svg class="rs-lines"></svg>`;
   for (const [bid, br] of Object.entries(BRANCHES)) {
     html += `<div class="rs-col"><div class="rs-branch">${br.icon} ${br.name}</div>`;
-    for (const era of [1, 2, 3, 4]) {
+    for (const era of [1, 2, 3, 4, 5]) {
+      if (!TECHS.some(x => x.branch === bid && x.era === era)) continue;
       html += `<div class="rs-era"><div class="rs-era-label">${ERA_NAMES[era]} · ${ERA_COST[era]} RP</div>`;
       for (const t of TECHS.filter(x => x.branch === bid && x.era === era)) {
         const status = E.techStatus(st, p, t.id);

@@ -2,3 +2,5 @@
 export * from './ships.js';
 export * from './economy.js';
 export * from './maps.js';
+export * from './production.js';
+export * from './bots.js';

@@ -1,11 +1,13 @@
 // The side panel (resources, selected ship or base, shipyard, log) and the top bar.
 import * as E from '../engine/index.js';
 import { BASE_LEVELS, PLATFORMS } from '../data/bases.js';
-import { DOMINATION } from '../data/economy.js';
+import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
 import { TECH } from '../data/research.js';
 import { PASSIVE_TEXT, SHIPS } from '../data/ships.js';
 import { me, pcol, planRot, pname, selected, selectedBase } from './helpers.js';
 import { S } from './state.js';
+import { FLEET, QUEUE, STANDING } from '../data/production.js';
+import { DIFFICULTY, PERSONALITIES } from '../data/bots.js';
 
 const CLASS_NAMES = { light: 'Light ships', sub: 'Submarines', escort: 'Escorts', capital: 'Capital ships', support: 'Support' };
 
@@ -16,21 +18,22 @@ export function renderTop() {
   const left = cur ? E.turnsLeft(S.st, p) : null;
   document.getElementById('turn-info').innerHTML =
     `<b style="color:${pcol(p)}">${pname(p)}</b> · Round ${S.st.round}` +
-    ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>`;
+    ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>` +
+    (S.st.finalReserves ? ` <span class="alert-badge">🛢️ Final Reserves: ${S.st.finalReserves.roundsLeft} rounds</span>` : '') +
+    (S.st.players[p].exile != null ? ` <span class="alert-badge red">⚠ Admiralty lost: ${S.st.players[p].exile} turns</span>` : '');
 }
 
 // ---------- panel ----------
 export function renderPanel() {
+  const panelEl = document.getElementById('panel');
+  panelEl.classList.toggle('locked', !!S.botTurn && !S.spectate);
+  if (S.spectate) { panelEl.innerHTML = spectatorPanel(); return; }
   const st = S.st, p = me(), pl = st.players[p];
   const s = selected(), b = selectedBase();
   const oilTurn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
   const rp = E.rpIncome(st, p);
   let html = `
-  <div class="card">
-    <h3>Admirals</h3>
-    <div class="row" style="margin-top:0">${st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ' (CPU)' : ''}${o.out ? ' · out' : ''}${st.domination && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">domination ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('')}</div>
-    ${st.domination ? `<div class="small muted" style="margin-top:6px">Domination: hold rigs on ${E.dominationNeed(st)} of the ${E.dominationDeposits(st).length} rich deposits in No Man's Sea for ${DOMINATION.rounds} rounds to win. You hold ${E.middleRigs(st, p)}.</div>` : ''}
-  </div>
+  ${victoryCard(st, p)}
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
@@ -56,29 +59,191 @@ export function renderPanel() {
   </div>`;
 
   if (b) html += baseCard(b);
+  if (S.mode.kind === 'fleetPick') html += fleetPickCard();
   if (s) html += shipCard(s);
+  const f = s && E.fleetOf(st, s.id);
+  if (f) html += fleetCard(f, s);
+  if (s) html += standingCard(s, f);
 
-  html += `<div class="card"><h3>Shipyard</h3><div class="small muted">New ships launch in your spawn zone, or near your forward ports and dry docks. Ready next turn. Press R to turn while placing.</div>`;
+  html += shipyardCard(st, p);
+  html += `<div class="card"><h3>Log</h3><div class="log">${pl.log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
+  document.getElementById('panel').innerHTML = html;
+}
+
+// ---------- shipyards ----------
+export const currentYard = (st, p) => E.yardById(st, p, S.yard) || E.yardById(st, p, 'home');
+
+function shipyardCard(st, p) {
+  const pl = st.players[p], yards = E.yardsOf(st, p), yard = currentYard(st, p);
+  const builds = E.buildsOf(st, p);
+  let html = `<div class="card"><h3>Shipyard</h3>`;
+  if (yards.length > 1) html += `<div class="yard-tabs">${yards.map(y => {
+    const n = builds.filter(b => b.yard === y.id).length;
+    return `<button class="yard-tab ${y.id === yard.id ? 'active' : ''}" data-yard="${y.id}" title="${y.slots} at a time${y.faster ? `, ${y.faster} turn faster` : ''}">${y.kind === 'home' ? '⚓' : y.kind === 'port' ? '⛵' : '🔧'} ${y.name}${n ? ` <b>${n}</b>` : ''}</button>`;
+  }).join('')}</div>`;
+  const q = E.yardQueue(st, p, yard.id);
+  html += `<div class="small muted">${yard.name} builds ${yard.slots} ship${yard.slots > 1 ? 's' : ''} at a time${yard.faster ? `, each ${yard.faster} turn faster` : ''}. You pay up front; finished ships appear next to the yard at the start of your turn.${yard.kind !== 'home' && !S.fit ? ' <button class="ghost small-btn" data-yard-show="1">Show</button>' : ''}</div>`;
+  if (q.length) {
+    html += `<div class="build-queue">${q.map((b, i) => {
+      const working = i < yard.slots;
+      const started = b.left < b.total;
+      const status = !working ? 'waiting in line' : b.waiting ? 'waiting for room to launch' : `${b.left} turn${b.left === 1 ? '' : 's'} left`;
+      const pct = working ? Math.round((b.total - b.left) / b.total * 100) : 0;
+      return `<div class="build-item ${working ? '' : 'queued'}">
+        ${shapeSvg(SHIPS[b.ship].shape, 40, 18)}
+        <div><div class="name">${SHIPS[b.ship].name}</div><div class="bar"><span style="width:${pct}%"></span></div><div class="meta">${status}</div></div>
+        <button class="ghost small-btn" data-cancel-build="${b.id}" title="Cancel: refunds $${started ? Math.floor(b.paid * QUEUE.refundStarted) : b.paid}${started ? ' (half, work has started)' : ''}">✕</button>
+      </div>`;
+    }).join('')}</div>`;
+  } else html += `<div class="small muted" style="margin-top:6px">Nothing being built here.</div>`;
+  const full = q.length >= QUEUE.max;
   for (const cls of Object.keys(CLASS_NAMES)) {
     const list = Object.entries(SHIPS).filter(([, d]) => d.cls === cls && !d.hidden);
     if (!list.length) continue;
     html += `<div class="shop-tier"><div class="tier-head"><span>${CLASS_NAMES[cls]}</span></div>`;
     for (const [k, def] of list) {
       const unlocked = E.shipUnlocked(st, p, k), cost = E.shipCost(st, p, k);
+      const why = E.buildProblem(st, p, k, yard.id);
+      const turns = E.buildTurns(st, p, k, yard);
       const tip = [describeShip(def, p), ...Object.entries(def.passives || {}).map(([pk, pv]) => PASSIVE_TEXT[pk]?.(pv))].filter(Boolean).join('\n');
       html += `<div class="shop-item ${unlocked ? '' : 'locked'}" title="${tip.replace(/"/g, '&quot;')}">
         ${shapeSvg(def.shape)}
         <div><div class="name">${def.name}</div><div class="meta">${unlocked
-          ? `HP ${E.shipStat(st, p, k, 'hp')} · Move ${E.shipStat(st, p, k, 'move')} · ${+E.shipStat(st, p, k, 'oil').toFixed(2)} oil/sq · Sight ${E.shipStat(st, p, k, 'sight')} · Upkeep $${E.upkeepOf(st, p, k)}`
+          ? `HP ${E.shipStat(st, p, k, 'hp')} · Move ${E.shipStat(st, p, k, 'move')} · ${+E.shipStat(st, p, k, 'oil').toFixed(2)} oil/sq · Sight ${E.shipStat(st, p, k, 'sight')} · Upkeep $${E.upkeepOf(st, p, k)} · <b>⏱ ${turns} turn${turns > 1 ? 's' : ''}</b>`
           : `🔒 Needs research: <b>${TECH[E.shipNeeds(k)].name}</b>`}</div></div>
-        <button data-buy="${k}" class="${S.mode.kind === 'placeShip' && S.mode.ship === k ? 'active' : ''}" ${!unlocked || pl.money < cost ? 'disabled' : ''}>$${cost}</button>
+        <button data-buy="${k}" ${why ? `disabled title="${why.replace(/"/g, '&quot;')}"` : `title="Build at ${yard.name}"`}>$${cost}</button>
       </div>`;
     }
     html += '</div>';
   }
-  html += '</div>';
-  html += `<div class="card"><h3>Log</h3><div class="log">${pl.log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
-  document.getElementById('panel').innerHTML = html;
+  if (full) html += `<div class="small muted">This yard's line is full (${QUEUE.max}).</div>`;
+  return html + '</div>';
+}
+
+// ---------- fleets ----------
+function fleetPickCard() {
+  const st = S.st, ids = S.mode.ids;
+  const ships = ids.map(id => st.ships.find(s => s.id === id)).filter(Boolean);
+  const near = nearbyLoners(ships[0]);
+  return `<div class="card fleet-card">
+    <h3>Forming a fleet</h3>
+    <div class="small">Click your ships on the map to add or remove them (${ships.length}/${FLEET.maxShips}). They must be within ${FLEET.joinRange} squares of the biggest ship, which becomes the flagship.</div>
+    <div class="plat-list">${ships.map(s => `<span class="plat-chip">${SHIPS[s.type].name}</span>`).join('')}</div>
+    <div class="row">
+      <button class="primary" data-fleet-create="1" ${ships.length < 2 ? 'disabled' : ''}>Create fleet (${ships.length})</button>
+      ${near.length ? `<button data-fleet-nearby="1">Add all nearby (${near.length})</button>` : ''}
+      <button class="ghost" data-fleet-cancel="1">Cancel</button>
+    </div>
+  </div>`;
+}
+
+// Your ships near this one that aren't in a fleet yet.
+export function nearbyLoners(s) {
+  if (!s) return [];
+  return S.st.ships.filter(o => o.owner === s.owner && o.id !== s.id && !E.fleetOf(S.st, o.id) && !(S.mode.ids || []).includes(o.id) &&
+    Math.max(Math.abs(o.x - s.x), Math.abs(o.y - s.y)) <= FLEET.joinRange);
+}
+
+function fleetCard(f, s) {
+  const st = S.st, ships = E.fleetShips(st, f), L = E.flagship(st, f);
+  const oil = ships.reduce((t, x) => t + E.shipStat(st, f.owner, x.type, 'oil'), 0);
+  const out = f.members.filter(m => { const x = st.ships.find(o => o.id === m.id); return x && (x.x !== L.x + m.dx || x.y !== L.y + m.dy); }).length;
+  const pts = f.order?.points || [];
+  return `<div class="card fleet-card">
+    <h3>⚑ Fleet ${f.name} · ${ships.length} ships</h3>
+    <div class="stats">
+      <div class="stat"><span>Flagship</span><span class="v">${SHIPS[L.type].name}</span></div>
+      <div class="stat"><span>Speed</span><span class="v">${E.fleetSpeed(st, f)}/turn</span></div>
+      <div class="stat"><span>Oil/square</span><span class="v oil">${+oil.toFixed(2)}</span></div>
+      <div class="stat"><span>In formation</span><span class="v">${ships.length - out}/${ships.length}</span></div>
+    </div>
+    <div class="small muted" style="margin-top:6px">The fleet sails together at the speed of its slowest ship. Click the map beyond the teal area to send the whole fleet (this ship ends up where you click), Shift+click for waypoints. Moving one ship by hand is fine: it rejoins later.</div>
+    ${pts.length ? `<div class="voyage">⚓ Fleet heading to <b>${E.coord(pts[pts.length - 1].x, pts[pts.length - 1].y)}</b>${pts.length > 1 ? ` via ${pts.length - 1} more waypoint${pts.length > 2 ? 's' : ''}` : ''}. Sails on when you end your turn.
+      <div class="row" style="margin-top:6px"><button data-fleet-stop="${f.id}">Stop fleet</button></div></div>` : ''}
+    <div class="row">
+      ${out ? `<button data-fleet-regroup="${f.id}" title="Stragglers sail back to their places now">Regroup (${out})</button>` : ''}
+      <button data-fleet-reform="${f.id}" title="Keep the ships where they are now as the new formation">Keep this formation</button>
+      ${nearbyLoners(L).length ? `<button data-fleet-join="${f.id}" title="Add your nearby ships that aren't in a fleet">Add nearby (${nearbyLoners(L).length})</button>` : ''}
+    </div>
+    <div class="row">
+      <button data-fleet-leave="${s.id}" class="ghost">Take this ship out</button>
+      <button data-fleet-disband="${f.id}" class="ghost">Disband fleet</button>
+    </div>
+  </div>`;
+}
+
+// ---------- standing orders ----------
+function standingCard(s, f) {
+  const st = S.st, unit = f || s, o = unit.standing;
+  const who = f ? `Fleet ${f.name}` : 'this ship';
+  let now = '';
+  if (o) {
+    const t = o.kind === 'escort' && st.ships.find(x => x.id === o.target);
+    now = o.kind === 'patrol' ? `patrolling ${o.points.length} points` : o.kind === 'guard' ? `guarding ${E.coord(o.x, o.y)}`
+      : o.kind === 'escort' ? `escorting the ${t ? SHIPS[t.type].name : '?'}` : 'exploring';
+  }
+  const pick = S.mode.kind === 'patrolPick' ? `<div class="voyage">🔁 Click patrol points on the map (${S.mode.points.length} so far). The route loops back to where ${who} is now.
+      <div class="row" style="margin-top:6px"><button class="primary" data-standing-patrol-go="1" ${S.mode.points.length ? '' : 'disabled'}>Start patrol</button><button class="ghost" data-mode-cancel="1">Cancel</button></div></div>`
+    : S.mode.kind === 'escortPick' ? `<div class="voyage">🛡️ Click one of your ships to escort. <div class="row" style="margin-top:6px"><button class="ghost" data-mode-cancel="1">Cancel</button></div></div>` : '';
+  return `<div class="card">
+    <h3>Standing orders${f ? ` · Fleet ${f.name}` : ''}</h3>
+    <div class="small ${o ? '' : 'muted'}">${o ? `${STANDING[o.kind].icon} Now <b>${now}</b>. Runs each time you end your turn.` : `Give ${who} a job to keep doing on its own. Runs when you end your turn, with the movement left.`}</div>
+    <div class="standing-grid">
+      ${Object.entries(STANDING).map(([k, d]) => `<button class="${o?.kind === k || S.mode.kind === k + 'Pick' ? 'active' : ''}" data-standing="${k}" title="${d.text}">${d.icon} ${d.name}</button>`).join('')}
+    </div>
+    ${o ? `<div class="row"><button class="ghost" data-standing-clear="1">Clear standing orders</button></div>` : ''}
+    ${pick}
+    ${!f && S.mode.kind !== 'fleetPick' ? `<div class="row"><button data-fleet-pick="1" title="Group ships to sail together in formation">⚑ Form a fleet…</button>${E.fleetsOf(st, s.owner).filter(x => { const l = E.flagship(st, x); return l && Math.max(Math.abs(l.x - s.x), Math.abs(l.y - s.y)) <= FLEET.joinRange; }).map(x => `<button data-fleet-join-one="${x.id}">Join Fleet ${x.name}</button>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// Spectator mode: every admiral side by side.
+function spectatorPanel() {
+  const st = S.st;
+  const rows = st.players.map((o, i) => {
+    const oilIn = st.rigs.filter(r => r.owner === i).reduce((t, r) => t + E.rigRate(st, r), 0);
+    const pers = o.ai ? PERSONALITIES[o.ai.personality] : null, diff = o.ai ? DIFFICULTY[o.ai.difficulty] : null;
+    return `<div class="spec-row ${o.out ? 'out' : ''} ${i === st.current ? 'now' : ''}" style="--c:${pcol(i)}">
+      <div class="spec-name"><b>${o.name}</b> ${pers ? `<span class="small muted">${pers.icon} ${pers.name} · ${diff.icon} ${diff.name}</span>` : ''}${o.out ? ' <span class="small muted">· out</span>' : ''}</div>
+      <div class="stats">
+        <div class="stat"><span>Money</span><span class="v money">$${o.money}</span></div>
+        <div class="stat"><span>Oil</span><span class="v oil">${o.oil} (+${oilIn})</span></div>
+        <div class="stat"><span>Bases</span><span class="v">${E.basesOf(st, i).filter(b => !b.wrecked).length}</span></div>
+        <div class="stat"><span>Ships</span><span class="v">${st.ships.filter(s => s.owner === i).length}</span></div>
+        <div class="stat"><span>Techs</span><span class="v">${Object.keys(o.research.done).length}</span></div>
+        <div class="stat"><span>Building</span><span class="v">${(o.builds || []).length}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+  const log = st.players[st.current].log.slice(0, 30);
+  return `${victoryCard(st, st.current)}
+    <div class="card"><h3>👁 Spectating · round ${st.round}</h3><div class="spec-list">${rows}</div></div>
+    <div class="card"><h3>${st.players[st.current].name}'s log</h3><div class="log">${log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
+}
+
+// Everyone's standing, and your progress toward each way of winning.
+function victoryCard(st, p) {
+  const v = E.victorySummary(st, p);
+  const capOk = q => { const c = E.capitalOf(st, q); return c && !c.wrecked; };
+  const chips = st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ` <span title="${PERSONALITIES[o.ai.personality].name} · ${DIFFICULTY[o.ai.difficulty].name}">${PERSONALITIES[o.ai.personality].icon}🤖</span>` : ''}${o.out ? ' · out'
+    : o.exile != null ? ` · <b style="color:#ff6b6b">⚠ ${o.exile} turn${o.exile > 1 ? 's' : ''}</b>` : ''}${E.victoryOn(st, 'domination') && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">🗺️ ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('');
+  const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
+  const rows = [];
+  rows.push(`⚔️ <b>Conquest:</b> ${rivals.filter(capOk).length} rival Admiralt${rivals.filter(capOk).length === 1 ? 'y' : 'ies'} left${v.exile != null ? ` · <b style="color:#ff6b6b">yours is lost: ${v.exile} turn${v.exile > 1 ? 's' : ''} to rebuild or move it!</b>` : ''}`);
+  if (v.domination) rows.push(`🗺️ <b>Domination:</b> you claim ${v.domination.mine} squares, ${Math.round(v.domination.share * 100)}% of claimed sea (need ${Math.round(DOMINATION.share * 100)}% and ${v.domination.needMap} squares)`);
+  if (E.victoryOn(st, 'postoil')) {
+    const plants = (st.platforms || []).filter(o => o.kind === 'fusion' && (o.owner === p || E.getView(st, p).enemyPlatforms.includes(o)));
+    rows.push(`⚛️ <b>Post-Oil:</b> ${v.fusion ? `your Fusion Plant: ${v.fusion.buildLeft} turn${v.fusion.buildLeft === 1 ? '' : 's'} left` : st.players[p].research.done.fusion_engineering ? 'ready: build the Fusion Plant at a Hub' : 'research Era V (Fusion Engineering)'}${plants.filter(o => o.owner !== p).map(o => ` · <b style="color:#ff6b6b">${pname(o.owner)}'s plant: ${o.buildLeft} turns!</b>`).join('')}`);
+  }
+  if (E.victoryOn(st, 'lastrig')) {
+    const pct = Math.round(v.world.left / v.world.start * 100);
+    rows.push(`🛢️ <b>Last Rig:</b> ${v.world.final ? `<b style="color:#ffd666">Final Reserves: ${v.world.final.roundsLeft} rounds left</b>` : `world oil ${pct}% (countdown at ${Math.round(LAST_RIG.threshold * 100)}%)`} · you control ${v.oil}`);
+  }
+  return `<div class="card">
+    <h3>Admirals & victory</h3>
+    <div class="row" style="margin-top:0">${chips}</div>
+    <div class="victory-rows">${rows.map(r => `<div>${r}</div>`).join('')}</div>
+  </div>`;
 }
 
 function shipCard(s) {
@@ -144,7 +309,8 @@ function baseCard(b) {
     const unlocked = E.platformUnlocked(st, p, k);
     const cost = E.platformCost(st, p, k);
     const full = !def.onDeposit && E.slotsUsed(st, b) >= E.baseSlots(st, b);
-    const why = b.wrecked ? 'Base is wrecked' : !unlocked ? `Needs ${TECH[def.tech].name}` : full ? 'No free slots' : pl.money < cost ? 'Not enough money' : '';
+    const why = b.wrecked ? 'Base is wrecked' : !unlocked ? `Needs ${TECH[def.tech].name}` : def.megaproject && !E.victoryOn(st, 'postoil') ? 'Post-Oil victory is off'
+      : def.megaproject && b.level < def.needsLevel ? 'Needs a Hub (level 4) base' : full ? 'No free slots' : pl.money < cost ? 'Not enough money' : '';
     html += `<button class="plat-btn ${S.mode.kind === 'placePlatform' && S.mode.platform === k ? 'active' : ''} ${unlocked ? '' : 'locked'}" data-platform="${k}" ${why ? 'disabled' : ''}
       title="${def.text} ${def.turns} turns to build, $${Math.round(def.upkeep * E.pstat(st, p, 'platformUpkeepMult'))}/turn upkeep.${why ? ' (' + why + ')' : ''}">
       <span class="code">${def.code}</span><span>${def.name}</span><span class="cost">${unlocked ? '$' + cost : '🔒'}</span></button>`;
@@ -154,6 +320,8 @@ function baseCard(b) {
         ${next ? `<button data-upgrade="${b.id}" ${up ? 'disabled' : ''} title="${up || ''}">Upgrade to ${next.name} ($${next.cost})</button>${up ? `<span class="small muted">${up}</span>` : ''}` : '<span class="small muted">Highest base level.</span>'}
         <button data-deselect="1" class="ghost">Close</button>
       </div>
+      ${!b.capital && !b.wrecked && !E.moveCapitalProblem(st, p, b) ? `<div class="voyage" style="border-color:#7a3535;background:#2a1212;color:#f5b5b5">⚠ Your Admiralty is lost. Make this base your new Admiralty?
+        <div class="row" style="margin-top:6px"><button data-move-capital="${b.id}" class="primary">Move Admiralty here ($${CONQUEST.moveCapitalCost})</button></div></div>` : ''}
     </div>`;
   return html;
 }
@@ -174,7 +342,8 @@ export function describeAction(a, p = me()) {
 
 const describeShip = (def, p) => def.actions.map(a => `${a.name}: ${describeAction(a, p)}`).join('\n');
 
-function shapeSvg(shape) {
-  const s = 9, w = Math.max(...shape.map(c => c[0])) + 1, h = Math.max(...shape.map(c => c[1])) + 1;
-  return `<svg width="52" height="24" viewBox="0 0 52 24"><g transform="translate(${(52 - w * s) / 2},${(24 - h * s) / 2})">${shape.map(([x, y]) => `<rect x="${x * s}" y="${y * s}" width="${s - 1}" height="${s - 1}" rx="1.5" fill="#2bb3a3"/>`).join('')}</g></svg>`;
+function shapeSvg(shape, W = 52, H = 24) {
+  const w = Math.max(...shape.map(c => c[0])) + 1, h = Math.max(...shape.map(c => c[1])) + 1;
+  const s = Math.min(9, Math.floor((W - 4) / w), Math.floor((H - 2) / h));
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><g transform="translate(${(W - w * s) / 2},${(H - h * s) / 2})">${shape.map(([x, y]) => `<rect x="${x * s}" y="${y * s}" width="${s - 1}" height="${s - 1}" rx="1.5" fill="#2bb3a3"/>`).join('')}</g></svg>`;
 }

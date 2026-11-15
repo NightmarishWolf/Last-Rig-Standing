@@ -1,16 +1,11 @@
-// Buying ships, launch zones, and selling oil. (Founding bases and building rigs: see bases.js.)
+// Launch zones and selling oil. (Building ships: production.js. Founding bases and rigs: bases.js.)
 import { PLATFORMS } from '../data/bases.js';
 import { MARKET } from '../data/economy.js';
-import { SHIPS } from '../data/ships.js';
 import { activePlatforms, sellMultOf } from './bases.js';
-import { cellsOf, inSpawn } from './geometry.js';
-import { pstat, shipStat } from './modifiers.js';
-import { shipNeeds, shipUnlocked } from './research.js';
-import { addShip } from './setup.js';
+import { inSpawn } from './geometry.js';
+import { pstat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
 import { fail, log, ok } from './util.js';
-import { hiddenBlocker, placementOk, revealBlocker, visibility } from './visibility.js';
-import { TECH } from '../data/research.js';
 
 // Where new ships can appear: your spawn strip, near your forward ports, or near your dry docks.
 export function launchSites(st, p) {
@@ -21,31 +16,6 @@ export function launchSites(st, p) {
 export function inLaunchZone(st, p, cells) {
   if (cells.every(([x, y]) => inSpawn(st, p, x, y))) return true;
   return launchSites(st, p).some(o => cells.every(([x, y]) => Math.max(Math.abs(x - o.x), Math.abs(y - o.y)) <= o.r));
-}
-
-export const shipCost = (st, p, type) => shipStat(st, p, type, 'cost');
-
-export function doBuyShip(st, a) {
-  const p = st.current, def = SHIPS[a.ship];
-  if (!def) return fail('Unknown ship.');
-  if (!shipUnlocked(st, p, a.ship)) return fail(`Research ${TECH[shipNeeds(a.ship)]?.name || '?'} first.`);
-  const cost = shipCost(st, p, a.ship);
-  if (st.players[p].money < cost) return fail('Not enough money.');
-  const lim = def.passives?.limit;
-  if (lim && st.ships.filter(s => s.owner === p && s.type === a.ship).length >= lim) return fail(`Limit ${lim}.`);
-  const cells = cellsOf(a.ship, a.x, a.y, a.rot);
-  if (!inLaunchZone(st, p, cells)) return fail('New ships launch in your spawn zone, or near your forward ports and dry docks.');
-  if (!placementOk(st, p, cells, null, visibility(st, p))) return fail('That spot is blocked.');
-  const blk = hiddenBlocker(st, p, cells, null);
-  if (blk) {
-    revealBlocker(st, p, blk);
-    log(st, p, 'Launch blocked: an enemy is lurking in your launch zone!');
-    return ok();
-  }
-  st.players[p].money -= cost;
-  addShip(st, p, a.ship, a.x, a.y, a.rot);
-  log(st, p, `Bought a ${def.name}. It will be ready next turn.`);
-  return ok();
 }
 
 // Selling: price falls a little per unit sold (slower with some research), refineries and research pay more.

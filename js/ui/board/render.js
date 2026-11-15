@@ -9,6 +9,8 @@ import { hatch, roundRect } from './canvas.js';
 import { drawFog } from './fog.js';
 import { drawBasePieces, drawClaims } from './bases.js';
 import { drawMarkers } from './markers.js';
+import { drawUnitBadges, drawYardBadges } from './fleets.js';
+import { drawFx, tweenCells } from './fx.js';
 import { drawMinimap } from './minimap.js';
 import { drawModeOverlay } from './modes.js';
 import { drawOilTooltip } from './tooltip.js';
@@ -17,6 +19,19 @@ import { visibleRange } from '../camera.js';
 import { CODES, COL, MARGIN } from '../constants.js';
 import { me, pcol, px, py } from '../helpers.js';
 import { S } from '../state.js';
+
+// Spectator mode: the whole map, every fleet, no fog.
+export function spectatorView(st) {
+  const base = E.getView(st, st.current);
+  return {
+    ...base,
+    me: { ...base.me, shots: [], incoming: [], flashes: [], spoofs: [], scans: [] },
+    myShips: [], myRigs: [], myMines: [], myPorts: [], myPlatforms: [], myBases: [], myFleets: [], builds: [],
+    enemyShips: st.ships.map(s => ({ id: s.id, owner: s.owner, cells: E.shipCells(s), type: s.type, hp: s.hp })),
+    enemyRigs: st.rigs, enemyPorts: st.ports || [], enemyPlatforms: st.platforms || [], enemyBases: st.bases || [],
+    deposits: st.deposits,
+  };
+}
 
 // Ask for a redraw on the next animation frame (mouse moves, scrolling, zooming).
 export function requestDraw() {
@@ -51,7 +66,7 @@ export function terrainImage(p) {
 export function draw() {
   if (!S.st) return;
   const p = me();
-  const v = E.getView(S.st, p);
+  const v = S.spectate ? spectatorView(S.st) : E.getView(S.st, p);
   const ctx = S.ctx, cell = S.cell;
   const R = visibleRange();
   const inView = (x, y) => x >= R.x0 - 1 && x <= R.x1 + 1 && y >= R.y0 - 1 && y <= R.y1 + 1;
@@ -168,7 +183,7 @@ export function draw() {
     ctx.strokeStyle = 'rgba(255,140,60,0.9)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(px(s.x) + cell / 2, py(s.y) + cell / 2, Math.max(2, cell * 0.3), 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
   }
-  drawFog(v);
+  if (!S.spectate) drawFog(v);
   drawClaims(v);
 
   // ---- units ----
@@ -188,9 +203,15 @@ export function draw() {
   drawBasePieces(v);
   for (const s of v.myShips) {
     if (!inView(s.x, s.y) && !inView(s.x + 4, s.y + 4)) continue;
-    drawHull(E.shipCells(s), pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+    drawHull(tweenCells(s.id, E.shipCells(s)), pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
   }
-  for (const s of v.enemyShips) drawHull(s.cells, pcol(s.owner), false, 1, '?', undefined, true);
+  drawUnitBadges(v);
+  drawYardBadges();
+  for (const s of v.enemyShips) {
+    if (S.spectate) drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+    else drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, '?', undefined, true);
+  }
+  drawFx();
   for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
   // my shot markers
   const m = Math.max(1, Math.min(6, cell * 0.2));

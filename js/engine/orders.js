@@ -44,9 +44,27 @@ export function followOrder(st, ship) {
   return total;
 }
 
+// Sail one ship toward (x, y) with this turn's movement and oil.
+// Returns 'arrived', 'moving', 'stuck', 'waiting' (can't move now), 'nooil', 'noroute' or 'sunk'.
+export function sailToward(st, ship, x, y, rot = null, maxSteps = Infinity) {
+  const there = () => ship.x === x && ship.y === y && (rot == null || ship.rot === rot);
+  if (there()) return 'arrived';
+  if ((ship.acted && !passives(ship).hitAndRun) || ship.movesLeft <= 0) return 'waiting';
+  const path = findPath(st, ship, x, y, rot, undefined, null, maxSteps);
+  if (!path) return 'noroute';
+  let steps = Math.min(ship.movesLeft, path.length);
+  while (steps > 0 && moveCost(st, ship, steps) > st.players[ship.owner].oil) steps--;
+  if (steps <= 0) return 'nooil';
+  const taken = sailPath(st, ship, path.slice(0, steps));
+  if (!st.ships.includes(ship)) return 'sunk';
+  return there() ? 'arrived' : taken ? 'moving' : 'stuck';
+}
+
 export function doSetOrder(st, a) {
   const ship = st.ships.find(s => s.id === a.shipId);
   if (!ship || ship.owner !== st.current) return fail('Not your ship.');
+  const f = (st.fleets || []).find(f => f.members.some(m => m.id === ship.id));
+  if (f) return fail(`This ship sails with Fleet ${f.name}. Give the fleet a destination, or take the ship out of the fleet.`);
   const points = (a.points || [{ x: a.x, y: a.y, rot: a.rot ?? ship.rot }]).map(p => ({ x: p.x, y: p.y, rot: p.rot ?? null }));
   if (!points.length) return fail('No destination.');
   if (points[points.length - 1].rot == null) points[points.length - 1].rot = ship.rot;
@@ -55,6 +73,7 @@ export function doSetOrder(st, a) {
   const len = legs.reduce((t, l) => t + l.length, 0);
   if (!len) return fail('Already there.');
   ship.order = { points };
+  ship.standing = null; // a voyage replaces any standing order
   const dest = points[points.length - 1];
   log(st, ship.owner, `${SHIPS[ship.type].name} set sail for ${coord(dest.x, dest.y)}${points.length > 1 ? ` via ${points.length - 1} waypoint${points.length > 2 ? 's' : ''}` : ''} (${len} squares).`);
   followOrder(st, ship);

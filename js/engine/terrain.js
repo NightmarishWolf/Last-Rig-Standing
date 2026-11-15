@@ -2,6 +2,9 @@
 // Built from seeded "value noise" so the same seed always makes the same world.
 import { rand } from './rng.js';
 
+const SPAWN_CLEAR = 4; // squares of guaranteed open water around each spawn strip
+const SPAWN_FADE = 8;  // then land fades in gradually over this many squares
+
 // Smooth random field: random values on a coarse lattice, blended smoothly in between.
 function noiseLayer(st, W, H, spacing) {
   const gw = Math.ceil(W / spacing) + 2, gh = Math.ceil(H / spacing) + 2;
@@ -45,6 +48,15 @@ export function generateTerrain(st, landShare) {
   const mid = noiseLayer(st, W, H, Math.max(6, W / 14));    // coastlines and big islands
   const small = noiseLayer(st, W, H, Math.max(3, W / 40));  // archipelagos and rocks
   const elev = new Float32Array(W * H);
+  const spawnDist = (x, y) => {
+    let best = Infinity;
+    for (const pl of st.players) {
+      const r = pl.spawn;
+      const dx = Math.max(r.x0 - x, 0, x - r.x1), dy = Math.max(r.y0 - y, 0, y - r.y1);
+      best = Math.min(best, Math.max(dx, dy));
+    }
+    return best;
+  };
   const homeDist = (x, y) => {
     let best = Infinity;
     for (const pl of st.players) {
@@ -61,6 +73,11 @@ export function generateTerrain(st, landShare) {
       // fewer islands inside home waters, fading out over a few squares
       const hd = homeDist(x, y);
       if (hd === 0) e -= 0.15; else if (hd < 6) e -= 0.15 * (1 - hd / 6);
+      // keep spawn strips in open water: nothing within SPAWN_CLEAR squares, and land thins out
+      // smoothly over the next SPAWN_FADE squares, so coastlines curve away instead of being cut off
+      const sd = spawnDist(x, y);
+      if (sd <= SPAWN_CLEAR) e -= 2;
+      else if (sd < SPAWN_CLEAR + SPAWN_FADE) e -= 0.45 * (1 - (sd - SPAWN_CLEAR) / SPAWN_FADE);
       elev[i] = e;
     }
   // pick the height that gives roughly `landShare` land

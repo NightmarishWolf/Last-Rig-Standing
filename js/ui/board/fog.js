@@ -3,14 +3,14 @@ import * as E from '../../engine/index.js';
 import { PORT, RIG } from '../../data/economy.js';
 import { SHIPS } from '../../data/ships.js';
 import { outlineArea } from './canvas.js';
-import { px, py } from '../helpers.js';
+import { me, px, py } from '../helpers.js';
 import { S } from '../state.js';
 
 // ---------- fog of war ----------
 // Squares one of my ships or rigs can see right now.
 function visionSet(v) {
   const seen = new Set();
-  for (const [cells, r] of E.sightSources(S.st, S.st.current))
+  for (const [cells, r] of E.sightSources(S.st, me()))
     for (const [cx, cy] of cells)
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         const x = cx + dx, y = cy + dy;

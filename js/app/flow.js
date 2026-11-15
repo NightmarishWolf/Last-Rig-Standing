@@ -8,8 +8,11 @@ import { startTimer, stopTimer } from './timer.js';
 import { tutorial } from './tutorialHost.js';
 import { PLAYER_COLORS } from '../data/maps.js';
 import { newTutorialGame } from '../tutorial/map.js';
-import { showOverlay } from '../ui/dialogs.js';
+import { closeOverlay, showOverlay } from '../ui/dialogs.js';
 import { refresh, setState } from '../ui/index.js';
+import { toast } from '../ui/status.js';
+import { isBot } from '../ai/index.js';
+import { humans, playBotTurns } from './bots.js';
 
 export function startTutorial() {
   stopTimer(); A.sessionActive = false;
@@ -34,7 +37,16 @@ export function handoff(st, reason) {
     refresh();
     return;
   }
+  // a computer's turn: let the bots play, then come back here for the next human
+  if (isBot(st, st.current)) { playBotTurns(s => (s.phase === 'over' ? gameOver(s) : handoff(s, reason))); return; }
   const p = st.current, pl = st.players[p];
+  // only one human at the table: no need to pass the device around
+  if (humans(st).length === 1) {
+    if (document.querySelector('#overlay [data-curtain]')) closeOverlay();
+    A.sessionActive = true; refresh(); startTimer();
+    if (reason) toast(reason);
+    return;
+  }
   showOverlay(`
     ${reason ? `<p style="color:#ff6b6b;font-weight:700;margin-top:0">${reason}</p>` : ''}
     <h2><span style="color:${PLAYER_COLORS[p]}">${pl.name}</span>'s turn</h2>
@@ -46,14 +58,15 @@ export function handoff(st, reason) {
 
 export function gameOver(st) {
   stopTimer();
+  refresh();
   if (st.tutorial) {
     showOverlay(`
       <h2>Tutorial complete!</h2>
       <p>You sank the enemy's last ship, and with no rigs or money left, they're out. That's how you win: be the <b>last rig standing</b>.</p>
-      <p class="muted">You learned to move, survey, build rigs, sell oil, buy ships, scout and attack. In a real game:</p>
+      <p class="muted">You learned to move, survey, build rigs, sell oil, build ships, research, form fleets, give standing orders, scout and attack. In a real game:</p>
       <ul class="muted">
         <li>Enemies shoot back, and firing reveals your rough position.</li>
-        <li>Own 3 rigs to unlock Tier 2 ships, 5 rigs for Tier 3.</li>
+        <li>Research unlocks bigger ships, platforms and base upgrades.</li>
         <li>The best oil is in No Man's Sea, so you'll have to fight for it.</li>
         <li>Check <b>Rules</b> any time for the details.</li>
       </ul>
@@ -67,7 +80,12 @@ export function gameOver(st) {
   const w = st.winner;
   showOverlay(`
     <h2>${w === null ? 'Nobody' : `<span style="color:${PLAYER_COLORS[w]}">${st.players[w].name}</span>`} wins!</h2>
-    <p class="muted">${w === null ? 'Every fleet went down.' : st.winReason === 'domination' ? `${st.players[w].name} held No Man's Sea for 5 rounds straight. Domination victory in round ${st.round}.` : `${st.players[w].name} is the last rig standing after ${st.round} rounds.`}</p>
+    <p style="font-size:18px">${w === null ? '' : { domination: '🗺️ Domination victory', postoil: '⚛️ Post-Oil victory', lastrig: '🛢️ Last Rig Standing victory' }[st.winReason] || '⚔️ Conquest victory'}</p>
+    <p class="muted">${w === null ? 'Every fleet went down.'
+      : st.winReason === 'domination' ? `${st.players[w].name} ruled the seas round after round. Victory in round ${st.round}.`
+      : st.winReason === 'postoil' ? `${st.players[w].name} brought the Deep-Sea Fusion Plant online. The oil age is over, in round ${st.round}.`
+      : st.winReason === 'lastrig' ? `The world's oil ran out, and ${st.players[w].name} held the last of it. Round ${st.round}.`
+      : `Every rival Admiralty has fallen. ${st.players[w].name} rules the sea after ${st.round} rounds.`}</p>
     <div class="row" style="margin-top:16px"><button class="primary big" data-new>New game</button></div>`,
   (card) => card.querySelector('[data-new]').onclick = () => showSetup(false));
 }
