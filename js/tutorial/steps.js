@@ -51,7 +51,7 @@ export const STEPS = [
   {
     title: 'Build an oil rig',
     text: `Found one! The amber circle marked <b>S</b> is a small deposit (M = medium, R = rich). The <b style="color:#a9d77a">green</b> water is the area you've surveyed.<br>
-      Click <b>Build rig</b>, then click the deposit. That founds a new <b>rig base</b>, which needs one of your ships right next to it.`,
+      Click <b>Build rig</b>, then click the deposit. That founds a new <b>rig base</b>, which needs one of your ships right next to it (Survey Ships can do it from 5 squares away).`,
     highlight: '[data-rig]',
     markers: [{ x0: 5, y0: 9, x1: 5, y1: 9, label: 'Build here' }],
     check: st => st.rigs.some(r => r.owner === 0 && r.depId === DEP_FOUND),

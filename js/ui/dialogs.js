@@ -48,7 +48,7 @@ export function showRules() {
       <li>Deposits are hidden and move every game. Use <b>Survey</b> to find them. S/M/R = small/medium/rich. Water you've surveyed turns <b style="color:#a9d77a">green</b>, so you know where you've already looked.</li>
       <li>Every deposit starts with a random amount of oil. Hover over a deposit or rig to see what's left (e.g. 18/35). Rigs pump the same rate until the deposit runs dry.</li>
       <li>Home deposits are modest and run dry after a while (every player's home gets the exact same amounts). No Man's Sea deposits hold several times more, so sooner or later you have to go fight for them.</li>
-      <li>Build a rig on a discovered deposit next to one of your ships to found a <b>rig base</b>. You start with one: your <b>Admiralty</b> (★).</li>
+      <li>Build a rig on a discovered deposit to found a <b>rig base</b>. You need a ship right next to it, or a Survey Ship, Command Ship, Repair Ship or Carrier within 5 squares. You start with one: your <b>Admiralty</b> (★).</li>
     </ul>
     <h4>Rig bases</h4>
     <ul>

@@ -17,7 +17,7 @@
 //   mine, repair, spoof, salvage: see engine/abilities.js.
 //   free: true means it does not use up the ship's action.
 // passives: armor, submerged, sonar, screen, airDefense, fuelLine,
-//   mobileRig, command, jam, hitAndRun, upkeep, limit.
+//   mobileRig, command, jam, hitAndRun, upkeep, limit, rigReach (found rig bases from this many squares away).
 // ============================================================
 
 export const SHIPS = {
@@ -33,6 +33,7 @@ export const SHIPS = {
   },
   survey: {
     name: 'Survey Ship', cls: 'light', cost: 150, build: 1, hp: 1, oil: 1, move: 5, sight: 3,
+    passives: { rigReach: 5 },
     shape: [[0, 0]],
     actions: [{ id: 'deep', kind: 'survey', name: 'Deep Survey', radius: 2 }],
   },
@@ -124,6 +125,7 @@ export const SHIPS = {
   },
   repair: {
     name: 'Repair Ship', cls: 'support', cost: 350, build: 2, hp: 3, oil: 1, move: 2, sight: 1,
+    passives: { rigReach: 5 },
     shape: [[0, 0], [1, 0], [0, 1], [1, 1]],
     actions: [{ id: 'repair', kind: 'repair', name: 'Repair', amount: 2 }],
   },
@@ -137,6 +139,7 @@ export const SHIPS = {
   // ---------- Capital ships ----------
   carrier: {
     name: 'Carrier', cls: 'capital', cost: 700, build: 5, hp: 6, oil: 2, move: 2, sight: 4,
+    passives: { rigReach: 5 },
     shape: [[3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
     actions: [
       { id: 'recon', kind: 'scan', tag: 'scan', name: 'Recon Flight', range: 8, size: 4, free: true },
@@ -152,7 +155,7 @@ export const SHIPS = {
   command: {
     name: 'Command Ship', cls: 'capital', cost: 600, build: 4, hp: 5, oil: 2, move: 2, sight: 4,
     shape: [[2, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
-    passives: { command: 3 },
+    passives: { rigReach: 5, command: 3 },
     actions: [],
   },
   nuclearsub: {
@@ -187,4 +190,5 @@ export const PASSIVE_TEXT = {
   hitAndRun: () => 'Hit and Run: can still move after attacking',
   upkeep: v => `Uses no oil to move (upkeep $${v} per turn)`,
   limit: v => `Limit ${v} per player`,
+  rigReach: v => `Rig Crews: can found a rig base on a deposit up to ${v} squares away (other ships must be right next to it)`,
 };

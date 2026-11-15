@@ -89,7 +89,7 @@ export async function expansion(ctx) {
       const off = spotNextTo(ctx, sitter, t.x, t.y, 2);
       if (off) await sailSome(ctx, sitter, off.x, off.y, off.rot);
     }
-    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= 1 && !E.shipAt(st, t.x, t.y, o => o.owner === p)) {
+    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) && !E.shipAt(st, t.x, t.y, o => o.owner === p)) {
       if (me.money >= E.baseFoundCost(st, p) + Math.max(40, E.upkeepTotal(st, p) * 3)) {
         const r = await ctx.do({ type: 'buyRig', x: t.x, y: t.y });
         if (r.ok && st.rigs.some(x => x.x === t.x && x.y === t.y && x.owner === p)) delete ctx.mem.tasks[s.id];
@@ -97,10 +97,10 @@ export async function expansion(ctx) {
       continue;
     }
     // not there yet: sail on (the spot is re-checked every turn in case something moved into it)
-    const spot = spotNextTo(ctx, s, t.x, t.y);
-    const res = spot ? await sailSome(ctx, s, spot.x, spot.y, spot.rot) : 'noroute';
+    const spot = E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) ? null : spotNextTo(ctx, s, t.x, t.y, Math.min(E.rigReachOf(s), 3));
+    const res = !spot && E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) ? 'arrived' : spot ? await sailSome(ctx, s, spot.x, spot.y, spot.rot) : 'noroute';
     if (res === 'noroute' || res === 'stuck') { t.fails = (t.fails || 0) + 1; if (t.fails > 2) delete ctx.mem.tasks[s.id]; }
-    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= 1 && me.money >= E.baseFoundCost(st, p) + Math.max(40, E.upkeepTotal(st, p) * 3)) {
+    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) && me.money >= E.baseFoundCost(st, p) + Math.max(40, E.upkeepTotal(st, p) * 3)) {
       const r = await ctx.do({ type: 'buyRig', x: t.x, y: t.y });
       if (r.ok && st.rigs.some(x => x.x === t.x && x.y === t.y && x.owner === p)) delete ctx.mem.tasks[s.id];
     }
@@ -127,7 +127,7 @@ export async function expansion(ctx) {
       ctx.mem.tasks[s.id] = { kind: 'expand', dep: d.id, x: d.x, y: d.y, since: st.round };
       if (s.standing) await ctx.do({ type: 'setStanding', shipId: s.id, standing: null });
       if (s.order) await ctx.do({ type: 'cancelOrder', shipId: s.id });
-      if (E.dist(E.shipCells(s), [[d.x, d.y]]) > 1 && (await sailSome(ctx, s, spot.x, spot.y, spot.rot)) === 'noroute') { delete ctx.mem.tasks[s.id]; continue; }
+      if (E.dist(E.shipCells(s), [[d.x, d.y]]) > E.rigReachOf(s) && (await sailSome(ctx, s, spot.x, spot.y, spot.rot)) === 'noroute') { delete ctx.mem.tasks[s.id]; continue; }
       slots--;
     }
   }

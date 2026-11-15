@@ -56,7 +56,7 @@ export function updateStatus() {
   else if (S.mode.kind === 'placeRig') {
     const any = E.getView(S.st, me()).deposits.some(d => !E.rigBuildProblem(S.st, me(), d.x, d.y));
     const why = S.hover && E.rigBuildProblem(S.st, me(), S.hover.x, S.hover.y);
-    t = !any ? '<b>No deposit available right now.</b> A rig needs a discovered deposit with one of your ships right next to it. Esc to cancel.'
+    t = !any ? '<b>No deposit available right now.</b> A rig needs a discovered deposit with one of your ships right next to it (Survey, Command, Repair Ships and Carriers can be up to 5 squares away). Esc to cancel.'
       : S.hover && !why ? `Click to build a rig here for <b class="money">$${E.rigCost(S.st, me())}</b>.`
       : `Click a <b style="color:#7fd17a">highlighted deposit</b> to build a rig.${why && S.hover ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
   }

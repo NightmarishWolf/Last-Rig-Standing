@@ -11,6 +11,7 @@
 // ============================================================
 import { ADMIRALTY, BASE_FOUNDING, BASE_LEVELS, PLATFORMS, QUARTERS_NEEDED_FROM } from '../data/bases.js';
 import { DEPOSITS, RIG } from '../data/economy.js';
+import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { maxBaseLevel, platformUnlocked } from './research.js';
@@ -65,6 +66,9 @@ export function rigRate(st, r) {
 // ---------- founding / rebuilding ----------
 // Building a "rig" on a deposit: founds a new base, rebuilds a wrecked one,
 // or (inside your own claim) builds a Wellhead platform.
+// How far from a deposit a ship can be and still found a base there (most ships: right next to it).
+export const rigReachOf = s => SHIPS[s.type].passives?.rigReach || 1;
+
 export function rigBuildProblem(st, p, x, y) {
   const dep = st.deposits.find(d => d.x === x && d.y === y);
   if (!dep || !st.players[p].known[dep.id]) return 'Rigs go on oil deposits you have discovered.';
@@ -79,7 +83,7 @@ export function rigBuildProblem(st, p, x, y) {
     if (shipAt(st, x, y, s => s.owner === p)) return 'Move your ship off the deposit first.';
     return null;
   }
-  if (!st.ships.some(s => s.owner === p && dist(shipCells(s), [[x, y]]) <= 1)) return 'One of your ships must be next to the deposit to found a base.';
+  if (!st.ships.some(s => s.owner === p && dist(shipCells(s), [[x, y]]) <= rigReachOf(s))) return 'You need a ship right next to the deposit, or a Survey, Command, Repair Ship or Carrier within 5 squares, to found a base.';
   if (st.players[p].money < baseFoundCost(st, p)) return 'Not enough money.';
   if (shipAt(st, x, y, s => s.owner === p)) return 'Move your ship off the deposit first.';
   return null;
