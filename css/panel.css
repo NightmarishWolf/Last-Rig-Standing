@@ -64,3 +64,4 @@
 .dots::after { content: '…'; animation: dots 1.2s steps(4) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
 @keyframes dots { from { width: 0; } to { width: 1.2em; } }
 .botbar button { padding: 3px 10px; font-size: 12px; }
+.warn-box { border-color: #7a3535; background: #2a1212; color: #f5c5c5; }

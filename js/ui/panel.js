@@ -20,7 +20,34 @@ export function renderTop() {
     `<b style="color:${pcol(p)}">${pname(p)}</b> · Round ${S.st.round}` +
     ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>` +
     (S.st.finalReserves ? ` <span class="alert-badge">🛢️ Final Reserves: ${S.st.finalReserves.roundsLeft} rounds</span>` : '') +
-    (S.st.players[p].exile != null ? ` <span class="alert-badge red">⚠ Admiralty lost: ${S.st.players[p].exile} turns</span>` : '');
+    (S.st.players[p].exile != null ? ` <span class="alert-badge red">⚠ Admiralty lost: ${S.st.players[p].exile} turns</span>` : '') +
+    upkeepBadges(p);
+}
+
+// Warnings in the top bar: next turn's upkeep can't be paid, or there's not enough oil for your orders.
+function upkeepBadges(p) {
+  if (S.botTurn || S.spectate || S.st.phase !== 'playing') return '';
+  const f = E.upkeepForecast(S.st, p), o = E.oilForecast(S.st, p);
+  let out = '';
+  if (f.unpaid.length) out += ` <span class="alert-badge red" title="Next turn's upkeep is $${f.need + f.funding}; you have $${S.st.players[p].money}. Unpaid ships lose 1 HP.">⚠ Upkeep short $${f.short}: ${f.sinking.length ? `${E.shipNames(f.sinking)} will sink` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} lose HP`}</span>`;
+  else if (f.need > 0 && S.st.players[p].money < f.need * 3) {
+    const turns = Math.floor(S.st.players[p].money / Math.max(1, f.need + f.funding));
+    out += ` <span class="alert-badge" title="Upkeep is $${f.need + f.funding} a turn. Sell oil before it runs out: unpaid ships lose HP, and 1-HP ships like Survey Ships sink.">💰 Money for ${turns} more turn${turns === 1 ? '' : 's'} of upkeep</span>`;
+  }
+  if (o.short) out += ` <span class="alert-badge" title="Ships on voyages or standing orders want ${o.want} oil at the end of this turn; you have ${o.have}.">⛽ Low oil: some orders will stall</span>`;
+  return out;
+}
+
+// The same warning, with a fix, in the Resources card.
+function upkeepWarning(st, p) {
+  const f = E.upkeepForecast(st, p);
+  if (!f.unpaid.length) return '';
+  const fix = f.oilToCover != null
+    ? `<button data-cover="${f.oilToCover}" class="primary">Sell ${f.oilToCover} oil to cover it</button>`
+    : '<span class="small">Not enough oil to cover it: sell a ship, or cut research funding.</span>';
+  return `<div class="voyage warn-box">⚠ <b>Next turn's upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''}, you have $${st.players[p].money}.</b>
+    ${f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`} if you end your turn like this.
+    <div class="row" style="margin-top:6px">${fix}</div></div>`;
 }
 
 // ---------- panel ----------
@@ -56,6 +83,7 @@ export function renderPanel() {
       ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}
       <button data-end="1" class="primary" style="margin-left:auto">End turn</button>
     </div>
+    ${upkeepWarning(st, p)}
   </div>`;
 
   if (b) html += baseCard(b);

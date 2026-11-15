@@ -6,7 +6,7 @@ import { centerOffset, me, planRot, reach, select, selected } from './helpers.js
 import { dispatch, endTurnNow, refresh } from './index.js';
 import { S } from './state.js';
 import { currentYard, nearbyLoners } from './panel.js';
-import { showConfirm } from './dialogs.js';
+import { showConfirm, showOverlay } from './dialogs.js';
 import { toast } from './status.js';
 import { closeResearch, openResearch, researchOpen, renderResearch } from './research.js';
 import { requestDraw } from './board/render.js';
@@ -214,7 +214,13 @@ export function onPanelClick(e) {
   if (d.rig) S.mode = S.mode.kind === 'placeRig' ? { kind: 'idle' } : { kind: 'placeRig' };
   if (d.port) S.mode = S.mode.kind === 'placePort' ? { kind: 'idle' } : { kind: 'placePort' };
   if (d.sell) dispatch({ type: 'sell', amount: d.sell === 'all' ? S.st.players[me()].oil : Number(d.sell) });
-  if (d.end) return endTurnNow();
+  if (d.cover) dispatch({ type: 'sell', amount: Number(d.cover) });
+  if (d.end) {
+    // about to let ships go unpaid? say so first
+    const f = E.upkeepForecast(S.st, me());
+    if (f.unpaid.length) return confirmUnpaid(f);
+    return endTurnNow();
+  }
   if (d.deselect) { S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' }; }
   if (d.cancelOrder) dispatch({ type: 'cancelOrder', shipId: S.selectedId });
   if (d.platform) S.mode = S.mode.kind === 'placePlatform' && S.mode.platform === d.platform ? { kind: 'idle' } : { kind: 'placePlatform', platform: d.platform, baseId: S.selectedBase };
@@ -230,6 +236,22 @@ export function onPanelClick(e) {
   if (d.clearPlan) S.plan = [];
   if (d.center && selected()) centerOn(selected().x, selected().y);
   refresh();
+}
+
+// End turn with upkeep that can't be paid: offer to sell oil first.
+function confirmUnpaid(f) {
+  const what = f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`;
+  showOverlay(`<h2>⚠ You can't pay next turn's upkeep</h2>
+    <p class="muted">Upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''} and you have $${S.st.players[me()].money}. ${what}.</p>
+    <div class="row" style="margin-top:16px">
+      ${f.oilToCover != null ? `<button class="primary big" data-fix>Sell ${f.oilToCover} oil, then end turn</button>` : ''}
+      <button class="big ${f.oilToCover != null ? 'ghost' : 'danger'}" data-anyway>End turn anyway</button>
+      <button class="big ghost" data-back>Back</button>
+    </div>`, (card, close) => {
+    card.querySelector('[data-fix]')?.addEventListener('click', () => { close(); dispatch({ type: 'sell', amount: f.oilToCover }); endTurnNow(); });
+    card.querySelector('[data-anyway]').onclick = () => { close(); endTurnNow(); };
+    card.querySelector('[data-back]').onclick = () => { close(); refresh(); };
+  });
 }
 
 // Clicks inside the research screen.
