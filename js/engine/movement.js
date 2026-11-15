@@ -2,7 +2,7 @@
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
 import { cellsOf, coord, shipCells, turnAnchor } from './geometry.js';
-import { moveCost } from './stats.js';
+import { chargeMove, moveCost } from './stats.js';
 import { shipStat } from './modifiers.js';
 import { checkWin } from './turns.js';
 import { fail, log, ok, passives } from './util.js';
@@ -85,7 +85,6 @@ export function stepShip(st, ship, x, y, r) {
 // Sail a ship along a list of {x, y} steps: stops early on hidden enemies or mines,
 // pays oil for the squares actually sailed. Returns how many steps were taken.
 export function sailPath(st, ship, path) {
-  const fullCost = moveCost(st, ship, path.length);
   let steps = 0;
   for (const step of path) {
     const res = stepShip(st, ship, step.x, step.y, step.r ?? ship.rot);
@@ -93,7 +92,7 @@ export function sailPath(st, ship, path) {
     steps++;
     if (res === 'stopped') break;
   }
-  st.players[ship.owner].oil -= steps === path.length ? fullCost : moveCost(st, ship, steps);
+  chargeMove(st, ship, steps);
   ship.movesLeft -= steps;
   return steps;
 }
@@ -118,6 +117,6 @@ export function doRotate(st, a) {
   }
   ship.x = nx; ship.y = ny; ship.rot = rot;
   ship.movesLeft -= 1;
-  st.players[ship.owner].oil -= cost;
+  chargeMove(st, ship, 1);
   return ok();
 }

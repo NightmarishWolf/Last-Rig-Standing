@@ -14,7 +14,7 @@ import { cellsOf, coord, inBounds, shipCells } from './geometry.js';
 import { shipStat } from './modifiers.js';
 import { sailPath, stepShip } from './movement.js';
 import { blockedGrid, findPath } from './pathfind.js';
-import { moveCost } from './stats.js';
+import { chargeMove, moveCost } from './stats.js';
 import { checkWin } from './turns.js';
 import { fail, log, ok, passives } from './util.js';
 
@@ -241,7 +241,7 @@ export function advanceFleet(st, f, pt) {
       if (r2 !== 'ok') lock = lock.filter(o => o !== s);
     }
   }
-  for (const [s, c] of steps) if (c) { st.players[f.owner].oil -= moveCost(st, s, c); s.movesLeft -= c; }
+  for (const [s, c] of steps) if (c) { chargeMove(st, s, c); s.movesLeft -= c; }
   f.movedTurn = st.turnCount; f.moved = used + taken;
   catchUp(st, f);
   tidyFleets(st);

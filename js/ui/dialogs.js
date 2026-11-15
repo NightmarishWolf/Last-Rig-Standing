@@ -28,7 +28,7 @@ export function showRules() {
     <p>Any seat can be a <b>computer player</b> (pick it on the New game screen): Easy, Normal, Hard or Admiral+, each with a personality. Bots follow the same rules and never see through the fog of war. You'll watch their moves that your fleet can see; <b>Skip ⏩</b> finishes a bot's turn instantly. Make every seat a computer to spectate.</p>
     <h4>Your turn</h4>
     <ul>
-      <li>Each ship can <b>move</b> (up to its Move, paying oil per square) and take <b>one action</b> (attack, scan, survey…). Once a ship attacks it can't move, unless it has Hit and Run.</li>
+      <li>Each ship can <b>move</b> (up to its Move, paying oil per square: small boats sip about 0.2–0.3 oil a square, capital ships burn 1 or more; fractions carry over between moves) and take <b>one action</b> (attack, scan, survey…). Once a ship attacks it can't move, unless it has Hit and Run.</li>
       <li><b>Turning:</b> press <b>R</b> to plan which way a selected ship will face. The preview shows it, and the ship only turns (one square of movement per 90°) when you click to move it or send it on a voyage. It can turn anywhere along the way where there's room.</li>
       <li><b>Voyages:</b> click anywhere beyond a ship's teal movement area to send it on a multi-turn voyage. It sails on by itself every time you end your turn, until it arrives. Clicking a normal move or <b>Cancel voyage</b> stops it.</li>
       <li><b>Waypoints:</b> hold <b>Shift</b> and click to add stops along the way (A, then B, then C) to route ships around islands, mines or enemy waters, then click normally to set the final destination. Esc clears the stops.</li>

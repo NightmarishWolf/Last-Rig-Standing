@@ -38,7 +38,21 @@ function fuelLineActive(st, ship) {
 }
 
 // Oil for sailing `steps` squares (turns count as a square). Research can make it cheaper.
+// Ships keep the unused part of their last whole oil (ship.fuel), so fractions aren't lost:
+// a ship at 0.2 oil per square pays 1 oil for its first square and then sails 4 more for free.
 export function moveCost(st, ship, steps) {
+  if (steps <= 0) return 0;
   const rate = shipStat(st, ship.owner, ship.type, 'oil');
-  return Math.ceil((fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - 1e-9);
+  const need = (fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - (ship.fuel || 0);
+  return Math.max(0, Math.ceil(need - 1e-9));
+}
+// Actually pay for `steps` squares: takes the oil and keeps the leftover fraction on the ship.
+export function chargeMove(st, ship, steps) {
+  if (steps <= 0) return 0;
+  const rate = shipStat(st, ship.owner, ship.type, 'oil');
+  const need = (fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - (ship.fuel || 0);
+  const cost = Math.max(0, Math.ceil(need - 1e-9));
+  ship.fuel = Math.max(0, Math.round((cost - need) * 1000) / 1000);
+  st.players[ship.owner].oil -= cost;
+  return cost;
 }

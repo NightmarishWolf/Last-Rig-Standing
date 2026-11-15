@@ -43,6 +43,18 @@ bot, it's **spectator mode** with the whole map revealed.
 **Research.** A 100-tech tree in seven branches (press **T** or the 🔬 button). Research points come from your
 Admiralty, Research Labs and funding. Fourteen ⚖ doctrine pairs force real choices: pick one, lose the other.
 
+## Put it on GitHub Pages
+
+1. Create a new repository on GitHub (for example `last-rig-standing`).
+2. Upload everything in this folder (`index.html`, `css/`, `js/`) to the repository root.
+   On the repo page: **Add file → Upload files**, drag the files in, commit.
+3. Go to **Settings → Pages**. Under "Build and deployment", set Source to **Deploy from a branch**,
+   pick **main** and **/ (root)**, then **Save**.
+4. After a minute, your game is live at `https://YOUR-USERNAME.github.io/last-rig-standing/`.
+
+To test on your own computer, the browser needs a local server (modules don't load from `file://`):
+`python -m http.server` in this folder, then open http://localhost:8000.
+
 ## Where things live
 
 Each feature has its own small file. Start in `js/data/` for balance changes.
@@ -128,6 +140,19 @@ js/
 tools/
   simulate.mjs           bot-vs-bot simulator (needs Node.js 18+): node tools/simulate.mjs games=20 size=small players=4
 ```
+
+### Common edits
+
+- **Balance a ship:** change its numbers in `js/data/ships.js` (`build` = turns to build).
+- **Shipyard slots, fleet size, standing order text:** `js/data/production.js`.
+- **Add a ship:** add an entry to `SHIPS` in `js/data/ships.js` and a two-letter label in `CODES` in `js/ui/constants.js`.
+  If it uses a brand-new ability, add it in `js/engine/abilities.js`.
+- **Economy tuning:** `js/data/economy.js`.
+- **Add or change a tech:** `js/data/research.js` (the header explains every effect you can use).
+- **Add or change a platform or base level:** `js/data/bases.js`.
+- **Map sizes, land amount, deposit density:** `js/data/maps.js`.
+- **Tutorial wording:** `js/tutorial/steps.js`.
+
 ## Controls
 
 - Click a ship to select it, then click a highlighted spot to move.
