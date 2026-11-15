@@ -2,7 +2,7 @@
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
 import { draw } from './board/render.js';
-import { centerOffset, me, planRot, reach, select, selected } from './helpers.js';
+import { centerOffset, me, planRot, reach, select, selected, usd } from './helpers.js';
 import { dispatch, endTurnNow, refresh } from './index.js';
 import { S } from './state.js';
 import { currentYard, nearbyLoners } from './panel.js';
@@ -228,7 +228,7 @@ export function onPanelClick(e) {
   if (d.satellite) S.mode = S.mode.kind === 'satellite' ? { kind: 'idle' } : { kind: 'satellite' };
   if (d.sellShip) {
     const sh = S.st.ships.find(x => x.id === d.sellShip);
-    showConfirm('Sell this ship?', `Your ${SHIPS[sh.type].name} will be scrapped for $${E.shipSaleValue(S.st, sh)}.`, 'Sell', () => { dispatch({ type: 'sellShip', shipId: sh.id }); S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }, () => {});
+    showConfirm('Sell this ship?', `Your ${SHIPS[sh.type].name} will be scrapped for ${usd(E.shipSaleValue(S.st, sh))}.`, 'Sell', () => { dispatch({ type: 'sellShip', shipId: sh.id }); S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }, () => {});
     return;
   }
   if (d.upgrade) dispatch({ type: 'upgradeBase', baseId: d.upgrade });
@@ -242,7 +242,7 @@ export function onPanelClick(e) {
 function confirmUnpaid(f) {
   const what = f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`;
   showOverlay(`<h2>⚠ You can't pay next turn's upkeep</h2>
-    <p class="muted">Upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''} and you have $${S.st.players[me()].money}. ${what}.</p>
+    <p class="muted">Upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''} and you have ${usd(S.st.players[me()].money)}. ${what}.</p>
     <div class="row" style="margin-top:16px">
       ${f.oilToCover != null ? `<button class="primary big" data-fix>Sell ${f.oilToCover} oil, then end turn</button>` : ''}
       <button class="big ${f.oilToCover != null ? 'ghost' : 'danger'}" data-anyway>End turn anyway</button>

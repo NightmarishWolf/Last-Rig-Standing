@@ -25,6 +25,10 @@ export const rigAt = (st, x, y) => st.rigs.find(r => r.x === x && r.y === y);
 export const depositAt = (st, x, y) => st.deposits.find(d => d.x === x && d.y === y);
 
 // ---------- entry point ----------
+// Money and oil are kept to two decimals ($122.78, 52.51 oil).
+export const r2 = v => Math.round(v * 100) / 100;
+export const fmt2 = v => { const x = r2(v); return Number.isInteger(x) ? String(x) : x.toFixed(2); };
+
 export const ok = () => ({ ok: true });
 
 export const fail = error => ({ ok: false, error });

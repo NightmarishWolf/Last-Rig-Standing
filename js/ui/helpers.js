@@ -6,6 +6,10 @@ import { S } from './state.js';
 
 export const pcol = p => PLAYER_COLORS[p];
 
+// $122.78 / 52.51 (whole numbers without the decimals)
+export const usd = v => '$' + E.fmt2(v);
+export const oil = v => E.fmt2(v);
+
 export const pname = p => S.st.players[p].name;
 
 export const px = x => MARGIN + (x - S.cam.x) * S.cell;

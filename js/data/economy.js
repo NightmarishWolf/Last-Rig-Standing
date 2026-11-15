@@ -34,9 +34,13 @@ export const DEPOSITS = {
 export const MARKET = {
   basePrice: 15,   // $ per oil when the market is calm
   minPrice: 4,
-  dropPerUnit: 0.25, // every unit sold lowers the price this much
-  recoverPerTurn: 1,
-  recoverShare: 0.15, // each turn the price also climbs back this share of the way to basePrice (so busy markets recover)
+  // The price moves on a curve, not a straight line:
+  // every unit sold takes this share of the gap between the price and minPrice, so selling crashes the
+  // price fast at first and then more and more slowly as it nears the floor...
+  dropShare: 0.02,
+  // ...and each round the price climbs back this share of the gap to basePrice, so it recovers quickly
+  // after a crash and more and more slowly as it nears normal.
+  recoverShare: 0.3,
 };
 
 export const START = { money: 400, oil: 40 };

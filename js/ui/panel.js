@@ -4,7 +4,7 @@ import { BASE_LEVELS, PLATFORMS } from '../data/bases.js';
 import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
 import { TECH } from '../data/research.js';
 import { PASSIVE_TEXT, SHIPS } from '../data/ships.js';
-import { me, pcol, planRot, pname, selected, selectedBase } from './helpers.js';
+import { me, oil, pcol, planRot, pname, selected, selectedBase, usd } from './helpers.js';
 import { S } from './state.js';
 import { FLEET, QUEUE, STANDING } from '../data/production.js';
 import { DIFFICULTY, PERSONALITIES } from '../data/bots.js';
@@ -29,7 +29,7 @@ function upkeepBadges(p) {
   if (S.botTurn || S.spectate || S.st.phase !== 'playing') return '';
   const f = E.upkeepForecast(S.st, p), o = E.oilForecast(S.st, p);
   let out = '';
-  if (f.unpaid.length) out += ` <span class="alert-badge red" title="Next turn's upkeep is $${f.need + f.funding}; you have $${S.st.players[p].money}. Unpaid ships lose 1 HP.">⚠ Upkeep short $${f.short}: ${f.sinking.length ? `${E.shipNames(f.sinking)} will sink` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} lose HP`}</span>`;
+  if (f.unpaid.length) out += ` <span class="alert-badge red" title="Next turn's upkeep is $${f.need + f.funding}; you have ${usd(S.st.players[p].money)}. Unpaid ships lose 1 HP.">⚠ Upkeep short ${usd(f.short)}: ${f.sinking.length ? `${E.shipNames(f.sinking)} will sink` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} lose HP`}</span>`;
   else if (f.need > 0 && S.st.players[p].money < f.need * 3) {
     const turns = Math.floor(S.st.players[p].money / Math.max(1, f.need + f.funding));
     out += ` <span class="alert-badge" title="Upkeep is $${f.need + f.funding} a turn. Sell oil before it runs out: unpaid ships lose HP, and 1-HP ships like Survey Ships sink.">💰 Money for ${turns} more turn${turns === 1 ? '' : 's'} of upkeep</span>`;
@@ -45,7 +45,7 @@ function upkeepWarning(st, p) {
   const fix = f.oilToCover != null
     ? `<button data-cover="${f.oilToCover}" class="primary">Sell ${f.oilToCover} oil to cover it</button>`
     : '<span class="small">Not enough oil to cover it: sell a ship, or cut research funding.</span>';
-  return `<div class="voyage warn-box">⚠ <b>Next turn's upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''}, you have $${st.players[p].money}.</b>
+  return `<div class="voyage warn-box">⚠ <b>Next turn's upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''}, you have ${usd(st.players[p].money)}.</b>
     ${f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`} if you end your turn like this.
     <div class="row" style="margin-top:6px">${fix}</div></div>`;
 }
@@ -64,8 +64,8 @@ export function renderPanel() {
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
-      <div class="stat"><span>Money</span><span class="v money">$${pl.money}</span></div>
-      <div class="stat"><span>Oil</span><span class="v oil" title="Storage cap: oil pumped past this spills. Storage Tanks and research raise it.">${pl.oil}/${E.oilCapOf(st, p)}</span></div>
+      <div class="stat"><span>Money</span><span class="v money">${usd(pl.money)}</span></div>
+      <div class="stat"><span>Oil</span><span class="v oil" title="Storage cap: oil pumped past this spills. Storage Tanks and research raise it.">${oil(pl.oil)}/${E.oilCapOf(st, p)}</span></div>
       <div class="stat"><span>Oil price</span><span class="v">$${(st.market.price * E.sellMultOf(st, p)).toFixed(2)}</span></div>
       <div class="stat"><span>Oil/turn</span><span class="v oil">+${oilTurn}</span></div>
       <div class="stat"><span>Bases</span><span class="v">${E.basesOf(st, p).filter(x => !x.wrecked).length}</span></div>
@@ -75,7 +75,7 @@ export function renderPanel() {
     </div>
     <div class="small muted" style="margin-top:6px">Sell oil (price drops as you sell, recovers each turn):</div>
     <div class="row">
-      ${[1, 5, 10].map(n => `<button data-sell="${n}" ${pl.oil < n ? 'disabled' : ''}>Sell ${n} ($${E.sellValue(st, n, p).total})</button>`).join('')}
+      ${[1, 5, 10].map(n => `<button data-sell="${n}" ${pl.oil < n ? 'disabled' : ''}>Sell ${n} (${usd(E.sellValue(st, n, p).total)})</button>`).join('')}
       <button data-sell="all" ${pl.oil < 1 ? 'disabled' : ''}>All</button>
     </div>
     <div class="row">
@@ -234,8 +234,8 @@ function spectatorPanel() {
     return `<div class="spec-row ${o.out ? 'out' : ''} ${i === st.current ? 'now' : ''}" style="--c:${pcol(i)}">
       <div class="spec-name"><b>${o.name}</b> ${pers ? `<span class="small muted">${pers.icon} ${pers.name} · ${diff.icon} ${diff.name}</span>` : ''}${o.out ? ' <span class="small muted">· out</span>' : ''}</div>
       <div class="stats">
-        <div class="stat"><span>Money</span><span class="v money">$${o.money}</span></div>
-        <div class="stat"><span>Oil</span><span class="v oil">${o.oil} (+${oilIn})</span></div>
+        <div class="stat"><span>Money</span><span class="v money">${usd(o.money)}</span></div>
+        <div class="stat"><span>Oil</span><span class="v oil">${oil(o.oil)} (+${oilIn})</span></div>
         <div class="stat"><span>Bases</span><span class="v">${E.basesOf(st, i).filter(b => !b.wrecked).length}</span></div>
         <div class="stat"><span>Ships</span><span class="v">${st.ships.filter(s => s.owner === i).length}</span></div>
         <div class="stat"><span>Techs</span><span class="v">${Object.keys(o.research.done).length}</span></div>
@@ -278,14 +278,14 @@ function shipCard(s) {
   const st = S.st, p = me(), def = SHIPS[s.type];
   const pas = Object.entries(def.passives || {}).map(([k, val]) => PASSIVE_TEXT[k] ? `<li>${PASSIVE_TEXT[k](k === 'armor' ? E.shipStat(st, p, s.type, 'armor') : val)}</li>` : '').join('');
   const canMove = !(s.acted && !def.passives?.hitAndRun);
-  const oil = E.shipStat(st, p, s.type, 'oil');
+  const oilRate = E.shipStat(st, p, s.type, 'oil');
   return `
     <div class="card">
       <h3>Selected · ${def.name}</h3>
       <div class="stats">
         <div class="stat"><span>HP</span><span class="v">${s.hp}/${E.shipStat(st, p, s.type, 'hp')}</span></div>
         <div class="stat"><span>Moves left</span><span class="v">${canMove ? s.movesLeft : 0}</span></div>
-        <div class="stat"><span>Oil/square</span><span class="v oil">${+oil.toFixed(2)}${E.moveCost(st, s, 4) < Math.ceil(oil * 4) ? ' (½)' : ''}</span></div>
+        <div class="stat"><span>Oil/square</span><span class="v oil">${+oilRate.toFixed(2)}${E.moveCost(st, s, 4) < oilRate * 4 - 1e-9 ? ' (½)' : ''}</span></div>
         <div class="stat"><span>Sight</span><span class="v">${E.shipStat(st, p, s.type, 'sight')}</span></div>
         <div class="stat"><span>Upkeep</span><span class="v">$${E.upkeepOf(st, p, s.type)}/turn</span></div>
       </div>
@@ -308,7 +308,7 @@ function shipCard(s) {
         ${S.fit ? '' : '<button data-center="1" class="ghost">Centre view (Space)</button>'}
         <button data-deselect="1" class="ghost">Deselect</button>
       </div>
-      ${(why => `<div class="row"><button data-sell-ship="${s.id}" class="ghost" ${why ? 'disabled' : ''} title="${why || 'Half its price back (less if damaged). Only in your home waters or base claims, and not within 3 rounds of combat.'}">💲 Sell ship ($${E.shipSaleValue(st, s)})</button>${why ? `<span class="small muted">${why}</span>` : ''}</div>`)(E.shipSaleProblem(st, s))}
+      ${(why => `<div class="row"><button data-sell-ship="${s.id}" class="ghost" ${why ? 'disabled' : ''} title="${why || 'Half its price back (less if damaged). Only in your home waters or base claims, and not within 3 rounds of combat.'}">💲 Sell ship (${usd(E.shipSaleValue(st, s))})</button>${why ? `<span class="small muted">${why}</span>` : ''}</div>`)(E.shipSaleProblem(st, s))}
     </div>`;
 }
 

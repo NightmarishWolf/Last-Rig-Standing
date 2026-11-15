@@ -14,13 +14,14 @@ import { doCancelOrder, doSetOrder, runVoyages } from './orders.js';
 import { doBuyPort } from './ports.js';
 import { forwardPorts } from './stats.js';
 import { checkWin, eliminate, nextTurn } from './turns.js';
-import { fail, ok } from './util.js';
+import { fail, ok, r2 } from './util.js';
 import { visibility } from './visibility.js';
 
 export function applyAction(st, a) {
   if (st.phase !== 'playing') return fail('Game over.');
   const r = runAction(st, a);
   tidyFleets(st); // ships sunk along the way leave their fleets
+  for (const pl of st.players) { pl.money = r2(pl.money); pl.oil = r2(pl.oil); } // two decimals, no float drift
   return r;
 }
 

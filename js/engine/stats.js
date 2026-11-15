@@ -4,7 +4,7 @@ import { SHIPS } from '../data/ships.js';
 import { baseFoundCost, platformUpkeep } from './bases.js';
 import { dist, shipCells, zoneOf } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
-import { passives } from './util.js';
+import { passives, r2 } from './util.js';
 
 export const rigsOwned = (st, p) => st.rigs.filter(r => r.owner === p).length;
 
@@ -37,22 +37,16 @@ function fuelLineActive(st, ship) {
     dist(shipCells(o), cells) <= passives(o).fuelLine);
 }
 
-// Oil for sailing `steps` squares (turns count as a square). Research can make it cheaper.
-// Ships keep the unused part of their last whole oil (ship.fuel), so fractions aren't lost:
-// a ship at 0.2 oil per square pays 1 oil for its first square and then sails 4 more for free.
+// Oil for sailing `steps` squares (turns count as a square), to two decimals: a Survey Ship at
+// 0.2 oil per square pays 0.2 for one square, 1 for five. Research can make it cheaper.
 export function moveCost(st, ship, steps) {
   if (steps <= 0) return 0;
   const rate = shipStat(st, ship.owner, ship.type, 'oil');
-  const need = (fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - (ship.fuel || 0);
-  return Math.max(0, Math.ceil(need - 1e-9));
+  return r2(fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate);
 }
-// Actually pay for `steps` squares: takes the oil and keeps the leftover fraction on the ship.
+// Actually pay for `steps` squares.
 export function chargeMove(st, ship, steps) {
-  if (steps <= 0) return 0;
-  const rate = shipStat(st, ship.owner, ship.type, 'oil');
-  const need = (fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate) - (ship.fuel || 0);
-  const cost = Math.max(0, Math.ceil(need - 1e-9));
-  ship.fuel = Math.max(0, Math.round((cost - need) * 1000) / 1000);
-  st.players[ship.owner].oil -= cost;
+  const cost = moveCost(st, ship, steps);
+  st.players[ship.owner].oil = r2(st.players[ship.owner].oil - cost);
   return cost;
 }

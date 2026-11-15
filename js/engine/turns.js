@@ -31,9 +31,10 @@ export function startTurn(st, p, first = false) {
   me.shots = me.shots.filter(o => o.turn >= st.turnCount - 4 * st.players.length);
   me.reveals = { ships: [], rigs: [], ports: [], platforms: [] };
   me.prevTurn = st.turnCount;
-  // the market recovers by MARKET.recoverPerTurn each full round
+  // the market climbs back toward basePrice: a share of the gap each round (split over the players' turns)
   const gap = MARKET.basePrice - st.market.price;
-  st.market.price = Math.min(MARKET.basePrice, st.market.price + Math.max(MARKET.recoverPerTurn * 2 / alivePlayers(st).length, gap * (MARKET.recoverShare || 0)));
+  const share = 1 - Math.pow(1 - MARKET.recoverShare, 1 / Math.max(1, alivePlayers(st).length));
+  st.market.price = Math.min(MARKET.basePrice, Math.round((st.market.price + gap * share) * 100) / 100);
 
   // bases: finish construction, heal, repair, gun platforms fire
   processBases(st, p, visibility(st, p).ships);
