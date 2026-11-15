@@ -8,6 +8,9 @@ import { commandBonus } from './stats.js';
 import { baseById, baseMaxHp, platformAt, platformMaxHp } from './bases.js';
 import { pstat, shipStat, weaponStat } from './modifiers.js';
 import { checkWin } from './turns.js';
+import { hasTech } from './research.js';
+import { TECH } from '../data/research.js';
+import { scrambled, seesSquare } from './strikes.js';
 import { fail, log, ok, others, passives, portAt, rigAt, shipAt } from './util.js';
 
 // ---------- actions ----------
@@ -19,6 +22,9 @@ export function actionRange(st, ship, act) {
 
 export function canUseAction(st, ship, act) {
   if (ship.owner !== st.current) return 'Not your ship.';
+  if (act.needs && !hasTech(st, ship.owner, act.needs)) return `Research ${TECH[act.needs].name} first.`;
+  if (act.oil && st.players[ship.owner].oil < act.oil) return `Needs ${act.oil} oil.`;
+  if (act.money && st.players[ship.owner].money < act.money) return `Needs $${act.money}.`;
   if ((ship.cooldowns[act.id] || 0) > 0) return `Reloading (${ship.cooldowns[act.id]} turn${ship.cooldowns[act.id] > 1 ? 's' : ''}).`;
   if (act.free) return ship.freeUsed[act.id] ? 'Already used this turn.' : null;
   if (ship.acted) {
@@ -53,8 +59,17 @@ export function doAct(st, a) {
   const firstUse = !ship.acted || ship.activeAction !== act.id;
   switch (act.kind) {
     case 'attack': {
+      // long-range weapons need a target square you can actually see, and cost oil per launch
+      if (act.longRange && !seesSquare(st, p, x, y)) return fail("You can't see that square: scout it first (a recon drone, a scan or a ship's sight).");
       spend(st, ship, act);
+      if (act.oil) st.players[p].oil -= act.oil;
+      if (act.money) st.players[p].money -= act.money;
       if (firstUse) addFlash(st, ship);
+      if (act.longRange && scrambled(st, p, x, y)) {
+        st.players[p].shots.push({ x, y, r: 'intercepted', turn: st.turnCount });
+        log(st, p, `${act.name} was scrambled by enemy jamming and missed.`);
+        break;
+      }
       resolveShot(st, ship, act, x, y);
       break;
     }
@@ -131,8 +146,10 @@ function addFlash(st, ship) {
   }
 }
 
-function doScan(st, ship, act, tx, ty) {
-  const p = ship.owner;
+function doScan(st, ship, act, tx, ty) { return doScanAt(st, ship.owner, act, tx, ty); }
+
+// Reveal a size×size box for player p (ship scans, recon drones, satellite passes).
+export function doScanAt(st, p, act, tx, ty) {
   const lo = -Math.floor((act.size - 1) / 2), hi = lo + act.size - 1;
   const box = [];
   for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++)

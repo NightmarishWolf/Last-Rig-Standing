@@ -10,6 +10,7 @@
 // (they're drawn on everyone's map), but the Admiralty inside them has to be found by scouting.
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
+import { PLATFORMS } from '../data/bases.js';
 import { cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear } from './memory.js';
 
@@ -243,4 +244,42 @@ export async function spy(ctx) {
   const used0 = ctx.oilBudget;
   await sailSome(ctx, spyShip, spot.x, spot.y);
   ctx.oilBudget = Math.max(0, (saved ?? ctx.me.oil) - (used0 - ctx.oilBudget));
+}
+
+// ---------- long range ----------
+// Recon drones and satellite passes find targets; cruise missiles and bombers hit them.
+// (Sub-launched missiles are fired by openFire like any other weapon.)
+export async function longRange(ctx) {
+  const { st, p, mem } = ctx;
+  const ready = () => (st.platforms || []).filter(o => o.owner === p && !o.buildLeft && !(o.cd > 0) && (PLATFORMS[o.kind].strike || PLATFORMS[o.kind].recon) && !E.basesOf(st, p).find(b => b.id === o.baseId)?.wrecked);
+  const remembered = [...Object.values(mem.enemyBases || {}), ...Object.values(mem.enemyRigs || {})];
+  // a satellite pass over a rival we haven't found yet, or their Admiralty
+  if (E.satelliteReady(st, p)) {
+    const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
+    const lost = rivals.find(r => !remembered.some(b => b.owner === r));
+    const cap = Object.values(mem.enemyBases || {}).find(b => b.capital);
+    const t = lost != null ? homeCentre(st, lost) : cap;
+    if (t) await ctx.do({ type: 'satellite', x: t.x, y: t.y });
+  }
+  // recon drones over the nearest remembered enemy base or rig in range
+  for (const o of ready().filter(o => PLATFORMS[o.kind].recon)) {
+    const r = PLATFORMS[o.kind].recon.range;
+    const t = remembered.filter(b => cheb(b, o) <= r).sort((a, b) => cheb(a, o) - cheb(b, o))[0];
+    if (t) await ctx.do({ type: 'baseStrike', platformId: o.id, x: t.x, y: t.y });
+  }
+  // strikes on whatever we can see, most valuable first
+  for (const o of ready().filter(o => PLATFORMS[o.kind].strike)) {
+    const s = PLATFORMS[o.kind].strike, v = ctx.view;
+    if (ctx.me.oil - s.oil < 4 || ctx.me.money - (s.money || 0) < E.upkeepTotal(st, p) * 2) continue;
+    const targets = [
+      ...v.enemyPlatforms.filter(x => x.kind === 'fusion').map(x => [x.x, x.y, 0]),
+      ...v.enemyRigs.filter(x => x.center && v.enemyBases.some(b => b.id === x.baseId && b.capital)).map(x => [x.x, x.y, 1]),
+      ...v.enemyPlatforms.filter(x => ['aa', 'cruise', 'airbase', 'missile', 'gun'].includes(x.kind)).map(x => [x.x, x.y, 2]),
+      ...v.enemyShips.map(e => [e.cells[0][0], e.cells[0][1], 3]),
+      ...v.enemyRigs.filter(x => x.center).map(x => [x.x, x.y, 4]),
+      ...v.enemyPlatforms.map(x => [x.x, x.y, 5]),
+      ...v.enemyRigs.map(x => [x.x, x.y, 6]),
+    ].filter(([x, y]) => !E.strikeProblem(st, p, o, x, y)).sort((a, b) => a[2] - b[2]);
+    if (targets.length) await ctx.do({ type: 'baseStrike', platformId: o.id, x: targets[0][0], y: targets[0][1] });
+  }
 }

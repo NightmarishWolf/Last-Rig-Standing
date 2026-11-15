@@ -49,3 +49,7 @@ export const ECONOMY = {
 // Domination victory (optional, chosen on the new-game screen):
 // own rigs on at least `share` of No Man's Sea's deposits for `rounds` rounds in a row.
 // (Victory settings, including Domination, now live in victory.js.)
+
+// Long-range strikes (Cruise Missile Batteries, Airbases, Sub-Launched Missiles):
+// aimed within this many squares of an enemy Jammer Ship, they have this chance to be scrambled.
+export const STRIKES = { jamChance: 0.5, satellite: { size: 7, cooldown: 4 } };

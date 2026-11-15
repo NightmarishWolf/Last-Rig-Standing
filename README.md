@@ -30,6 +30,11 @@ Dry Docks, Refineries, AA, Helipads, Missile Batteries) and upgrade the base fro
 together in formation at the speed of the slowest ship. Give ships or fleets **standing orders** (Patrol, Escort,
 Guard, Explore) that carry on by themselves at the end of every turn.
 
+**Long-range warfare** (so nobody can just turtle): ships with cruise missiles (range 14) outrange every base weapon
+(10 at most), so defenders have to sail out. Also recon drones, coastal Cruise Missile Batteries, Airbase bomber
+sorties, sub-launched missiles and satellite passes. They cost oil (and money) per shot, need a target you can
+see, and are countered by AA Platforms, Frigates and Jammer Ships.
+
 **Computer players.** Any seat can be a bot: four difficulties (Easy, Normal, Hard, Admiral+) and four personalities
 (Admiral, Tycoon, Raider, Conqueror, or random). Bots play by the same rules and never see through the fog; Admiral+
 only gets an economic head start. Against one human, bot moves you can see play out on the board; with every seat a
@@ -85,6 +90,7 @@ js/
     production.js        shipyards: buying, build queues, launching finished ships
     fleets.js            fleets: forming, formation sailing, regrouping
     standing.js          standing orders (patrol, escort, guard, explore) and auto-fire
+    strikes.js           long range: recon drones, cruise missiles, bombers, satellite passes, jamming
     movement.js          moving/turning, hidden collisions, mines
     abilities.js         attacks, scans, surveys, mines, repairs, spoofs, salvage
     combat.js            shot resolution, armor, interception, sinking

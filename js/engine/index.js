@@ -19,6 +19,7 @@ export * from './orders.js';
 export * from './production.js';
 export * from './fleets.js';
 export * from './standing.js';
+export * from './strikes.js';
 export * from './abilities.js';
 export * from './combat.js';
 export * from './economy.js';

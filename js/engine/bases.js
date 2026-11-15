@@ -154,6 +154,7 @@ export function platformProblem(st, p, kind, x, y) {
   if (def.onDeposit) {
     if (!dep || !st.players[p].known[dep.id]) return 'Wellheads go on oil deposits you have discovered.';
   } else if (dep) return 'Keep deposits free for Wellheads.';
+  if (def.needsLevel && !def.megaproject && b.level < def.needsLevel) return `Needs a level ${def.needsLevel} base.`;
   if (def.megaproject) {
     if (!victoryOn(st, 'postoil')) return 'The Post-Oil victory is switched off in this game.';
     if (b.level < def.needsLevel) return `Needs a level ${def.needsLevel} base (Hub).`;

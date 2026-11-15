@@ -9,7 +9,8 @@
 //        Which research unlocks each ship is set in research.js (no entry = available from the start).
 // sight: how far (squares) this ship spots surface enemies (the bright area on the board).
 // actions: what the ship can do with its one action per turn.
-//   attack: { tag, range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown }
+//   attack: { tag, range, dmg, shots, area (1 or 3), subsOnly, rigMult, air, cooldown,
+//             longRange (needs a target you can see), oil/money (cost per use), needs (a tech id) }
 //           tag: gun, torpedo, missile, air, depth (research bonuses target tags)
 //   scan:   reveals enemy ships/rigs in a size×size box within range.
 //   survey: reveals oil deposits within `radius` of the ship.
@@ -90,7 +91,11 @@ export const SHIPS = {
   missileboat: {
     name: 'Missile Boat', cls: 'escort', cost: 220, build: 2, hp: 2, oil: 1, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0]],
-    actions: [{ id: 'missile', kind: 'attack', tag: 'missile', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 }],
+    actions: [
+      { id: 'missile', kind: 'attack', tag: 'missile', name: 'Anti-ship Missile', range: 7, dmg: 4, air: true, cooldown: 3 },
+      // siege weapon: outranges every base weapon, so a turtle has to sail out and fight
+      { id: 'cruise', kind: 'attack', tag: 'missile', name: 'Cruise Missile', range: 14, dmg: 3, air: true, longRange: true, oil: 4, cooldown: 2, needs: 'cruise_missiles', rigMult: 2 },
+    ],
   },
   frigate: {
     name: 'Frigate', cls: 'escort', cost: 350, build: 3, hp: 4, oil: 1, move: 3, sight: 3,
@@ -107,7 +112,10 @@ export const SHIPS = {
   cruiser: {
     name: 'Cruiser', cls: 'capital', cost: 450, build: 3, hp: 5, oil: 2, move: 2, sight: 3,
     shape: [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1]],
-    actions: [{ id: 'missile', kind: 'attack', tag: 'missile', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 }],
+    actions: [
+      { id: 'missile', kind: 'attack', tag: 'missile', name: 'Long-range Missile', range: 6, dmg: 2, air: true, rigMult: 2 },
+      { id: 'cruise', kind: 'attack', tag: 'missile', name: 'Cruise Missile', range: 14, dmg: 3, air: true, longRange: true, oil: 4, cooldown: 2, needs: 'cruise_missiles', rigMult: 2 },
+    ],
   },
   salvage: {
     name: 'Salvage Ship', cls: 'support', cost: 250, build: 2, hp: 3, oil: 1, move: 3, sight: 1,
@@ -151,7 +159,11 @@ export const SHIPS = {
     name: 'Nuclear Submarine', cls: 'sub', cost: 900, build: 5, hp: 5, oil: 0, move: 3, sight: 2,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { submerged: true, upkeep: 50 },
-    actions: [{ id: 'torpedo', kind: 'attack', tag: 'torpedo', name: 'Heavy Torpedo', range: 5, dmg: 4 }],
+    actions: [
+      { id: 'torpedo', kind: 'attack', tag: 'torpedo', name: 'Heavy Torpedo', range: 5, dmg: 4 },
+      // long range: needs research, a target you can see, and 4 oil per launch
+      { id: 'slbm', kind: 'attack', tag: 'missile', name: 'Sub-Launched Missile', range: 12, dmg: 3, air: true, longRange: true, oil: 4, cooldown: 3, needs: 'ballistic_missiles' },
+    ],
   },
   dreadnought: {
     name: 'Dreadnought', cls: 'capital', cost: 1300, build: 6, hp: 12, oil: 4, move: 1, sight: 3,

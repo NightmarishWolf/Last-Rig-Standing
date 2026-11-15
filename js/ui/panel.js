@@ -315,7 +315,7 @@ function baseCard(b) {
       title="${def.text} ${def.turns} turns to build, $${Math.round(def.upkeep * E.pstat(st, p, 'platformUpkeepMult'))}/turn upkeep.${why ? ' (' + why + ')' : ''}">
       <span class="code">${def.code}</span><span>${def.name}</span><span class="cost">${unlocked ? '$' + cost : '🔒'}</span></button>`;
   }
-  html += `</div>
+  html += `</div>${longRangeRow(st, p, b)}
       <div class="row">
         ${next ? `<button data-upgrade="${b.id}" ${up ? 'disabled' : ''} title="${up || ''}">Upgrade to ${next.name} ($${next.cost})</button>${up ? `<span class="small muted">${up}</span>` : ''}` : '<span class="small muted">Highest base level.</span>'}
         <button data-deselect="1" class="ghost">Close</button>
@@ -326,10 +326,28 @@ function baseCard(b) {
   return html;
 }
 
+// Long-range launchers in this base (recon drones, cruise missiles, bombers) and the satellite pass.
+function longRangeRow(st, p, b) {
+  const pads = E.platformsOf(st, b).filter(o => !o.buildLeft && (PLATFORMS[o.kind].strike || PLATFORMS[o.kind].recon));
+  const sat = b.capital && st.players[p].research.done.satellites;
+  if (!pads.length && !sat) return '';
+  const btn = o => {
+    const def = PLATFORMS[o.kind], s = def.strike || def.recon;
+    const why = b.wrecked ? 'Base is wrecked' : E.strikeProblem(st, p, o);
+    const cost = def.strike ? ` · ${s.oil} oil${s.money ? ` + $${s.money}` : ''}` : '';
+    const label = def.strike ? s.name : 'Recon drone';
+    return `<button class="${S.mode.kind === 'baseStrike' && S.mode.platformId === o.id ? 'active' : ''}" data-strike="${o.id}" ${why ? 'disabled' : ''} title="${why || def.text}">
+      ${def.strike ? '🎯' : '🛩️'} ${label} <span class="small muted">range ${s.range}${cost}${o.cd ? ` · ${o.cd} turn${o.cd > 1 ? 's' : ''}` : ''}</span></button>`;
+  };
+  return `<div class="small muted" style="margin:8px 0 4px">Long range (aim at squares you can see; scout first with a drone or satellite):</div>
+    <div class="row" style="margin-top:0">${pads.map(btn).join('')}
+    ${sat ? `<button class="${S.mode.kind === 'satellite' ? 'active' : ''}" data-satellite="1" ${E.satelliteReady(st, p) ? '' : 'disabled'} title="Reveal a 7×7 area anywhere on the map">🛰️ Satellite pass${st.players[p].satCd ? ` <span class="small muted">· ${st.players[p].satCd} turns</span>` : ''}</button>` : ''}</div>`;
+}
+
 export function describeAction(a, p = me()) {
   const w = k => E.weaponStat(S.st, p, a, k);
   switch (a.kind) {
-    case 'attack': { const shots = w('shots'); return `Range ${w('range')}, ${w('dmg')} dmg${shots > 1 ? ` × ${shots} shots` : ''}${a.area === 3 ? ', 3×3 area' : ''}${a.subsOnly ? ', subs only' : ''}${a.rigMult ? `, ×${a.rigMult} vs rigs` : ''}${a.cooldown ? `, reload ${a.cooldown}` : ''}`; }
+    case 'attack': { const shots = w('shots'); return `Range ${w('range')}, ${w('dmg')} dmg${shots > 1 ? ` × ${shots} shots` : ''}${a.area === 3 ? ', 3×3 area' : ''}${a.subsOnly ? ', subs only' : ''}${a.rigMult ? `, ×${a.rigMult} vs rigs` : ''}${a.oil ? `, ${a.oil} oil per launch` : ''}${a.longRange ? ', target must be visible' : ''}${a.cooldown ? `, reload ${a.cooldown}` : ''}`; }
     case 'scan': return `Reveal a ${a.size}×${a.size} area within ${w('range')}${a.cooldown ? `, reload ${a.cooldown}` : ''}`;
     case 'survey': { const r = a.radius + E.pstat(S.st, p, 'surveyRadius'); return `Find oil within ${r} square${r > 1 ? 's' : ''} of this ship`; }
     case 'mine': return `Place a hidden mine next to this ship (max ${a.max})`;

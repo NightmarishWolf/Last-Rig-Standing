@@ -103,7 +103,7 @@ function drawLines() {
   const tree = el.querySelector('.rs-tree'), svg = el.querySelector('.rs-lines');
   if (!tree || !svg) return;
   const tb = tree.getBoundingClientRect();
-  svg.setAttribute('width', tree.scrollWidth); svg.setAttribute('height', tree.scrollHeight);
+  svg.setAttribute('width', tree.clientWidth); svg.setAttribute('height', tree.scrollHeight); // never wider than the tree itself (no sideways scrollbar)
   const pos = id => {
     const n = tree.querySelector(`[data-tech="${id}"]`);
     if (!n) return null;
@@ -122,3 +122,6 @@ function drawLines() {
   }
   svg.innerHTML = out;
 }
+
+// redraw the connecting lines when the window changes size (so they always fit the tree)
+window.addEventListener('resize', () => { if (researchOpen()) renderResearch(); });

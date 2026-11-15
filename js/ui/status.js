@@ -34,6 +34,12 @@ export function updateStatus() {
     const a = SHIPS[s.type].actions.find(x => x.id === S.mode.actionId);
     t = `<b>${a.name}</b>: click a target in the highlighted range. Right-click or Esc to cancel.`;
   } else if (S.mode.kind === 'fleetPick') t = `<b>Forming a fleet:</b> click your ships to add or remove them (${S.mode.ids.length} picked), then <b>Create fleet</b> in the panel. Esc to cancel.`;
+  else if (S.mode.kind === 'baseStrike') {
+    const o = (S.st.platforms || []).find(x => x.id === S.mode.platformId);
+    const why = o && S.hover && E.strikeProblem(S.st, me(), o, S.hover.x, S.hover.y);
+    t = `<b>${E.strikeName(o.kind)}</b>: click a square in the shaded range.${why ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
+  }
+  else if (S.mode.kind === 'satellite') t = '<b>Satellite pass</b>: click anywhere on the map to reveal a 7×7 area. Esc to cancel.';
   else if (S.mode.kind === 'patrolPick') t = `<b>Patrol:</b> click the points to patrol between (${S.mode.points.length} so far), then <b>Start patrol</b> in the panel. Esc to cancel.`;
   else if (S.mode.kind === 'escortPick') t = `<b>Escort:</b> click one of your ships to look after. Esc to cancel.`;
   else if (S.mode.kind === 'placePlatform') {

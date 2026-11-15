@@ -19,7 +19,7 @@ import { makeContext } from './context.js';
 import { buildBases, research, saveAdmiralty, sellOil } from './economy.js';
 import { expansion } from './expansion.js';
 import { guardBases, openFire } from './defense.js';
-import { defend, raid, spy, strike } from './military.js';
+import { defend, longRange, raid, spy, strike } from './military.js';
 import { shipbuilding } from './build.js';
 import { updateMemory } from './memory.js';
 
@@ -27,6 +27,7 @@ import { updateMemory } from './memory.js';
 const STEPS = [
   ['memory', async ctx => updateMemory(ctx)],
   ['admiralty', saveAdmiralty],
+  ['long range', longRange],
   ['fire', openFire],
   ['sell', sellOil],
   ['research', research],

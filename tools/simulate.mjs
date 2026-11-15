@@ -21,7 +21,7 @@ const games = +(args.games || 10), size = args.size || 'small', players = +(args
 const maxRounds = +(args.rounds || 200), difficulty = args.difficulty || 'normal', quiet = 'quiet' in args;
 let seed = +(args.seed || 1000);
 
-const stats = { wins: {}, reasons: {}, rounds: [], errors: 0, slowest: 0, think: [], unfinished: 0, byPers: {}, shots: 0, sunk: 0, fleets: 0 };
+const stats = { wins: {}, reasons: {}, rounds: [], errors: 0, slowest: 0, think: [], unfinished: 0, byPers: {}, shots: 0, sunk: 0, fleets: 0, longRange: 0 };
 const origError = console.error;
 console.error = (...m) => { stats.errors++; if (!quiet && stats.errors <= 5) origError(...m); };
 
@@ -32,7 +32,7 @@ for (let g = 0; g < games; g++) {
     return { seat: 'ai', personality: pers || PERSONALITY_ORDER[(g + i * 3 + seed) % 4], difficulty: diff || difficulty };
   });
   const st = E.newGame({ size, players, seed: seed + g, seats, turnTimer: 0 });
-  const act = async a => { const r = E.applyAction(st, a); if (r.ok && a.type === 'act' && a.x != null) stats.shots++; if (r.ok && a.type === 'formFleet') stats.fleets++; return r; };
+  const act = async a => { const r = E.applyAction(st, a); if (r.ok && a.type === 'act' && a.x != null) stats.shots++; if (r.ok && a.type === 'formFleet') stats.fleets++; if (r.ok && (a.type === 'baseStrike' || a.type === 'satellite')) stats.longRange++; return r; };
   let guard = 0;
   while (st.phase === 'playing' && st.round <= maxRounds && guard++ < maxRounds * players + 10) {
     const p = st.current, t0 = performance.now();
@@ -58,5 +58,5 @@ const avg = a => a.reduce((t, x) => t + x, 0) / Math.max(1, a.length);
 console.log('\n==== summary ====');
 console.log(`games ${games} | ${size} map | ${players} players | finished ${games - stats.unfinished} | average length ${avg(stats.rounds).toFixed(0)} rounds`);
 console.log('wins by personality:difficulty:', Object.entries(stats.byPers).map(([k, v]) => `${k} ${v.wins}/${v.games}`).join(', '));
-console.log('how games ended:', JSON.stringify(stats.reasons), `| fighting: ${stats.shots} shots, ${stats.sunk} ships sunk, ${stats.fleets} strike fleets`);
+console.log('how games ended:', JSON.stringify(stats.reasons), `| fighting: ${stats.shots} shots, ${stats.sunk} ships sunk, ${stats.fleets} strike fleets, ${stats.longRange} long-range launches (drones, missiles, bombers, satellites)`);
 console.log(`bot thinking: average ${avg(stats.think).toFixed(1)}ms, slowest ${stats.slowest.toFixed(0)}ms per turn | bot errors: ${stats.errors}`);

@@ -48,6 +48,11 @@ export function onBoardClick(c, shift = false) {
     if (r.ok) S.mode = { kind: 'idle' };
     return refresh();
   }
+  if (S.mode.kind === 'baseStrike' || S.mode.kind === 'satellite') {
+    const r = dispatch(S.mode.kind === 'satellite' ? { type: 'satellite', x: c.x, y: c.y } : { type: 'baseStrike', platformId: S.mode.platformId, x: c.x, y: c.y });
+    if (r.ok) S.mode = { kind: 'idle' };
+    return refresh();
+  }
   if (S.mode.kind === 'placeRig') {
     const r = dispatch({ type: 'buyRig', x: c.x, y: c.y });
     if (r.ok) S.mode = { kind: 'idle' };
@@ -117,7 +122,7 @@ function planTurn() {
 export function cancelMode() {
   if (researchOpen()) { closeResearch(); return refresh(); }
   if (S.plan.length) { S.plan = []; return refresh(); } // Esc first clears planned waypoints
-  if (S.mode.kind === 'placePlatform') { S.mode = { kind: 'idle' }; return refresh(); }
+  if (['placePlatform', 'baseStrike', 'satellite'].includes(S.mode.kind)) { S.mode = { kind: 'idle' }; return refresh(); }
   if (S.selectedBase && S.mode.kind === 'idle') { S.selectedBase = null; return refresh(); }
   if (['target', 'placeRig', 'placePort', 'fleetPick', 'patrolPick', 'escortPick'].includes(S.mode.kind)) S.mode = selected() ? { kind: 'move' } : { kind: 'idle' };
   else { S.selectedId = null; S.mode = { kind: 'idle' }; }
@@ -212,6 +217,8 @@ export function onPanelClick(e) {
   if (d.deselect) { S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' }; }
   if (d.cancelOrder) dispatch({ type: 'cancelOrder', shipId: S.selectedId });
   if (d.platform) S.mode = S.mode.kind === 'placePlatform' && S.mode.platform === d.platform ? { kind: 'idle' } : { kind: 'placePlatform', platform: d.platform, baseId: S.selectedBase };
+  if (d.strike) S.mode = S.mode.kind === 'baseStrike' && S.mode.platformId === d.strike ? { kind: 'idle' } : { kind: 'baseStrike', platformId: d.strike };
+  if (d.satellite) S.mode = S.mode.kind === 'satellite' ? { kind: 'idle' } : { kind: 'satellite' };
   if (d.upgrade) dispatch({ type: 'upgradeBase', baseId: d.upgrade });
   if (d.moveCapital) dispatch({ type: 'moveCapital', baseId: d.moveCapital });
   if (d.clearPlan) S.plan = [];

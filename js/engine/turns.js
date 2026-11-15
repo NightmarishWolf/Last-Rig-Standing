@@ -9,6 +9,7 @@ import { oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
 import { shipStat } from './modifiers.js';
 import { processResearch } from './research.js';
 import { processYards } from './production.js';
+import { tickStrikes } from './strikes.js';
 import { visibility } from './visibility.js';
 import { alivePlayers, log, others, passives, rigAt } from './util.js';
 
@@ -38,6 +39,7 @@ export function startTurn(st, p, first = false) {
   processBases(st, p, visibility(st, p).ships);
   // shipyards: build, and launch finished ships (ready to sail this turn)
   processYards(st, p);
+  tickStrikes(st, p);
   // oil from rigs (central rigs and Wellheads), plus drillships parked on deposits
   let produced = 0;
   for (const r of st.rigs.filter(r => r.owner === p)) {

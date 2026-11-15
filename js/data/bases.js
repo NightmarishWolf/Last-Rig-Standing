@@ -49,7 +49,18 @@ export const PLATFORMS = {
   aa: { name: 'AA Platform', code: 'A', cost: 220, turns: 3, hp: 3, upkeep: 4, airDefense: 3, tech: 'aa_platforms',
     text: 'Intercepts one missile or airstrike aimed within 3 squares each round.' },
   helipad: { name: 'Helipad', code: 'H', cost: 250, turns: 3, hp: 2, upkeep: 4, sight: 8, tech: 'helipads',
-    text: 'Helicopter patrols: sees 8 squares around it.' },
+    recon: { range: 15, size: 5, cooldown: 2 },
+    text: 'Helicopter patrols: sees 8 squares around it. Launches a recon drone: reveals a 5×5 area up to 15 squares away (every 2 turns).' },
+  // Strike platforms: you aim them yourself from the base card. Base weapons never reach further than 10
+// squares; ships with cruise missiles (range 14) outrange them all, so a turtle has to sail out and fight. They need a target you can see
+  // (your own vision, a scan or a recon drone this turn), cost oil (and money) per shot, and can be
+  // intercepted by AA Platforms and Frigates or scrambled by Jammer Ships.
+  cruise: { name: 'Cruise Missile Battery', code: 'C', cost: 450, turns: 4, hp: 3, upkeep: 7, tech: 'cruise_missiles',
+    strike: { name: 'Cruise Missile', range: 6, dmg: 3, area: 1, oil: 4, money: 0, cooldown: 2 },
+    text: 'Coastal defence: fires a cruise missile at anything you can see up to 6 squares away: 3 damage, 4 oil per launch, reloads in 2 turns. (Ships with cruise missiles outrange it.)' },
+  airbase: { name: 'Airbase', code: 'B', cost: 900, turns: 6, hp: 5, upkeep: 12, tech: 'strategic_bombers', needsLevel: 3,
+    strike: { name: 'Bomber Sortie', range: 10, dmg: 3, area: 3, oil: 10, money: 100, cooldown: 3 },
+    text: 'Strategic bombers: hit a 3×3 area you can see up to 10 squares away for 3 damage. 10 oil and $100 per sortie, every 3 turns. Needs a Complex (level 3) base.' },
   // The Post-Oil megaproject: finishing it wins the game. Everyone can see it the moment it's started.
   fusion: { name: 'Deep-Sea Fusion Plant', code: '⚛', cost: 2500, turns: 10, hp: 14, upkeep: 20, tech: 'fusion_engineering',
     megaproject: true, needsLevel: 4, public: true,

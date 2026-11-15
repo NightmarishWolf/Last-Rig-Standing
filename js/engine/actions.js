@@ -4,6 +4,7 @@ import { doSell } from './economy.js';
 import { doBuyShip, doCancelBuild } from './production.js';
 import { doCancelFleetOrder, doDisbandFleet, doFormFleet, doJoinFleet, doLeaveFleet, doReformFleet, doRegroupFleet, doSetFleetOrder, fleetsOf, runFleetOrders, tidyFleets } from './fleets.js';
 import { doSetStanding, runStanding } from './standing.js';
+import { doBaseStrike, doSatellite } from './strikes.js';
 import { baseById, doBuildPlatform, doBuyRig, doUpgradeBase } from './bases.js';
 import { doDequeue, doFunding, doQueue, doResearch } from './research.js';
 import { doMoveCapital } from './victory.js';
@@ -50,6 +51,8 @@ function runAction(st, a) {
     case 'setFleetOrder': return doSetFleetOrder(st, a);
     case 'cancelFleetOrder': return doCancelFleetOrder(st, a);
     case 'setStanding': return doSetStanding(st, a);
+    case 'baseStrike': return doBaseStrike(st, a);   // { platformId, x, y }: recon drone, cruise missile, bomber sortie
+    case 'satellite': return doSatellite(st, a);     // { x, y }
     case 'sell': return doSell(st, a);
     case 'endTurn':
       // before the turn passes: voyages sail on, then fleets, then standing orders

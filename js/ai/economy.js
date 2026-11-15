@@ -85,7 +85,9 @@ function wanted(ctx, b, kind, have, total) {
     case 'refinery': return total < 3 && have < 1;
     case 'aa': return have < 1 && b.level >= 3;
     case 'missile': return have < 1 && b.level >= 3;
-    case 'helipad': return false;
+    case 'helipad': return total < 1 && b.level >= 2;
+    case 'cruise': return have < 1 && total < 3;
+    case 'airbase': return total < 1;
     case 'fusion': return E.victoryOn(st, 'postoil') && b.level >= 4;
     default: return false;
   }

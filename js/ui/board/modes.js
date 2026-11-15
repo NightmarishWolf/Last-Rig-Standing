@@ -1,6 +1,7 @@
 // Overlays for the current mode: move range, targeting, placing ships, rigs and ports.
 import * as E from '../../engine/index.js';
-import { PORT, RIG } from '../../data/economy.js';
+import { PORT, RIG, STRIKES } from '../../data/economy.js';
+import { PLATFORMS } from '../../data/bases.js';
 import { SHIPS } from '../../data/ships.js';
 import { ghost, outlineArea, roundRect, sightSquares } from './canvas.js';
 import { drawPlatform, drawPort, drawRig } from './units.js';
@@ -153,6 +154,26 @@ export function drawModeOverlay() {
       S.ctx.strokeStyle = COL.oil; S.ctx.lineWidth = 2;
       S.ctx.strokeRect(px(S.hover.x + lo) + 1, py(S.hover.y + lo) + 1, S.cell * (hi - lo + 1) - 2, S.cell * (hi - lo + 1) - 2);
       S.ctx.lineWidth = 1;
+    }
+  }
+  if (S.mode.kind === 'baseStrike' || S.mode.kind === 'satellite') {
+    const o = (S.st.platforms || []).find(x => x.id === S.mode.platformId);
+    const def = o && PLATFORMS[o.kind], spec = S.mode.kind === 'satellite' ? { range: 999, size: STRIKES.satellite.size } : def && (def.strike || def.recon);
+    if (spec) {
+      if (o) {
+        S.ctx.fillStyle = def.strike ? 'rgba(255,107,107,0.12)' : 'rgba(120,200,255,0.12)';
+        for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (Math.max(Math.abs(x - o.x), Math.abs(y - o.y)) <= spec.range) S.ctx.fillRect(px(x), py(y), S.cell, S.cell);
+        // the edge of the range
+        S.ctx.strokeStyle = def.strike ? 'rgba(255,107,107,0.85)' : 'rgba(120,200,255,0.85)'; S.ctx.setLineDash([6, 4]); S.ctx.lineWidth = 2;
+        S.ctx.strokeRect(px(o.x - spec.range), py(o.y - spec.range), S.cell * (2 * spec.range + 1), S.cell * (2 * spec.range + 1));
+        S.ctx.setLineDash([]); S.ctx.lineWidth = 1;
+      }
+      if (S.hover) {
+        const n = spec.size || spec.area || 1, lo = -Math.floor((n - 1) / 2);
+        const okSpot = o ? !E.strikeProblem(S.st, me(), o, S.hover.x, S.hover.y) : E.satelliteReady(S.st, me());
+        S.ctx.strokeStyle = okSpot ? (def?.strike ? '#ff6b6b' : '#78c8ff') : 'rgba(255,255,255,0.35)'; S.ctx.lineWidth = 2;
+        S.ctx.strokeRect(px(S.hover.x + lo) + 1, py(S.hover.y + lo) + 1, S.cell * n - 2, S.cell * n - 2); S.ctx.lineWidth = 1;
+      }
     }
   }
   if (S.mode.kind === 'placePort') {
