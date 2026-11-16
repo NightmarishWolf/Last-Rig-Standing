@@ -82,7 +82,7 @@ export function renderPanel() {
     <div class="row">
       <button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a Survey, Command, Repair Ship or Carrier): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
       ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}
-      <button data-end="1" class="primary" style="margin-left:auto">End turn</button>
+      <button data-end="1" class="primary" style="margin-left:auto">End turn <span class="key-hint">⏎</span></button>
     </div>
     ${upkeepWarning(st, p)}
   </div>`;
@@ -97,7 +97,16 @@ export function renderPanel() {
   html += shipyardCard(st, p);
   html += `<div class="card"><h3>Log</h3><div class="log">${pl.log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
   document.getElementById('panel').innerHTML = html;
+  if (!s) lastShownShip = null; // re-selecting the same ship later flashes again
+  // a newly selected ship: bring its card into view
+  document.querySelector('#panel .selected-card.flash')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
+
+// remember which shipyard classes are folded open (the panel is redrawn all the time)
+document.getElementById('panel')?.addEventListener('toggle', e => {
+  const t = e.target.closest?.('[data-tier]');
+  if (t) (S.shopOpen ||= { light: true })[t.dataset.tier] = t.open;
+}, true);
 
 // ---------- shipyards ----------
 export const currentYard = (st, p) => E.yardById(st, p, S.yard) || E.yardById(st, p, 'home');
@@ -129,7 +138,10 @@ function shipyardCard(st, p) {
   for (const cls of Object.keys(CLASS_NAMES)) {
     const list = Object.entries(SHIPS).filter(([, d]) => d.cls === cls && !d.hidden);
     if (!list.length) continue;
-    html += `<div class="shop-tier"><div class="tier-head"><span>${CLASS_NAMES[cls]}</span></div>`;
+    // each class folds away (light ships start open), so the list never turns into one long scroll
+    const open = (S.shopOpen ||= { light: true })[cls];
+    const ready = list.filter(([k]) => E.shipUnlocked(st, p, k)).length;
+    html += `<details class="shop-tier" data-tier="${cls}" ${open ? 'open' : ''}><summary class="tier-head"><span>${CLASS_NAMES[cls]}</span><span class="small muted">${ready}/${list.length} unlocked</span></summary>`;
     for (const [k, def] of list) {
       const unlocked = E.shipUnlocked(st, p, k), cost = E.shipCost(st, p, k);
       const why = E.buildProblem(st, p, k, yard.id);
@@ -143,7 +155,7 @@ function shipyardCard(st, p) {
         <button data-buy="${k}" ${why ? `disabled title="${why.replace(/"/g, '&quot;')}"` : `title="Build at ${yard.name}"`}>$${cost}</button>
       </div>`;
     }
-    html += '</div>';
+    html += '</details>';
   }
   if (full) html += `<div class="small muted">This yard's line is full (${QUEUE.max}).</div>`;
   return html + '</div>';
@@ -275,13 +287,17 @@ function victoryCard(st, p) {
   </div>`;
 }
 
+let lastShownShip = null;
 function shipCard(s) {
   const st = S.st, p = me(), def = SHIPS[s.type];
   const pas = Object.entries(def.passives || {}).map(([k, val]) => PASSIVE_TEXT[k] ? `<li>${PASSIVE_TEXT[k](k === 'armor' ? E.shipStat(st, p, s.type, 'armor') : val)}</li>` : '').join('');
   const canMove = !(s.acted && !def.passives?.hitAndRun);
   const oilRate = E.shipStat(st, p, s.type, 'oil');
+  // flashes a few times when a ship is newly selected, then keeps a highlighted border
+  const fresh = s.id !== lastShownShip;
+  lastShownShip = s.id;
   return `
-    <div class="card">
+    <div class="card selected-card ${fresh ? 'flash' : ''}">
       <h3>Selected · ${def.name}</h3>
       <div class="stats">
         <div class="stat"><span>HP</span><span class="v">${s.hp}/${E.shipStat(st, p, s.type, 'hp')}</span></div>

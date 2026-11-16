@@ -65,3 +65,15 @@
 @keyframes dots { from { width: 0; } to { width: 1.2em; } }
 .botbar button { padding: 3px 10px; font-size: 12px; }
 .warn-box { border-color: #7a3535; background: #2a1212; color: #f5c5c5; }
+
+/* the selected ship's card: a highlighted border, flashing a few times when a ship is picked */
+.card.selected-card { border-color: #ffd666; box-shadow: 0 0 0 1px rgba(255, 214, 102, .35); }
+.card.selected-card.flash { animation: sel-flash .45s ease-in-out 4; }
+@keyframes sel-flash { 50% { box-shadow: 0 0 0 4px rgba(255, 214, 102, .75), 0 0 18px rgba(255, 214, 102, .5); border-color: #fff3c4; } }
+
+/* collapsible shipyard classes */
+details.shop-tier > summary.tier-head { cursor: pointer; list-style: none; padding: 6px 8px; margin: 6px 0 4px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font-weight: 600; }
+details.shop-tier > summary.tier-head::-webkit-details-marker { display: none; }
+details.shop-tier > summary.tier-head span:first-child::before { content: '▸ '; color: var(--muted); }
+details.shop-tier[open] > summary.tier-head span:first-child::before { content: '▾ '; }
+.key-hint { opacity: .6; font-size: 11px; margin-left: 2px; }

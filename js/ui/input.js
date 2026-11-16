@@ -171,6 +171,13 @@ export function onKey(e) {
     if (!S.fit) centerOn(next.x, next.y);
     return refresh();
   }
+  // Enter / Return: end the turn (same as the End turn button, warnings included)
+  if (e.key === 'Enter' && !e.repeat) {
+    if (e.target.closest?.('button, input, select, textarea, a')) return; // Enter on a focused button presses that button
+    const btn = document.querySelector('[data-end]');
+    if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
+    return;
+  }
   if (e.key === ' ' && selected()) { e.preventDefault(); if (!S.fit) { centerOn(selected().x, selected().y); requestDraw(); } return; }
   if (e.key === 'r' || e.key === 'R') {
     if (selected()) planTurn();

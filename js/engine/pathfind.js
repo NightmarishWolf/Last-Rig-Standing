@@ -37,6 +37,7 @@ class Heap {
 // `from` lets you plan from somewhere other than where the ship is now ({x, y, r}).
 // `maxSteps` gives up on routes longer than that (keeps short hops cheap on huge maps).
 // Returns [{x, y, r}, ...] (not including the start), [] if already there, or null if there is no route.
+const TURN_TIE = 64; // route cost of one square, in "turn" units (a route never needs 64 turns per square)
 export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st, ship.owner, ship.id), from = null, maxSteps = Infinity) {
   const { W, H } = st, N = W * H;
   const shapes = [0, 1, 2, 3].map(r => cellsOf(ship.type, 0, 0, r));
@@ -71,10 +72,12 @@ export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st,
       if (k === 0) nx++; else if (k === 1) nx--; else if (k === 2) ny++; else if (k === 3) ny--;
       else { const t = k === 4 ? t1 : t2; nx += t[0]; ny += t[1]; nr = t[2]; }
       if (nx < 0 || ny < 0 || nx >= W || ny >= H || !fits(nx, ny, nr)) continue;
-      const j = idx(nx, ny, nr), c = cost[i] + (k < 4 ? 1 : 0); // turns are free
-      if (c >= cost[j] || c > maxSteps) continue;
+      // a square costs TURN_TIE (one move); a turn is free to the player, but costs 1 here so that
+      // among equally short routes the one with the fewest turns wins (no zig-zagging)
+      const j = idx(nx, ny, nr), c = cost[i] + (k < 4 ? TURN_TIE : 1);
+      if (c >= cost[j] || Math.floor(c / TURN_TIE) > maxSteps) continue;
       cost[j] = c; prev[j] = i;
-      heap.push(c + Math.abs(nx - tx) + Math.abs(ny - ty), j);
+      heap.push(c + (Math.abs(nx - tx) + Math.abs(ny - ty)) * TURN_TIE, j);
     }
   }
   if (goal === -1) return null;

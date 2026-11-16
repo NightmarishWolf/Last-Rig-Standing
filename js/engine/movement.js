@@ -24,12 +24,16 @@ export function reachable(st, ship) {
   const fits = cells => cells.every(([cx, cy]) => cx >= 0 && cy >= 0 && cx < W && cy < H && !grid[cy * W + cx]);
   const key = (x, y, r) => x + ',' + y + ',' + r;
   const start = key(ship.x, ship.y, ship.rot);
-  // 0-1 search: turns (cost 0) go to the front of the queue, squares (cost 1) to the back
+  // shortest by squares sailed, and among those the fewest turns (so planned moves don't zig-zag)
+  const pri = n => n.d * 64 + n.t;
   const q = [[ship.x, ship.y, ship.rot]];
-  res.set(start, { d: 0, prev: null, x: ship.x, y: ship.y, r: ship.rot, turn: false });
+  res.set(start, { d: 0, t: 0, prev: null, x: ship.x, y: ship.y, r: ship.rot, turn: false });
   const done = new Set();
   while (q.length) {
-    const [x, y, r] = q.shift();
+    // pop the cheapest (the queue stays small: one move's worth of positions)
+    let bi = 0;
+    for (let i = 1; i < q.length; i++) if (pri(res.get(key(...q[i]))) < pri(res.get(key(...q[bi])))) bi = i;
+    const [x, y, r] = q[bi]; q[bi] = q[q.length - 1]; q.pop();
     const k0 = key(x, y, r);
     if (done.has(k0)) continue;
     done.add(k0);
@@ -39,11 +43,12 @@ export function reachable(st, ship) {
     if (cur.d < maxSteps) next.push([x + 1, y, r, 1], [x - 1, y, r, 1], [x, y + 1, r, 1], [x, y - 1, r, 1]);
     for (const [nx, ny, nr, c] of next) {
       const k = key(nx, ny, nr);
+      const nd = cur.d + c, nt = cur.t + (c ? 0 : 1);
       const old = res.get(k);
-      if (old && old.d <= cur.d + c) continue;
+      if (old && (old.d < nd || (old.d === nd && old.t <= nt))) continue;
       if (!fits(cellsOf(ship.type, nx, ny, nr))) continue;
-      res.set(k, { d: cur.d + c, prev: k0, x: nx, y: ny, r: nr, turn: c === 0 });
-      if (c === 0) q.unshift([nx, ny, nr]); else q.push([nx, ny, nr]);
+      res.set(k, { d: nd, t: nt, prev: k0, x: nx, y: ny, r: nr, turn: c === 0 });
+      q.push([nx, ny, nr]);
     }
   }
   res.delete(start);
