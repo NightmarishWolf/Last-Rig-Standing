@@ -8,8 +8,8 @@
 // with one of your ships next to it. New ships can launch within `range` squares of it.
 export const PORT = {
   name: 'Forward Port',
-  baseCost: 300,
-  costPerPort: 100, // each port you already own adds this to the price
+  baseCost: 400,
+  costPerPort: 150, // each port you already own adds this to the price
   hp: 4,
   sight: 2,
   range: 2,
@@ -31,6 +31,10 @@ export const DEPOSITS = {
   rich:   { rate: 5, label: 'R', name: 'Rich',   home: [160, 240], middle: [200, 320] },
 };
 
+// Deeper drilling (Drilling research): when one of your rigs runs dry it can strike deeper layers,
+// each holding this share of the deposit's original oil (one layer per Deeper Wells / Ultra-Deep / Abyssal tech).
+export const DEEP_LAYERS = [0.4, 0.4, 0.5];
+
 export const MARKET = {
   basePrice: 15,   // $ per oil when the market is calm
   minPrice: 4,
@@ -46,7 +50,7 @@ export const MARKET = {
 export const START = { money: 400, oil: 40 };
 
 export const ECONOMY = {
-  upkeepRate: 0.05,  // every ship costs this share of its price in money, every turn
+  upkeepRate: 0.04,  // every ship costs this share of its price in money, every turn
   oilCap: 60,        // max oil you can store; anything pumped past this spills
 };
 
@@ -56,7 +60,7 @@ export const ECONOMY = {
 
 // Long-range strikes (Cruise Missile Batteries, Airbases, Sub-Launched Missiles):
 // aimed within this many squares of an enemy Jammer Ship, they have this chance to be scrambled.
-export const STRIKES = { jamChance: 0.5, satellite: { size: 7, cooldown: 4 } };
+export const STRIKES = { jamChance: 0.5, satellite: { size: 7, cooldown: 4, money: 40 } };
 
 // Selling ships back: the share of the ship's price you get (scaled by how damaged it is),
 // how many rounds it must have been out of combat, and where it can be sold

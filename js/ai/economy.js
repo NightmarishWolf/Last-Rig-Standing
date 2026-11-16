@@ -21,14 +21,19 @@ export async function sellOil(ctx) {
   const early = E.basesOf(st, p).length < 3;
   const expanding = ships.some(s => { const t = ctx.mem.tasks[s.id]; return t?.kind === 'expand' && cheb(s, t) <= (early ? 16 : 6); });
   const keep = expanding ? 6 : Math.min(cap - 5, Math.max(10, Math.round(perTurn)));
-  const floorPrice = sharp(ctx) ? MARKET.basePrice * 0.6 : 0;
+  // (a big stockpile isn't worth hoarding for a better price: it only buys anything once it's sold)
+  const hoard = me.oil > Math.max(30, coming * 3);
+  const floorPrice = sharp(ctx) ? MARKET.basePrice * (hoard ? 0.45 : 0.6) : 0;
   const sellTo = (goal, cond) => { let n = 0; while (n < me.oil && me.money + E.sellValue(st, n, p).total < goal && cond(n)) n++; return n; };
   let amount = 0;
   // 1) upkeep
   amount = Math.max(amount, sellTo(U * 2 + 10, () => true));
   // 2) money goal
-  const goal = U * 4 + 40 + (expanding ? E.baseFoundCost(st, p) : 0);
-  amount = Math.max(amount, Math.min(Math.max(0, me.oil - keep), sellTo(goal, n => E.sellValue(st, n + 1, p).price >= floorPrice)));
+  //    (plus whatever the bases are saving up for: a lab, a pump, an upgrade...)
+  const project = ctx.phase === 'war' && sharp(ctx) ? nextProject(ctx) : null;
+  const goal = U * 4 + 40 + (expanding ? E.baseFoundCost(st, p) : 0) + (project ? project.cost + U * 3 : 0);
+  const projectFloor = project ? floorPrice * 0.85 : floorPrice; // worth taking a slightly worse price for an investment
+  amount = Math.max(amount, Math.min(Math.max(0, me.oil - keep), sellTo(goal, n => E.sellValue(st, n + 1, p).price >= projectFloor)));
   // 3) surplus
   if (!early || !sharp(ctx)) {
     let n = 0;
@@ -50,7 +55,10 @@ export async function research(ctx) {
   if (!r.current && !r.queue.length) {
     let pick = null;
     // the personality's plan, in order (good bots get better surveys first: finding oil is everything early)
-    const plan = sharp(ctx) ? ['seismic', ...ctx.pers.research] : ctx.pers.research;
+    // (and when its rigs are close to running dry, drilling deeper comes first: a dry rig pumps nothing)
+    const drying = st.rigs.some(rg => rg.owner === p && (st.deposits.find(d => d.id === rg.depId)?.reserves ?? 99) < 25);
+    const deeper = drying && sharp(ctx) ? ['deep_drilling', 'ultra_deep', 'abyssal_drilling'] : [];
+    const plan = sharp(ctx) ? ['seismic', ...deeper, ...ctx.pers.research] : ctx.pers.research;
     for (const id of plan) {
       const s = techState(st, p, id);
       if (s === 'available' || s === 'blocked') { pick = id; break; }
@@ -91,6 +99,38 @@ function wanted(ctx, b, kind, have, total) {
     case 'fusion': return E.victoryOn(st, 'postoil') && b.level >= 4;
     default: return false;
   }
+}
+
+// Research Labs first for everyone (research is what unlocks everything else), then the personality's order.
+const platformOrder = ctx => ['lab', ...ctx.pers.platforms.filter(k => k !== 'lab')];
+
+// The next thing the bot is saving up for in its bases: the first platform (in the personality's
+// order) that it wants, has unlocked and has room for, or else a base upgrade. Shipbuilding leaves
+// this much money alone (unless enemies are at the door), so investments actually happen.
+export function nextProject(ctx) {
+  // (the engine's checks include "not enough money": look past that one, since we're saving up for it)
+  const me = ctx.me, money = me.money;
+  me.money = 1e9;
+  try { return pickProject(ctx); } finally { me.money = money; }
+}
+function pickProject(ctx) {
+  const { st, p } = ctx;
+  const bases = E.basesOf(st, p).filter(b => !b.wrecked).sort((a, b) => (b.capital ? 1 : 0) - (a.capital ? 1 : 0));
+  const all = (st.platforms || []).filter(o => o.owner === p);
+  for (const kind of platformOrder(ctx)) {
+    if (kind === 'wellhead' || !E.platformUnlocked(st, p, kind)) continue;
+    for (const b of bases) {
+      const have = all.filter(o => o.baseId === b.id && o.kind === kind).length;
+      if (!wanted(ctx, b, kind, have, all.filter(o => o.kind === kind).length)) continue;
+      if (!platformSpot(ctx, b, kind)) continue;
+      return { kind, cost: E.platformCost(st, p, kind) };
+    }
+  }
+  for (const b of bases) {
+    const next = BASE_LEVELS[b.level + 1];
+    if (next && !E.upgradeProblem(st, p, b)) return { kind: 'upgrade', cost: next.cost };
+  }
+  return null;
 }
 
 // A free square for a platform: as close to the middle of the base as possible.
@@ -138,7 +178,7 @@ export async function buildBases(ctx) {
   }
   // 3) other platforms, in the personality's order
   const all = (st.platforms || []).filter(o => o.owner === p);
-  for (const kind of ctx.pers.platforms) {
+  for (const kind of platformOrder(ctx)) {
     if (kind === 'wellhead' || !E.platformUnlocked(st, p, kind)) continue;
     for (const b of bases) {
       if (started >= ctx.knobs.platforms) return;

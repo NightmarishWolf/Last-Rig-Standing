@@ -3,15 +3,17 @@
 // Ship jobs used here (ctx.mem.tasks[shipId]):
 //   { kind: 'defend', base }   sailing to (or guarding) a base under threat
 //   { kind: 'strike' }         part of the strike force (gathers at the rally point, then sails as a fleet)
-//   { kind: 'raid', x, y }     a lone raider (subs, fast boats) hunting enemy rigs
-// ctx.mem.strike = { fleetId, target: { x, y, what, id }, power0, since }
+//   { kind: 'raid', x, y }     a raider (subs, fast boats) hunting enemy rigs with its pack
+//   { kind: 'mend' }           a hurt raider heading home to heal
+// ctx.mem.strikes = [{ fleetId, target: { x, y, what, id }, power0, since }]  (one per strike group)
 //
 // Everything a bot attacks comes from its own view or memory: enemy home waters are public
 // (they're drawn on everyone's map), but the Admiralty inside them has to be found by scouting.
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
 import { PLATFORMS } from '../data/bases.js';
-import { cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
+import { canSpend, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
+import { STRIKES } from '../data/economy.js';
 import { enemiesNear } from './memory.js';
 
 // ---------- strength ----------
@@ -25,7 +27,7 @@ export function power(st, p, type) {
 // Enemy ships seen recently: we don't know their type, so size stands in for it.
 const seenPower = e => e.cells.length * 3;
 // anything armed can join the strike force once the bot is in its war phase (patrol boats too)
-const warship = (ctx, s) => isArmed(s.type) && (SHIPS[s.type].cost >= 150 || ctx.phase === 'war');
+const warship = (ctx, s) => isArmed(s.type) && (SHIPS[s.type].cost >= 190 || ctx.phase === 'war');
 
 // ---------- defence ----------
 // Enemies spotted near one of our bases: send the closest free warships there.
@@ -67,37 +69,67 @@ export async function defend(ctx) {
 }
 
 // ---------- choosing a target ----------
-// What the strike force should go after, most urgent first.
-function pickTarget(ctx) {
+// What a strike group should go after, most urgent first. Bots always play to win: the Admiralty
+// (Conquest) once they're stronger or the war drags on, and bases (the enemy's oil and claims) otherwise.
+// `taken` = targets other strike groups already have (so the groups spread out).
+function pickTarget(ctx, taken = []) {
   const { st, p, view, mem } = ctx;
   const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
   if (!rivals.length) return null;
   const from = frontier(ctx) || myShips(ctx)[0] || { x: 0, y: 0 };
+  const free = b => !taken.includes(b.id);
   // 1) a rival's Fusion Plant: it wins them the game
   const fusion = view.enemyPlatforms.find(o => o.kind === 'fusion');
   if (fusion) return { x: fusion.x, y: fusion.y, what: 'fusion', id: fusion.id, owner: fusion.owner };
   // 2) a rival close to Domination (the streak is shown to everyone): hit their bases
   const dom = rivals.filter(i => st.players[i].domStreak > 0).sort((a, b) => st.players[b].domStreak - st.players[a].domStreak)[0];
   const knownBases = Object.entries(mem.enemyBases || {}).map(([id, b]) => ({ id, ...b })); // forgotten once seen gone (memory.js)
-  if (dom != null) {
-    const b = knownBases.filter(x => x.owner === dom).sort((a, c) => cheb(a, from) - cheb(c, from))[0];
-    if (b) return { x: b.x, y: b.y, what: 'base', id: b.id, owner: b.owner };
-  }
-  // 3) raiders and tycoons go for rigs and outlying bases; the others for the Admiralty (Conquest)
-  const capitals = knownBases.filter(b => b.capital);
   const nearest = list => list.sort((a, c) => cheb(a, from) - cheb(c, from))[0];
-  if (ctx.ai.personality === 'raider' || ctx.ai.personality === 'tycoon') {
-    const b = nearest(knownBases.filter(b => !b.capital)) || nearest(capitals);
+  if (dom != null) {
+    const b = nearest(knownBases.filter(x => x.owner === dom && free(x))) || nearest(knownBases.filter(x => x.owner === dom));
     if (b) return { x: b.x, y: b.y, what: 'base', id: b.id, owner: b.owner };
   }
-  // the Admiralty (Conquest) when it's within reach or late in the war; otherwise the nearest base
-  const c = nearest(capitals), b = nearest(knownBases);
-  if (c && (cheb(c, from) < 50 || st.round > 90 || !b)) return { x: c.x, y: c.y, what: 'capital', id: c.id, owner: c.owner };
-  if (b) return { x: b.x, y: b.y, what: 'base', id: b.id, owner: b.owner };
-  // 4) nothing found yet: sweep No Man's Sea toward the nearest rival's home (their home waters are on everyone's map)
-  const r = rivals.sort((a, c) => cheb(homeCentre(st, a), from) - cheb(homeCentre(st, c), from))[0];
-  const h = homeCentre(st, r), d = Math.max(1, cheb(h, from)), k = Math.min(1, (25 + 10 * ((ctx.mem.searches || 0) % 4)) / d);
-  return { x: Math.round(from.x + (h.x - from.x) * k), y: Math.round(from.y + (h.y - from.y) * k), what: 'search', owner: r };
+  // 3) the Admiralty when we're the stronger navy, it's close, or the war has dragged on (Conquest wins the game);
+  //    raiders and tycoons otherwise bleed the enemy's outlying bases, the others take the nearest base
+  const capitals = knownBases.filter(b => b.capital);
+  const c = nearest(capitals);
+  const strong = navyRatio(ctx) >= 1.5;
+  if (c && (strong || cheb(c, from) < 50 || st.round > 70)) return { x: c.x, y: c.y, what: 'capital', id: c.id, owner: c.owner };
+  const outlying = ctx.ai.personality === 'raider' || ctx.ai.personality === 'tycoon';
+  const b = nearest(knownBases.filter(x => free(x) && (!outlying || !x.capital))) || nearest(knownBases.filter(free)) || c;
+  if (b) return { x: b.x, y: b.y, what: b.capital ? 'capital' : 'base', id: b.id, owner: b.owner };
+  // 4) nothing found yet: search the nearest rival's home waters (they're on everyone's map), point by point
+  const r = rivals.sort((a, c2) => cheb(homeCentre(st, a), from) - cheb(homeCentre(st, c2), from))[0];
+  const pt = nextSearchPoint(ctx, r, from, taken);
+  return pt && { ...pt, what: 'search', owner: r, id: 'search:' + pt.x + ',' + pt.y };
+}
+// Search points spread over a rival's home waters (every 7 squares, so ships' sight covers it all) and
+// the strip of sea in front of it. Visited points are crossed off; once all are, the search starts over.
+function searchPoints(st, r) {
+  const h = st.players[r].home, pad = 10, pts = [];
+  const box = { x0: Math.max(0, h.x0 - pad), y0: Math.max(0, h.y0 - pad), x1: Math.min(st.W - 1, h.x1 + pad), y1: Math.min(st.H - 1, h.y1 + pad) };
+  for (let y = box.y0 + 3; y <= box.y1; y += 7) for (let x = box.x0 + 3; x <= box.x1; x += 7) if (!E.isLand(st, x, y)) pts.push({ x, y });
+  return pts;
+}
+export function nextSearchPoint(ctx, r, from, taken = []) {
+  const pts = searchPoints(ctx.st, r), done = (ctx.mem.searched ||= {});
+  let open = pts.filter(q => !done[q.x + ',' + q.y] && !taken.includes('search:' + q.x + ',' + q.y));
+  if (!open.length) { for (const q of pts) delete done[q.x + ',' + q.y]; open = pts.filter(q => !taken.includes('search:' + q.x + ',' + q.y)); }
+  return open.sort((a, b) => cheb(a, from) - cheb(b, from))[0] || null;
+}
+// Our ships tick off the search points they've come within 4 squares of.
+function markSearched(ctx) {
+  const { st, p } = ctx, done = (ctx.mem.searched ||= {}), ships = myShips(ctx);
+  for (const r of st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out))
+    for (const q of searchPoints(st, r)) if (ships.some(s => cheb(s, q) <= 4)) done[q.x + ',' + q.y] = 1;
+}
+// Our fighting power against what we've seen of the enemy's lately (1 = even; Infinity = nothing seen).
+function navyRatio(ctx) {
+  const { st, p } = ctx;
+  const ours = myShips(ctx).filter(s => isArmed(s.type)).reduce((t, s) => t + power(st, p, s.type), 0);
+  const known = Object.values(ctx.mem.enemies || {}).filter(e => st.turnCount - e.turn < 12 * st.players.length);
+  const theirs = known.reduce((t, e) => t + seenPower(e), 0);
+  return theirs ? ours / theirs : Infinity;
 }
 // Our base closest to the nearest rival's home: where the strike force gathers (sailing costs oil,
 // so wars are fought at the frontier, not across the whole map).
@@ -113,80 +145,97 @@ export function frontier(ctx) {
 const homeCentre = (st, i) => { const h = st.players[i].home; return { x: Math.round((h.x0 + h.x1) / 2), y: Math.round((h.y0 + h.y1) / 2) }; };
 
 // ---------- the strike force ----------
-// How strong the strike force should be before it sails (more for careful personalities).
+// How strong a strike group should be before it sails. Careful personalities want more, but every bot
+// gets bolder as the war drags on (from round 60 the bar drops, down to half by round 160), and a
+// bot that clearly outguns what it has seen goes as soon as it has a real group.
 function launchPower(ctx) {
   const ag = ctx.pers.aggression;
   const known = Object.values(ctx.mem.enemies || {}).filter(e => ctx.st.turnCount - e.turn < 10 * ctx.st.players.length);
   const enemy = known.reduce((t, e) => t + seenPower(e), 0);
-  return Math.max(10 + (1 - ag) * 16, enemy * (1.6 - ag * 0.5));
+  const urgency = Math.max(0.5, 1 - Math.max(0, ctx.st.round - 60) / 200);
+  const base = Math.max(10 + (1 - ag) * 16, enemy * (1.6 - ag * 0.5)) * urgency;
+  return navyRatio(ctx) >= 2 ? Math.min(base, 14) : base;
 }
 
+// Strike groups: fleets sent after a target. Several can be out at once once the navy is big enough
+// (each picks a different target), so a big navy doesn't sit at home while one fleet does all the work.
+// ctx.mem.strikes = [{ fleetId, target: { x, y, what, id }, power0, since }]
 export async function strike(ctx) {
   const { st, p, mem } = ctx;
   const ships = myShips(ctx);
   const rally = frontier(ctx);
   if (!rally) return;
+  if (mem.strike) { mem.strikes = [mem.strike]; delete mem.strike; } // (older saves)
+  markSearched(ctx);
+  mem.strikes = (mem.strikes || []).filter(g => E.fleetById(st, g.fleetId));
   // new warships join the strike force (some stay home as guards, see defense.js)
   for (const s of ships) if (warship(ctx, s) && !taskOf(ctx, s) && !s.standing) ctx.mem.tasks[s.id] = { kind: 'strike' };
-  const force = ships.filter(s => taskOf(ctx, s)?.kind === 'strike');
-  let f = mem.strike?.fleetId && E.fleetById(st, mem.strike.fleetId);
-  if (mem.strike && !f) mem.strike = null; // the fleet was destroyed or disbanded
+  const force = ships.filter(s => taskOf(ctx, s)?.kind === 'strike' && !E.fleetOf(st, s.id));
 
-  // ---- gathering ----
-  if (!f) {
-    const total = force.reduce((t, s) => t + power(st, p, s.type), 0);
-    for (const s of force) {
-      if (cheb(s, rally) > 5) { const spot = spotNextTo(ctx, s, rally.x, rally.y, 4); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
-    }
-    const gathered = force.filter(s => cheb(s, rally) <= 6);
-    const ready = gathered.reduce((t, s) => t + power(st, p, s.type), 0);
-    if (gathered.length >= 2 && ready >= launchPower(ctx) && (sharp(ctx) || total > launchPower(ctx) * 1.3)) {
-      const oilIn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
-      const size = Math.max(2, Math.min(12, Math.floor(oilIn / 2) + 2)); // a fleet the oil can actually move
-      const pick = gathered.sort((a, b) => power(st, p, b.type) - power(st, p, a.type)).slice(0, size);
-      const r = await ctx.do({ type: 'formFleet', shipIds: pick.map(s => s.id) });
-      if (r.ok) {
-        f = E.fleetOf(st, pick[0].id);
-        mem.strike = { fleetId: f.id, target: pickTarget(ctx), power0: ready, since: st.round };
-      }
-    }
-    if (!f) return;
+  // ---- gathering the next group at the rally point ----
+  const lp = launchPower(ctx);
+  const maxGroups = Math.min(3, 1 + Math.floor(ships.filter(s => isArmed(s.type)).length / 8));
+  for (const s of force) {
+    if (cheb(s, rally) > 4) { const spot = spotNextTo(ctx, s, rally.x, rally.y, 3); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
   }
+  const gathered = force.filter(s => cheb(s, rally) <= 6 && st.ships.includes(s));
+  const ready = gathered.reduce((t, s) => t + power(st, p, s.type), 0);
+  const total = force.reduce((t, s) => t + power(st, p, s.type), 0);
+  if (mem.strikes.length < maxGroups && gathered.length >= 2 && ready >= lp && (sharp(ctx) || total > lp * 1.3)) {
+    const oilIn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
+    const size = Math.max(2, Math.min(12, Math.floor(oilIn / 2) + 2)); // a fleet the oil can actually move
+    // the strongest ship leads; a fleet can only take ships within 8 squares of its flagship
+    const lead = [...gathered].sort((a, b) => power(st, p, b.type) - power(st, p, a.type))[0];
+    const pick = gathered.filter(s => s === lead || cheb(s, lead) <= 8)
+      .sort((a, b) => (b === lead) - (a === lead) || power(st, p, b.type) - power(st, p, a.type)).slice(0, size);
+    const r = pick.length >= 2 ? await ctx.do({ type: 'formFleet', shipIds: pick.map(s => s.id) }) : { ok: false };
+    if (r.ok) {
+      const f = E.fleetOf(st, pick[0].id);
+      const taken = mem.strikes.map(g => g.target?.id).filter(Boolean);
+      mem.strikes.push({ fleetId: f.id, target: pickTarget(ctx, taken), power0: ready, since: st.round });
+    }
+  }
+  // ---- every group at sea ----
+  for (const g of [...mem.strikes]) await runGroup(ctx, g);
+}
 
-  // ---- at sea ----
+async function runGroup(ctx, g) {
+  const { st, p, mem } = ctx;
+  const f = E.fleetById(st, g.fleetId);
+  if (!f) { mem.strikes = mem.strikes.filter(x => x !== g); return; }
   const fleetShips = E.fleetShips(st, f);
   const now = fleetShips.reduce((t, s) => t + power(st, p, s.type), 0);
-  // badly beaten: come home and rebuild
-  if (now < mem.strike.power0 * 0.4) {
+  // badly beaten: come home and rebuild (unless the enemy is down to almost nothing: then press on)
+  if (now < g.power0 * 0.4 && navyRatio(ctx) < 3) {
     await ctx.do({ type: 'disbandFleet', fleetId: f.id });
-    mem.strike = null;
+    mem.strikes = mem.strikes.filter(x => x !== g);
     for (const s of fleetShips) ctx.mem.tasks[s.id] = { kind: 'strike' }; // they'll regroup at the rally point
     return;
   }
-  // re-pick the target if it's gone, or something more urgent appeared (a Fusion Plant, a Domination streak)
-  const urgent = pickTarget(ctx);
-  const t = mem.strike.target;
+  // re-pick the target if it's gone, or something more urgent appeared (a Fusion Plant, the Admiralty)
+  const taken = mem.strikes.filter(x => x !== g).map(x => x.target?.id).filter(Boolean);
+  const urgent = pickTarget(ctx, taken);
+  const t = g.target;
   const gone = !t || (t.what === 'fusion' ? !ctx.view.enemyPlatforms.some(o => o.id === t.id)
     : t.id && !ctx.mem.enemyBases?.[t.id]);
-  const searched = t?.what === 'search' && cheb(E.flagship(st, f), t) <= 4;
-  if (searched) mem.searches = (mem.searches || 0) + 1; // next sweep goes a little further
-  if (gone || searched || (urgent && ['fusion'].includes(urgent.what) && t.what !== 'fusion') || (urgent?.what === 'capital' && t.what === 'search')) mem.strike.target = urgent;
-  const tg = mem.strike.target;
+  const searched = t?.what === 'search' && (mem.searched?.[t.x + ',' + t.y] || cheb(E.flagship(st, f), t) <= 4);
+  if (gone || searched || (urgent && urgent.what === 'fusion' && t.what !== 'fusion') || (urgent?.what === 'capital' && t.what !== 'capital' && t.what !== 'fusion')) g.target = urgent;
+  const tg = g.target;
   if (!tg) return;
   // sail toward the target, but only as far as this turn's oil allows (then stop, so the fleet
   // doesn't keep burning oil at the end of the turn)
   const L = E.flagship(st, f);
   const dest = spotNextTo(ctx, L, tg.x, tg.y, 2) || spotNextTo(ctx, L, tg.x, tg.y, 5);
-  if (!dest) { if (tg.what === 'search') mem.searches = (mem.searches || 0) + 1; mem.strike.target = null; return; } // nowhere to stop there (land): pick again
+  if (!dest) { if (tg.what === 'search') (mem.searched ||= {})[tg.x + ',' + tg.y] = 1; g.target = null; return; } // nowhere to stop there (land): pick again
   if (cheb(L, dest) > 1) {
     const speed = E.fleetSpeed(st, f);
-    const cost = fleetShips.reduce((t, s) => t + E.moveCost(st, s, speed), 0);
-    if ((ctx.oilBudget ?? ctx.me.oil) >= Math.min(cost, ctx.me.oil) && ctx.me.oil >= fleetShips.length) {
+    const cost = fleetShips.reduce((t2, s) => t2 + E.moveCost(st, s, speed), 0);
+    if ((ctx.oilBudget ?? ctx.me.oil) >= Math.min(cost, ctx.me.oil) && ctx.me.oil >= cost * 0.5) {
       const before = ctx.me.oil;
       const r = await ctx.do({ type: 'setFleetOrder', fleetId: f.id, points: [{ x: dest.x, y: dest.y }] });
       if (st.fleets.includes(f) && f.order) await ctx.do({ type: 'cancelFleetOrder', fleetId: f.id });
       ctx.oilBudget = Math.max(0, (ctx.oilBudget ?? before) - (before - ctx.me.oil));
-      if (!r.ok) { if (tg.what === 'search') mem.searches = (mem.searches || 0) + 1; mem.strike.target = null; } // can't get there: pick something else next turn
+      if (!r.ok) { if (tg.what === 'search') (mem.searched ||= {})[tg.x + ',' + tg.y] = 1; g.target = null; } // can't get there: pick something else next turn
     }
   }
 }
@@ -196,15 +245,45 @@ export async function strike(ctx) {
 export async function raid(ctx) {
   const { st, p } = ctx;
   if (ctx.ai.personality !== 'raider') return;
-  const raiders = myShips(ctx).filter(s => (SHIPS[s.type].passives?.submerged || s.type === 'hydrofoil' || s.type === 'missileboat') && !E.fleetOf(st, s.id));
-  const rigs = Object.values(ctx.mem.enemyRigs || {}).filter(r => st.rigs.some(x => x.x === r.x && x.y === r.y && x.owner === r.owner));
+  const isRaider = s => SHIPS[s.type].passives?.submerged || ['hydrofoil', 'missileboat', 'corvette'].includes(s.type);
+  const raiders = myShips(ctx).filter(s => isRaider(s) && !E.fleetOf(st, s.id) && (!taskOf(ctx, s) || ['raid', 'strike', 'mend'].includes(taskOf(ctx, s).kind)));
+  const maxHp = s => E.shipStat(st, p, s.type, 'hp');
+  const bases = E.basesOf(st, p).filter(b => !b.wrecked);
+  // 1) hurt raiders slip home to heal (inside our claims, next to a Dry Dock if we have one) and rejoin later
+  const docks = (st.platforms || []).filter(o => o.owner === p && o.kind === 'drydock' && !o.buildLeft);
+  const pack = [];
   for (const s of raiders) {
     const t = taskOf(ctx, s);
-    if (t && t.kind !== 'raid' && t.kind !== 'strike') continue;
-    const target = rigs.sort((a, b) => cheb(a, s) - cheb(b, s))[0] || (() => { const h = pickTarget(ctx); return h && { x: h.x, y: h.y }; })();
-    if (!target) continue;
+    if (t?.kind === 'mend' && s.hp >= maxHp(s)) delete ctx.mem.tasks[s.id];
+    const canHeal = docks.length || E.pstat(st, p, 'heal') > 0; // (nothing heals without a Dry Dock or the research)
+    if (canHeal && (s.hp <= maxHp(s) / 2 || taskOf(ctx, s)?.kind === 'mend')) {
+      ctx.mem.tasks[s.id] = { kind: 'mend' };
+      const haven = (docks.length ? docks : bases).sort((a, b) => cheb(a, s) - cheb(b, s))[0];
+      if (haven && cheb(haven, s) > 2) { const spot = spotNextTo(ctx, s, haven.x, haven.y, 1); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
+      continue;
+    }
+    pack.push(s);
+  }
+  // 2) raiders hunt in packs: too few, and they stay home as defenders until the pack is big enough
+  const need = sharp(ctx) ? 3 : 2;
+  if (pack.length < need) { for (const s of pack) if (taskOf(ctx, s)?.kind === 'raid') delete ctx.mem.tasks[s.id]; return; }
+  // 3) the target: an enemy rig we know about, preferring lightly defended ones near the pack
+  const cx = pack.reduce((t, s) => t + s.x, 0) / pack.length, cy = pack.reduce((t, s) => t + s.y, 0) / pack.length;
+  const rigs = Object.values(ctx.mem.enemyRigs || {}).filter(r => st.rigs.some(x => x.x === r.x && x.y === r.y && x.owner === r.owner));
+  const guarded = r => enemiesNear(ctx, r.x, r.y, 5).length;
+  const target = rigs.filter(r => guarded(r) * 2 < pack.length)
+    .sort((a, b) => guarded(a) * 15 + cheb(a, { x: cx, y: cy }) - guarded(b) * 15 - cheb(b, { x: cx, y: cy }))[0]
+    || (() => { const h = pickTarget(ctx); return h && { x: h.x, y: h.y }; })();
+  if (!target) return;
+  // 4) move as a pack: the ship closest to the target leads, stragglers catch up before it goes in
+  const lead = [...pack].sort((a, b) => cheb(a, target) - cheb(b, target))[0];
+  const spread = Math.max(...pack.map(s => cheb(s, lead)));
+  for (const s of pack) {
     ctx.mem.tasks[s.id] = { kind: 'raid', x: target.x, y: target.y };
-    if (cheb(s, target) > 3) { const spot = spotNextTo(ctx, s, target.x, target.y, 3); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
+    const goal = s === lead && spread > 6 ? null : s === lead ? target : spread > 6 ? lead : target;
+    if (!goal || cheb(s, goal) <= 3) continue;
+    const spot = spotNextTo(ctx, s, goal.x, goal.y, 3);
+    if (spot) await sailSome(ctx, s, spot.x, spot.y);
   }
 }
 
@@ -225,24 +304,26 @@ export async function spy(ctx) {
   if (!unknown.length) return;
   let spyShip = ships.find(s => taskOf(ctx, s)?.kind === 'spy');
   if (!spyShip) {
-    spyShip = ships.filter(s => !E.fleetOf(st, s.id) && s.type !== 'survey' && (!taskOf(ctx, s) || ['survey', 'strike'].includes(taskOf(ctx, s).kind)) && SHIPS[s.type].cost <= 200 && s.movesLeft > 0)
+    spyShip = ships.filter(s => !E.fleetOf(st, s.id) && s.type !== 'survey' && (!taskOf(ctx, s) || ['survey', 'strike'].includes(taskOf(ctx, s).kind)) && SHIPS[s.type].cost <= 250 && s.movesLeft > 0)
       .sort((a, b) => SHIPS[b.type].move - SHIPS[a.type].move)[0];
     if (!spyShip) return;
     const r = unknown.sort((a, b) => cheb(homeCentre(st, a), spyShip) - cheb(homeCentre(st, b), spyShip))[0];
     ctx.mem.tasks[spyShip.id] = { kind: 'spy', owner: r, n: 0 };
     if (spyShip.standing) await ctx.do({ type: 'setStanding', shipId: spyShip.id, standing: null });
   }
-  const t = taskOf(ctx, spyShip), h = homeCentre(st, t.owner);
-  // aim at the middle of their home waters, then circle through it
-  const ring = [[0, 0], [8, -8], [8, 8], [-8, 8], [-8, -8]][t.n % 5];
-  const goal = { x: Math.max(0, Math.min(st.W - 1, h.x + ring[0])), y: Math.max(0, Math.min(st.H - 1, h.y + ring[1])) };
+  const t = taskOf(ctx, spyShip);
+  // work through their home waters point by point (shared with the strike groups' search)
+  markSearched(ctx);
+  const goal = nextSearchPoint(ctx, t.owner, spyShip);
+  if (!goal) return;
   const spot = spotNextTo(ctx, spyShip, goal.x, goal.y, 3);
-  if (!spot || cheb(spyShip, goal) <= 4) { t.n++; return; }
+  if (!spot) { (ctx.mem.searched ||= {})[goal.x + ',' + goal.y] = 1; return; }
   // a spy gets a modest slice of the oil
   const saved = ctx.oilBudget;
   ctx.oilBudget = Math.min(saved ?? ctx.me.oil, Math.max(3, Math.round(ctx.me.oil * 0.25)));
   const used0 = ctx.oilBudget;
-  await sailSome(ctx, spyShip, spot.x, spot.y);
+  const res = await sailSome(ctx, spyShip, spot.x, spot.y);
+  if (res === 'noroute' || res === 'stuck') (ctx.mem.searched ||= {})[goal.x + ',' + goal.y] = 1; // can't get there: try the next point
   ctx.oilBudget = Math.max(0, (saved ?? ctx.me.oil) - (used0 - ctx.oilBudget));
 }
 
@@ -253,21 +334,44 @@ export async function longRange(ctx) {
   const { st, p, mem } = ctx;
   const ready = () => (st.platforms || []).filter(o => o.owner === p && !o.buildLeft && !(o.cd > 0) && (PLATFORMS[o.kind].strike || PLATFORMS[o.kind].recon) && !E.basesOf(st, p).find(b => b.id === o.baseId)?.wrecked);
   const remembered = [...Object.values(mem.enemyBases || {}), ...Object.values(mem.enemyRigs || {})];
-  // a satellite pass over a rival we haven't found yet, or their Admiralty
-  if (E.satelliteReady(st, p)) {
+  // 1) ships with long-range missiles: spot a remembered enemy structure in their range (satellite or drone)
+  //    so the 'fire' step can hit it, or sail free missile ships to a stand-off spot near one
+  const shooters = myShips(ctx).filter(s => SHIPS[s.type].actions.some(a => a.longRange && !E.canUseAction(st, s, a)));
+  const prio = b => (b.capital ? 0 : b.center ? 1 : 2);
+  for (const s of shooters) {
+    const act = SHIPS[s.type].actions.find(a => a.longRange), range = E.actionRange(st, s, act), cells = E.shipCells(s);
+    if (!canSpend(ctx, (act.money || 0) + 40, 2)) break;
+    const inRange = remembered.filter(b => E.dist(cells, [[b.x, b.y]]) <= range).sort((a, b) => prio(a) - prio(b));
+    const t = inRange[0];
+    if (t && !E.seesSquare(st, p, t.x, t.y)) {
+      if (E.satelliteReady(st, p) && canSpend(ctx, STRIKES.satellite.money, 2)) await ctx.do({ type: 'satellite', x: t.x, y: t.y });
+      else {
+        const drone = ready().find(o => PLATFORMS[o.kind].recon && cheb(o, t) <= PLATFORMS[o.kind].recon.range);
+        if (drone) await ctx.do({ type: 'baseStrike', platformId: drone.id, x: t.x, y: t.y });
+      }
+    }
+    if (!t && !taskOf(ctx, s) && !E.fleetOf(st, s.id) && ctx.phase === 'war') {
+      // stand off just inside missile range of the nearest known enemy structure (out of most base guns)
+      const near = remembered.filter(b => cheb(b, s) <= range + 15).sort((a, b) => cheb(a, s) - cheb(b, s))[0];
+      if (near) { const spot = spotNextTo(ctx, s, near.x, near.y, range - 2); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
+    }
+  }
+  // 2) a satellite pass over a rival we haven't found yet, or their Admiralty
+  if (E.satelliteReady(st, p) && canSpend(ctx, STRIKES.satellite.money, 3)) {
     const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
     const lost = rivals.find(r => !remembered.some(b => b.owner === r));
     const cap = Object.values(mem.enemyBases || {}).find(b => b.capital);
     const t = lost != null ? homeCentre(st, lost) : cap;
     if (t) await ctx.do({ type: 'satellite', x: t.x, y: t.y });
   }
-  // recon drones over the nearest remembered enemy base or rig in range
+  // 3) recon drones over the nearest remembered enemy base or rig in range
   for (const o of ready().filter(o => PLATFORMS[o.kind].recon)) {
+    if (!canSpend(ctx, PLATFORMS[o.kind].recon.money, 3)) break;
     const r = PLATFORMS[o.kind].recon.range;
     const t = remembered.filter(b => cheb(b, o) <= r).sort((a, b) => cheb(a, o) - cheb(b, o))[0];
     if (t) await ctx.do({ type: 'baseStrike', platformId: o.id, x: t.x, y: t.y });
   }
-  // strikes on whatever we can see, most valuable first
+  // 4) base strikes on whatever we can see, most valuable first
   for (const o of ready().filter(o => PLATFORMS[o.kind].strike)) {
     const s = PLATFORMS[o.kind].strike, v = ctx.view;
     if (ctx.me.oil - s.oil < 4 || ctx.me.money - (s.money || 0) < E.upkeepTotal(st, p) * 2) continue;

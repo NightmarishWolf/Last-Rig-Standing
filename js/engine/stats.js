@@ -37,7 +37,7 @@ function fuelLineActive(st, ship) {
     dist(shipCells(o), cells) <= passives(o).fuelLine);
 }
 
-// Oil for sailing `steps` squares (turns count as a square), to two decimals: a Survey Ship at
+// Oil for sailing `steps` squares (turning is free), to two decimals: a Survey Ship at
 // 0.2 oil per square pays 0.2 for one square, 1 for five. Research can make it cheaper.
 export function moveCost(st, ship, steps) {
   if (steps <= 0) return 0;

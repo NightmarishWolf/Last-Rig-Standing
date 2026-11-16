@@ -18,7 +18,7 @@ import { shipStat } from './modifiers.js';
 import { hasTech } from './research.js';
 import { rand } from './rng.js';
 import { checkWin } from './turns.js';
-import { fail, log, ok, others, passives } from './util.js';
+import { fail, log, ok, others, passives, r2 } from './util.js';
 import { doScanAt } from './abilities.js';
 import { sightSources } from './visibility.js';
 
@@ -49,9 +49,9 @@ export function strikeProblem(st, p, o, x, y) {
   if (x == null) return null;
   if (!inBounds(st, x, y)) return 'Out of bounds.';
   if (Math.max(Math.abs(x - o.x), Math.abs(y - o.y)) > s.range) return `Out of range (${s.range} squares).`;
+  if (st.players[p].oil < (s.oil || 0)) return `Needs ${s.oil} oil.`;
+  if (st.players[p].money < (s.money || 0)) return `Needs $${s.money}.`;
   if (def.strike) {
-    if (st.players[p].oil < (s.oil || 0)) return `Needs ${s.oil} oil.`;
-    if (st.players[p].money < (s.money || 0)) return `Needs $${s.money}.`;
     if (!seesSquare(st, p, x, y)) return "You can't see that square: scout it first (a recon drone, a scan or a ship's sight).";
   }
   return null;
@@ -66,11 +66,12 @@ export function doBaseStrike(st, a) {
   const def = PLATFORMS[o.kind];
   if (def.recon) {
     o.cd = def.recon.cooldown;
+    st.players[p].money = r2(st.players[p].money - (def.recon.money || 0));
     doScanAt(st, p, { name: 'Recon drone', size: def.recon.size }, a.x, a.y);
     return ok();
   }
   const s = def.strike, me = st.players[p];
-  me.oil -= s.oil || 0; me.money -= s.money || 0;
+  me.oil = r2(me.oil - (s.oil || 0)); me.money = r2(me.money - (s.money || 0));
   o.cd = s.cooldown;
   // the launch site is no secret: everyone gets a flash on it
   for (const q of others(st, p)) st.players[q].flashes.push({ x: o.x, y: o.y, w: 1, h: 1, turn: st.turnCount, owner: p });
@@ -92,6 +93,9 @@ export function doSatellite(st, a) {
   if (!hasTech(st, p, 'satellites')) return fail(`Research ${TECH.satellites.name} first.`);
   if (st.players[p].satCd > 0) return fail(`The satellite is back over you in ${st.players[p].satCd} turns.`);
   if (!inBounds(st, a.x, a.y)) return fail('Out of bounds.');
+  const cost = STRIKES.satellite.money || 0;
+  if (st.players[p].money < cost) return fail(`Needs $${cost}.`);
+  st.players[p].money = r2(st.players[p].money - cost);
   st.players[p].satCd = STRIKES.satellite.cooldown;
   doScanAt(st, p, { name: 'Satellite pass', size: STRIKES.satellite.size }, a.x, a.y);
   return ok();

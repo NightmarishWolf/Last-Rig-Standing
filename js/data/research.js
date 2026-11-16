@@ -13,7 +13,8 @@
 //   { player: <key>, add | mult } with keys:
 //     oilCap, sellMult, priceDropMult, upkeepMult, surveyRadius, rigRate, reservesMult, portRange,
 //     claimRadius, slots, platformCostMult, platformHpMult, platformUpkeepMult, baseCostMult,
-//     rp, heal, baseSight, stealth, flashExact, platformRange, platformRepair
+//     rp, heal, baseSight, stealth, flashExact, platformRange, platformRepair,
+//     deepLayers (dry rigs drill deeper: see DEEP_LAYERS in economy.js), pumpBonus (oil per Pump Station)
 // ============================================================
 
 export const ERA_COST = { 1: 12, 2: 25, 3: 50, 4: 90, 5: 150 }; // research points per tech (Era V: Post-Oil)
@@ -21,7 +22,8 @@ export const FUNDING = { costPerRp: 15, maxRp: 20 };   // buy extra research wit
 
 export const BRANCHES = {
   prop:   { name: 'Propulsion', icon: '⚙️' },
-  econ:   { name: 'Economy', icon: '🛢️' },
+  econ:   { name: 'Economy', icon: '💰' },
+  drill:  { name: 'Drilling', icon: '🛢️' },
   sens:   { name: 'Sensors & Intel', icon: '📡' },
   weap:   { name: 'Weapons', icon: '💥' },
   armor:  { name: 'Armor & Survival', icon: '🛡️' },
@@ -56,8 +58,7 @@ export const TECHS = [
   T('silent_service', 'Silent Service', 'prop', 4, ['nuclear_prop'], [{ ship: 'sub', stat: 'hp', mult: 1.25 }, { ship: 'sub', stat: 'sight', add: 1 }], {}, 'prop4',
     'Submarine navy: subs get 25% more HP and +1 sight.'),
 
-  // ---------------- 🛢️ ECONOMY ----------------
-  T('seismic', 'Seismic Surveys', 'econ', 1, [], [{ player: 'surveyRadius', add: 1 }]),
+  // ---------------- 💰 ECONOMY (money, markets and storage) ----------------
   T('trading', 'Commodity Trading', 'econ', 1, [], [{ player: 'sellMult', mult: 1.1 }]),
   T('storage_tanks', 'Storage Tanks', 'econ', 2, [], [{ player: 'oilCap', add: 40 }]),
   T('refining', 'Refining', 'econ', 2, ['trading'], [{ player: 'sellMult', mult: 1.1 }]),
@@ -65,15 +66,28 @@ export const TECHS = [
     'Sell high: oil sells for 15% more and the price drops more slowly when you sell.'),
   T('strategic_reserve', 'Strategic Reserve', 'econ', 2, ['storage_tanks'], [{ player: 'oilCap', add: 60 }, { player: 'reservesMult', mult: 1.15 }], {}, 'econ2',
     'Hoard: +60 oil storage, and new rigs tap 15% more oil.'),
-  T('deep_water', 'Deep-Water Drilling', 'econ', 3, ['seismic'], [{ player: 'rigRate', add: 1 }]),
-  T('mobile_drilling', 'Mobile Drilling', 'econ', 3, ['deep_water'], [], { ships: ['drillship'] }),
   T('corporate_finance', 'Corporate Finance', 'econ', 3, ['refining'], [{ player: 'upkeepMult', mult: 0.9 }, { player: 'baseCostMult', mult: 0.85 }]),
-  T('enhanced_recovery', 'Enhanced Recovery', 'econ', 4, ['deep_water'], [{ player: 'reservesMult', mult: 1.25 }]),
   T('futures', 'Futures Markets', 'econ', 4, ['corporate_finance'], [{ player: 'priceDropMult', mult: 0.5 }]),
   T('expansion', 'Expansion', 'econ', 4, ['corporate_finance'], [{ player: 'baseCostMult', mult: 0.6 }, { player: 'platformCostMult', mult: 0.85 }], {}, 'econ4',
     'Many bases: founding bases costs 40% less and platforms 15% less.'),
-  T('consolidation', 'Consolidation', 'econ', 4, ['enhanced_recovery'], [{ player: 'rigRate', add: 1 }, { player: 'slots', add: 2 }], {}, 'econ4',
+
+  // ---------------- ⛏️ DRILLING (oil production: finding it, pumping it, and making it last) ----------------
+  T('seismic', 'Seismic Surveys', 'drill', 1, [], [{ player: 'surveyRadius', add: 1 }]),
+  T('pump_stations', 'Pump Stations', 'drill', 2, ['platform_construction'], [], { platforms: ['pump'] }),
+  T('deep_drilling', 'Deeper Wells', 'drill', 2, ['seismic'], [{ player: 'deepLayers', add: 1 }], {}, null,
+    'When one of your rigs runs dry, it drills deeper and strikes a second layer with 40% of the deposit\'s original oil.'),
+  T('deep_water', 'Deep-Water Drilling', 'drill', 3, ['seismic'], [{ player: 'rigRate', add: 1 }]),
+  T('mobile_drilling', 'Mobile Drilling', 'drill', 3, ['deep_water'], [], { ships: ['drillship'] }),
+  T('improved_pumps', 'Improved Pumps', 'drill', 3, ['pump_stations'], [{ player: 'pumpBonus', add: 1 }], {}, null,
+    'Pump Stations pump +1 more oil each (every rig in the base).'),
+  T('ultra_deep', 'Ultra-Deep Drilling', 'drill', 3, ['deep_drilling', 'deep_water'], [{ player: 'deepLayers', add: 1 }], {}, null,
+    'Dry rigs can drill down a third layer (another 40% of the original oil).'),
+  T('enhanced_recovery', 'Enhanced Recovery', 'drill', 4, ['deep_water'], [{ player: 'reservesMult', mult: 1.25 }]),
+  T('automated_drilling', 'Automated Drilling', 'drill', 4, ['improved_pumps'], [{ player: 'rigRate', add: 1 }]),
+  T('consolidation', 'Consolidation', 'drill', 4, ['enhanced_recovery'], [{ player: 'rigRate', add: 1 }, { player: 'slots', add: 2 }], {}, 'econ4',
     'Few big bases: every rig pumps +1 and every base gets 2 more platform slots.'),
+  T('abyssal_drilling', 'Abyssal Drilling', 'drill', 4, ['ultra_deep', 'enhanced_recovery'], [{ player: 'deepLayers', add: 1 }], {}, null,
+    'Dry rigs can drill a fourth layer, the deepest (50% of the original oil).'),
 
   // ---------------- 📡 SENSORS & INTEL ----------------
   T('radar', 'Improved Radar', 'sens', 1, [], [{ ship: 'all', stat: 'sight', add: 1 }]),
@@ -167,7 +181,6 @@ export const TECHS = [
   T('modular_platforms', 'Modular Platforms', 'rigs', 1, ['platform_construction'], [{ player: 'slots', add: 1 }]),
   T('research_labs', 'Research Labs', 'rigs', 1, ['platform_construction'], [], { platforms: ['lab'] }),
   T('subsea_manifolds', 'Subsea Manifolds', 'rigs', 2, ['pipelines'], [{ player: 'claimRadius', add: 1 }], {}, null, 'Bases claim 7×7.'),
-  T('pump_stations', 'Pump Stations', 'rigs', 2, ['platform_construction'], [], { platforms: ['pump'] }),
   T('gun_platforms', 'Gun Platforms', 'rigs', 2, ['platform_construction', 'artillery'], [], { platforms: ['gun'] }),
   T('radar_masts', 'Radar Masts', 'rigs', 2, ['platform_construction', 'radar'], [], { platforms: ['radar'] }),
   T('crew_quarters', 'Crew Quarters', 'rigs', 2, ['modular_platforms'], [], { platforms: ['quarters'], baseLevel: 2 }, null, 'Upgrade bases to Station (level 2).'),
@@ -184,7 +197,6 @@ export const TECHS = [
   T('trunk_lines', 'Trunk Lines', 'rigs', 4, ['long_pipelines'], [{ player: 'claimRadius', add: 1 }], {}, null, 'Bases claim 11×11.'),
   T('mega_hub', 'Mega-Platform Hubs', 'rigs', 4, ['trunk_lines', 'base_complex'], [{ player: 'claimRadius', add: 1 }], { baseLevel: 4 }, null, 'Upgrade bases to Hub (level 4) and claim 13×13.'),
   T('missile_batteries', 'Missile Batteries', 'rigs', 4, ['gun_platforms', 'guided_missiles'], [], { platforms: ['missile'] }),
-  T('automated_drilling', 'Automated Drilling', 'rigs', 4, ['pump_stations'], [{ player: 'rigRate', add: 1 }]),
   T('self_sufficient', 'Self-Sufficient Bases', 'rigs', 4, ['automated_drilling'], [{ player: 'platformUpkeepMult', mult: 0 }, { player: 'platformRepair', add: 1 }], {}, 'rigs4',
     'No platform upkeep, and platforms slowly repair themselves.'),
   T('pipeline_network', 'Pipeline Network', 'rigs', 4, ['trunk_lines'], [{ player: 'oilCap', add: 100 }, { player: 'rigRate', add: 1 }], {}, 'rigs4',

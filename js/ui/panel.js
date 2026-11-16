@@ -1,6 +1,7 @@
 // The side panel (resources, selected ship or base, shipyard, log) and the top bar.
 import * as E from '../engine/index.js';
 import { BASE_LEVELS, PLATFORMS } from '../data/bases.js';
+import { STRIKES } from '../data/economy.js';
 import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
 import { TECH } from '../data/research.js';
 import { PASSIVE_TEXT, SHIPS } from '../data/ships.js';
@@ -253,7 +254,7 @@ function spectatorPanel() {
 function victoryCard(st, p) {
   const v = E.victorySummary(st, p);
   const capOk = q => { const c = E.capitalOf(st, q); return c && !c.wrecked; };
-  const chips = st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ` <span title="${PERSONALITIES[o.ai.personality].name} · ${DIFFICULTY[o.ai.difficulty].name}">${PERSONALITIES[o.ai.personality].icon}🤖</span>` : ''}${o.out ? ' · out'
+  const chips = st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ` <span title="Computer player · ${DIFFICULTY[o.ai.difficulty].name}">🤖</span>` : ''}${o.out ? ' · out'
     : o.exile != null ? ` · <b style="color:#ff6b6b">⚠ ${o.exile} turn${o.exile > 1 ? 's' : ''}</b>` : ''}${E.victoryOn(st, 'domination') && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">🗺️ ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('');
   const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
   const rows = [];
@@ -294,7 +295,7 @@ function shipCard(s) {
         const why = E.canUseAction(st, s, a);
         const shots = s.activeAction === a.id && s.shotsLeft > 0 ? ` — ${s.shotsLeft} shot${s.shotsLeft > 1 ? 's' : ''} left` : '';
         return `<button class="action-btn ${S.mode.kind === 'target' && S.mode.actionId === a.id ? 'active' : ''}" data-act="${a.id}" ${why ? 'disabled' : ''}>
-          <b>${a.name}</b>${a.free ? ' <span class="small muted">(free)</span>' : ''}${shots}
+          <b>${a.name}</b>${a.money ? ` <span class="money small">$${a.money}${E.weaponStat(st, p, a, 'shots') > 1 ? '/shot' : ''}</span>` : ''}${a.oil ? ` <span class="oil small">${a.oil} oil</span>` : ''}${a.free ? ' <span class="small muted">(doesn\'t use the action)</span>' : ''}${shots}
           <span class="why">${why || describeAction(a, p)}</span></button>`;
       }).join('')}
       ${S.plan.length ? `<div class="voyage">✎ Planning a route with <b>${S.plan.length} waypoint${S.plan.length > 1 ? 's' : ''}</b>. Click the destination to set sail, Shift+click to add more, Esc to clear.
@@ -363,14 +364,14 @@ function longRangeRow(st, p, b) {
   const btn = o => {
     const def = PLATFORMS[o.kind], s = def.strike || def.recon;
     const why = b.wrecked ? 'Base is wrecked' : E.strikeProblem(st, p, o);
-    const cost = def.strike ? ` · ${s.oil} oil${s.money ? ` + $${s.money}` : ''}` : '';
+    const cost = def.strike ? ` · ${s.oil} oil${s.money ? ` + $${s.money}` : ''}` : s.money ? ` · $${s.money}` : '';
     const label = def.strike ? s.name : 'Recon drone';
     return `<button class="${S.mode.kind === 'baseStrike' && S.mode.platformId === o.id ? 'active' : ''}" data-strike="${o.id}" ${why ? 'disabled' : ''} title="${why || def.text}">
       ${def.strike ? '🎯' : '🛩️'} ${label} <span class="small muted">range ${s.range}${cost}${o.cd ? ` · ${o.cd} turn${o.cd > 1 ? 's' : ''}` : ''}</span></button>`;
   };
   return `<div class="small muted" style="margin:8px 0 4px">Long range (aim at squares you can see; scout first with a drone or satellite):</div>
     <div class="row" style="margin-top:0">${pads.map(btn).join('')}
-    ${sat ? `<button class="${S.mode.kind === 'satellite' ? 'active' : ''}" data-satellite="1" ${E.satelliteReady(st, p) ? '' : 'disabled'} title="Reveal a 7×7 area anywhere on the map">🛰️ Satellite pass${st.players[p].satCd ? ` <span class="small muted">· ${st.players[p].satCd} turns</span>` : ''}</button>` : ''}</div>`;
+    ${sat ? `<button class="${S.mode.kind === 'satellite' ? 'active' : ''}" data-satellite="1" ${E.satelliteReady(st, p) && st.players[p].money >= STRIKES.satellite.money ? "" : "disabled"} title="Reveal a 7×7 area anywhere on the map ($${STRIKES.satellite.money})">🛰️ Satellite pass <span class="small muted">$${STRIKES.satellite.money}</span>${st.players[p].satCd ? ` <span class="small muted">· ${st.players[p].satCd} turns</span>` : ''}</button>` : ''}</div>`;
 }
 
 export function describeAction(a, p = me()) {
@@ -387,7 +388,7 @@ export function describeAction(a, p = me()) {
   return '';
 }
 
-const describeShip = (def, p) => def.actions.map(a => `${a.name}: ${describeAction(a, p)}`).join('\n');
+const describeShip = (def, p) => def.actions.map(a => `${a.name}${a.money ? ` ($${a.money}${a.shots > 1 ? '/shot' : ''})` : ''}: ${describeAction(a, p)}`).join('\n');
 
 function shapeSvg(shape, W = 52, H = 24) {
   const w = Math.max(...shape.map(c => c[0])) + 1, h = Math.max(...shape.map(c => c[1])) + 1;

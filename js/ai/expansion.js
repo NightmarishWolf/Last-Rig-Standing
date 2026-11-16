@@ -6,11 +6,11 @@
 //   { kind: 'expand', dep, x, y }       sail next to a deposit and found a base there
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
-import { canSurvey, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
+import { canSpend, canSurvey, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear, enemyClaimed } from './memory.js';
 
 const free = (ctx, s) => !taskOf(ctx, s) && !s.order && !E.fleetOf(ctx.st, s.id);
-const cheap = s => SHIPS[s.type].cost <= 200;
+const cheap = s => SHIPS[s.type].cost <= 250;
 
 // Distance from a deposit to the nearest of our ships or bases.
 function nearestOwn(ctx, d) {
@@ -76,6 +76,7 @@ export async function expansion(ctx) {
   const ships = myShips(ctx);
 
   // ---- 1) expanders that have arrived found their base ----
+  // (a new base is the best investment there is: it only needs a turn and a half of upkeep left over)
   for (const s of ships) {
     const t = taskOf(ctx, s);
     if (t?.kind !== 'expand') continue;
@@ -90,7 +91,7 @@ export async function expansion(ctx) {
       if (off) await sailSome(ctx, sitter, off.x, off.y, off.rot);
     }
     if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) && !E.shipAt(st, t.x, t.y, o => o.owner === p)) {
-      if (me.money >= E.baseFoundCost(st, p) + Math.max(40, E.upkeepTotal(st, p) * 3)) {
+      if (canSpend(ctx, E.baseFoundCost(st, p) + 20, 1.5)) {
         const r = await ctx.do({ type: 'buyRig', x: t.x, y: t.y });
         if (r.ok && st.rigs.some(x => x.x === t.x && x.y === t.y && x.owner === p)) delete ctx.mem.tasks[s.id];
       }
@@ -100,7 +101,7 @@ export async function expansion(ctx) {
     const spot = E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) ? null : spotNextTo(ctx, s, t.x, t.y, Math.min(E.rigReachOf(s), 3));
     const res = !spot && E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) ? 'arrived' : spot ? await sailSome(ctx, s, spot.x, spot.y, spot.rot) : 'noroute';
     if (res === 'noroute' || res === 'stuck') { t.fails = (t.fails || 0) + 1; if (t.fails > 2) delete ctx.mem.tasks[s.id]; }
-    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) && me.money >= E.baseFoundCost(st, p) + Math.max(40, E.upkeepTotal(st, p) * 3)) {
+    if (E.dist(E.shipCells(s), [[t.x, t.y]]) <= E.rigReachOf(s) && canSpend(ctx, E.baseFoundCost(st, p) + 20, 1.5)) {
       const r = await ctx.do({ type: 'buyRig', x: t.x, y: t.y });
       if (r.ok && st.rigs.some(x => x.x === t.x && x.y === t.y && x.owner === p)) delete ctx.mem.tasks[s.id];
     }
@@ -173,7 +174,9 @@ export async function expansion(ctx) {
       }
       return tot && n / tot >= 0.4;
     };
-    const surveyHere = async () => { if (fresh() && !E.canUseAction(st, s, act)) await ctx.do({ type: 'act', shipId: s.id, actionId: act.id }); };
+    // a survey costs money: only where enough of the water is new, and never out of the upkeep money
+    // (finding oil early is worth a lot, so early on a smaller cushion will do)
+    const surveyHere = async () => { if (fresh() && !E.canUseAction(st, s, act) && canSpend(ctx, act.money, ctx.phase === 'war' ? 3 : 1.5)) await ctx.do({ type: 'act', shipId: s.id, actionId: act.id }); };
     await surveyHere();
     if (s.acted) { if (t.x != null) claimed.push(t); continue; }
     if (t.x == null || sv[t.x + ',' + t.y]) {

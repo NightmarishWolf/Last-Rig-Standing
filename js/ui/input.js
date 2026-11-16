@@ -8,7 +8,7 @@ import { S } from './state.js';
 import { currentYard, nearbyLoners } from './panel.js';
 import { showConfirm, showOverlay } from './dialogs.js';
 import { toast } from './status.js';
-import { closeResearch, openResearch, researchOpen, renderResearch } from './research.js';
+import { closeResearch, openResearch, researchOpen, researchTapIsPreview, renderResearch } from './research.js';
 import { requestDraw } from './board/render.js';
 import { centerOn, panBy, zoomAt } from './camera.js';
 
@@ -68,7 +68,9 @@ export function onBoardClick(c, shift = false) {
     return refresh();
   }
   // clicking one of my ships selects it
-  const mine = myShipAt;
+  // (clicking the selected ship itself still counts as a move when the planned spot overlaps where it is now,
+  // e.g. turning in place or sliding one square)
+  const mine = myShipAt && !(myShipAt.id === S.selectedId && S.mode.kind === 'move' && overlapsOwnMove(myShipAt, c, shift)) ? myShipAt : null;
   if (mine) { if (mine.id !== S.selectedId) select(mine.id); S.selectedBase = null; S.mode = { kind: 'move' }; return refresh(); }
   // clicking one of my rigs or platforms opens that base
   const piece = S.st.rigs.find(r => r.owner === p && r.x === c.x && r.y === c.y && r.baseId) ||
@@ -101,6 +103,15 @@ export function onBoardClick(c, shift = false) {
     if (!S.fit && E.findPath(S.st, s, ax, ay, pr)?.length) { dispatch({ type: 'setOrder', shipId: s.id, x: ax, y: ay, rot: pr }); S.planRot = null; return refresh(); }
     return; // unreachable spot: keep the ship selected
   }
+}
+
+// Would clicking square c (which is on ship s itself) move it somewhere it can actually go?
+function overlapsOwnMove(s, c, shift) {
+  const pr = planRot(s);
+  const [ox, oy] = centerOffset(s.type, pr);
+  const ax = c.x - ox, ay = c.y - oy;
+  if (ax === s.x && ay === s.y && pr === s.rot) return false; // that's just where it is
+  return shift || S.plan.length > 0 || reach().has(ax + ',' + ay + ',' + pr);
 }
 
 // A point for a fleet's flagship, so that ship `s` (a member) ends up at (ax, ay).
@@ -263,6 +274,7 @@ export function onResearchClick(e) {
   if (d.dequeue) dispatch({ type: 'dequeueResearch', tech: d.dequeue });
   if (d.fund) dispatch({ type: 'setFunding', rp: (S.st.players[me()].research.funding || 0) + Number(d.fund) });
   if (d.tech) {
+    if (researchTapIsPreview(d.tech)) return; // touch: first tap shows what it does
     const status = E.techStatus(S.st, me(), d.tech);
     if (status === 'available') dispatch({ type: 'research', tech: d.tech });
     else if (status === 'blocked') dispatch({ type: 'queueResearch', tech: d.tech });

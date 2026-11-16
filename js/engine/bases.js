@@ -10,7 +10,7 @@
 // st.rigs:      { id, owner, x, y, hp, depId, baseId, center }
 // ============================================================
 import { ADMIRALTY, BASE_FOUNDING, BASE_LEVELS, PLATFORMS, QUARTERS_NEEDED_FROM } from '../data/bases.js';
-import { DEPOSITS, RIG } from '../data/economy.js';
+import { DEEP_LAYERS, DEPOSITS, RIG } from '../data/economy.js';
 import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
@@ -59,8 +59,20 @@ export function rigRate(st, r) {
   const d = st.deposits.find(d => d.id === r.depId);
   const b = r.baseId ? baseById(st, r.baseId) : null;
   if (!d || (b && b.wrecked)) return 0;
-  const pumps = b ? platformsOf(st, b).filter(o => o.kind === 'pump' && !o.buildLeft).length * PLATFORMS.pump.pump : 0;
+  const pumps = b ? platformsOf(st, b).filter(o => o.kind === 'pump' && !o.buildLeft).length * (PLATFORMS.pump.pump + pstat(st, r.owner, 'pumpBonus')) : 0;
   return Math.min(d.reserves, DEPOSITS[d.type].rate + pstat(st, r.owner, 'rigRate') + pumps);
+}
+
+// Deeper drilling: a dry deposit under one of p's rigs strikes the next layer, if p has the research.
+// Returns the oil found (0 if none). Each deposit remembers how many layers have been tapped.
+export function drillDeeper(st, p, d) {
+  if (!d || d.reserves > 0) return 0;
+  const layer = d.layers || 0;
+  if (layer >= Math.min(DEEP_LAYERS.length, pstat(st, p, 'deepLayers'))) return 0;
+  const found = Math.max(1, Math.round((d.max || 0) * DEEP_LAYERS[layer]));
+  d.layers = layer + 1; d.reserves = found;
+  log(st, p, `🛢️ A dry rig at ${coord(d.x, d.y)} drilled deeper and struck oil: ${found} more in layer ${layer + 2}.`);
+  return found;
 }
 
 // ---------- founding / rebuilding ----------

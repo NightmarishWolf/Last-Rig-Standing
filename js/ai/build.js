@@ -3,6 +3,8 @@ import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
 import { chance, income, isArmed, myShips, rand, reserve, sharp, weighted } from './context.js';
 import { expansionTargets } from './expansion.js';
+import { nextProject } from './economy.js';
+import { enemiesNear } from './memory.js';
 
 // The shortest line among the yards (home first when tied).
 function bestYard(ctx) {
@@ -26,7 +28,11 @@ export async function shipbuilding(ctx) {
   // founding bases comes first: keep enough for the next one while there's somewhere to found it
   // (while expanding, keep enough for the next base; once established, the fleet comes first)
   const expanding = ctx.phase === 'expand' && (expansionTargets(ctx).length || Object.values(ctx.mem.tasks).some(t => t.kind === 'expand'));
-  const saving = expanding ? E.baseFoundCost(st, p) : 0;
+  // ...and once established, part of the money goes into the bases (labs, pumps, defences, upgrades):
+  // the shipyard leaves the next project's price alone unless enemies are close to one of our bases
+  const underThreat = E.basesOf(st, p).some(b => enemiesNear(ctx, b.x, b.y, 10).length);
+  const project = ctx.phase === 'war' && !underThreat && sharp(ctx) ? nextProject(ctx) : null; // (expanding comes first)
+  const saving = (expanding ? E.baseFoundCost(st, p) : 0) + (project ? Math.round(project.cost * (1 - ctx.pers.fleetShare / 2)) : 0);
   const cushion = type => ctx.phase === 'war' ? (E.upkeepTotal(st, p) + E.upkeepOf(st, p, type)) * 2 + 20 : reserve(ctx, E.upkeepOf(st, p, type));
   const afford = type => me.money - E.shipCost(st, p, type) >= cushion(type) + saving; // counting the new ship's upkeep
   // keep upkeep within what the oil brings in (sloppy bots overspend)
@@ -43,13 +49,17 @@ export async function shipbuilding(ctx) {
   if (count(s => s.type === 'survey') < surveyWant && afford('survey')) await build(ctx, 'survey');
   // 2) a cheap boat for founding bases, when there's oil to claim and no free boat to send
   const targets = expansionTargets(ctx).length;
-  const idleCheap = ships.filter(s => SHIPS[s.type].cost <= 150 && (!ctx.mem.tasks[s.id] || ctx.mem.tasks[s.id].kind === 'survey')).length;
+  const idleCheap = ships.filter(s => SHIPS[s.type].cost <= 190 && (!ctx.mem.tasks[s.id] || ctx.mem.tasks[s.id].kind === 'survey')).length;
   if (ctx.phase === 'expand' && targets > idleCheap && afford('patrol') && E.basesOf(st, p).length < 12) await build(ctx, 'patrol');
   // early on every ship eats the oil we need for expanding: no warships until the economy grows
   if (oilIn < 8 && !Object.keys(ctx.mem.enemies || {}).length) return;
 
   // 3) warships, by personality, with the share of spare money it likes to spend on the fleet
-  const want = Object.entries(ctx.pers.ships).filter(([k]) => E.shipUnlocked(st, p, k));
+  // with Cruise Missiles researched, every personality wants missile ships: they outrange any base,
+  // so they're how a fleet breaks a turtle without sailing into its guns
+  const cruise = E.hasTech(st, p, 'cruise_missiles');
+  const want = Object.entries({ ...ctx.pers.ships, ...(cruise ? { missileboat: Math.max(3, (ctx.pers.ships.missileboat || 0) * 2), cruiser: Math.max(2, ctx.pers.ships.cruiser || 0) } : {}) })
+    .filter(([k]) => E.shipUnlocked(st, p, k));
   for (let tries = 0; tries < 3; tries++) {
     const spare = me.money - (ctx.phase === 'war' ? E.upkeepTotal(st, p) * 2 + 20 : reserve(ctx)) - saving;
     if (spare <= 0 || upkeepRoom() <= 0) break;
@@ -58,7 +68,7 @@ export async function shipbuilding(ctx) {
     const options = want.filter(([k]) => E.shipCost(st, p, k) <= budget && (!SHIPS[k].passives?.limit || count(s => s.type === k) < SHIPS[k].passives.limit));
     if (!options.length) break;
     const pick = sharp(ctx)
-      ? weighted(ctx, options.map(([k, w]) => [k, w * (1 + E.shipCost(st, p, k) / 400)]))
+      ? weighted(ctx, options.map(([k, w]) => [k, w * (1 + E.shipCost(st, p, k) / 500)]))
       : options[Math.floor(rand(ctx) * options.length)][0];
     if (!pick || !(await build(ctx, pick))) break;
     if (!chance(ctx, 0.5)) break;

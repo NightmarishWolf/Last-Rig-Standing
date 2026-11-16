@@ -80,7 +80,7 @@ export const STEPS = [
   },
   {
     title: 'Research',
-    text: `Your new Patrol Boat has launched. Now click <b>🔬 Choose research</b> at the top (or press <b>T</b>) and click any glowing tech to start it.<br>
+    text: `Your new Patrol Boat has launched. Now click <b>🔬 Choose research</b> at the top (or press <b>T</b>) and click any glowing tech to start it (hover a tech to see what it does).<br>
       Research points come in every turn. Close the tree with <b>Esc</b>.`,
     highlight: '#btn-research',
     check: st => !!st.players[0].research.current || st.players[0].research.queue.length > 0 || Object.keys(st.players[0].research.done).length > 1,

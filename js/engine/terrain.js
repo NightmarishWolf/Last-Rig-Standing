@@ -80,6 +80,11 @@ export function generateTerrain(st, landShare) {
       else if (sd < SPAWN_CLEAR + SPAWN_FADE) e -= 0.45 * (1 - (sd - SPAWN_CLEAR) / SPAWN_FADE);
       elev[i] = e;
     }
+  // fair maps: every player gets the same coastline (2 or 3 players: left/right mirror; 4: both ways)
+  if (st.mirror) {
+    for (let y = 0; y < H; y++) for (let x = Math.ceil(W / 2); x < W; x++) elev[y * W + x] = elev[y * W + (W - 1 - x)];
+    if (st.players.length === 4) for (let y = Math.ceil(H / 2); y < H; y++) for (let x = 0; x < W; x++) elev[y * W + x] = elev[(H - 1 - y) * W + x];
+  }
   // pick the height that gives roughly `landShare` land
   const sorted = Array.from(elev).sort((a, b) => a - b);
   const sea = sorted[Math.floor(sorted.length * (1 - landShare))];

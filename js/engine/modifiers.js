@@ -11,7 +11,7 @@ const PLAYER_DEFAULTS = () => ({
   oilCap: ECONOMY.oilCap, sellMult: 1, priceDropMult: 1, upkeepMult: 1, surveyRadius: 0, rigRate: 0,
   reservesMult: 1, portRange: PORT.range, claimRadius: 0, slots: 0, platformCostMult: 1, platformHpMult: 1,
   platformUpkeepMult: 1, baseCostMult: 1, rp: 0, heal: 0, baseSight: 0, stealth: 0, flashExact: 0,
-  platformRange: 0, platformRepair: 0,
+  platformRange: 0, platformRepair: 0, deepLayers: 0, pumpBonus: 0,
 });
 
 // Combine every researched tech's effects for one player (cached until they finish another tech).
@@ -65,8 +65,9 @@ export function weaponStat(st, p, act, stat) {
 }
 
 // A player-wide stat (economy, bases, sensors).
+let DEFAULTS = null; // built once (the numbers never change during a game)
 export function pstat(st, p, key) {
-  const base = PLAYER_DEFAULTS()[key];
+  const base = (DEFAULTS ||= PLAYER_DEFAULTS())[key];
   const m = bonuses(st, p).player.me?.[key];
   return m ? (base + m.add) * m.mult : base;
 }

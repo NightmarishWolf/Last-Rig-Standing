@@ -6,7 +6,7 @@
 // Waypoints have rot = null (any facing); the destination keeps the facing you planned.
 import { SHIPS } from '../data/ships.js';
 import { coord } from './geometry.js';
-import { sailPath } from './movement.js';
+import { affordableMoves, prefixWithin, sailPath } from './movement.js';
 import { findPath, routeThrough } from './pathfind.js';
 import { moveCost } from './stats.js';
 import { checkWin } from './turns.js';
@@ -29,10 +29,11 @@ export function followOrder(st, ship) {
     const path = findPath(st, ship, pt.x, pt.y, pt.rot ?? null);
     if (!path) { log(st, ship.owner, `${name} can't find a sea route to ${coord(pt.x, pt.y)} right now.`); break; }
     if (path.length) {
-      let steps = Math.min(ship.movesLeft, path.length);
-      while (steps > 0 && moveCost(st, ship, steps) > st.players[ship.owner].oil) steps--;
+      const mv = affordableMoves(st, ship, path);
+      const part = prefixWithin(path, ship.rot, mv);
+      let steps = part.length;
       if (steps <= 0) { log(st, ship.owner, `${name} is out of oil and waiting on its voyage.`); break; }
-      const taken = sailPath(st, ship, path.slice(0, steps));
+      const taken = sailPath(st, ship, part);
       total += taken;
       if (!st.ships.includes(ship) || taken < steps) break; // sunk, or bumped into something
     }
@@ -52,10 +53,9 @@ export function sailToward(st, ship, x, y, rot = null, maxSteps = Infinity) {
   if ((ship.acted && !passives(ship).hitAndRun) || ship.movesLeft <= 0) return 'waiting';
   const path = findPath(st, ship, x, y, rot, undefined, null, maxSteps);
   if (!path) return 'noroute';
-  let steps = Math.min(ship.movesLeft, path.length);
-  while (steps > 0 && moveCost(st, ship, steps) > st.players[ship.owner].oil) steps--;
-  if (steps <= 0) return 'nooil';
-  const taken = sailPath(st, ship, path.slice(0, steps));
+  const part = prefixWithin(path, ship.rot, affordableMoves(st, ship, path));
+  if (!part.length) return 'nooil';
+  const taken = sailPath(st, ship, part);
   if (!st.ships.includes(ship)) return 'sunk';
   return there() ? 'arrived' : taken ? 'moving' : 'stuck';
 }

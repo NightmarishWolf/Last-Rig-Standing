@@ -15,6 +15,7 @@ import { SHIPS } from '../data/ships.js';
 import { canUseAction, doAct, actionRange } from './abilities.js';
 import { cellsOf, coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { shipStat } from './modifiers.js';
+import { upkeepTotal } from './stats.js';
 import { sailToward } from './orders.js';
 import { advanceFleet, flagship, fleetById, fleetOf, fleetShips, fleetsOf, tidyFleets } from './fleets.js';
 import { checkWin } from './turns.js';
@@ -69,12 +70,15 @@ export function doSetStanding(st, a) {
 
 // ---------- shooting ----------
 // Fire every weapon that can reach a visible enemy ship, weakest target first.
+// Standing orders never spend the money you need for next turn's upkeep.
+const affordable = (st, ship, act) => st.players[ship.owner].money - (act.money || 0) >= upkeepTotal(st, ship.owner);
+
 export function autoFire(st, ship) {
   const attacks = SHIPS[ship.type].actions.filter(a => a.kind === 'attack').sort((a, b) => (b.dmg || 0) - (a.dmg || 0));
   let fired = 0;
   for (const act of attacks) {
     for (let shot = 0; shot < 12; shot++) {
-      if (!st.ships.includes(ship) || canUseAction(st, ship, act)) break;
+      if (!st.ships.includes(ship) || canUseAction(st, ship, act) || !affordable(st, ship, act)) break;
       const vis = visibility(st, ship.owner), cells = shipCells(ship), range = actionRange(st, ship, act);
       const targets = st.ships
         .filter(e => e.owner !== ship.owner && vis.ships.has(e.id) && !(act.subsOnly && !passives(e).submerged) && dist(cells, shipCells(e)) <= range)
@@ -191,7 +195,7 @@ function runUnit(st, p, u, isFleet) {
       for (const s of isFleet ? fleetShips(st, u) : [u]) {
         const sv = st.players[p].surveyed || {};
         const act = SHIPS[s.type].actions.find(a => a.kind === 'survey');
-        if (act && st.ships.includes(s) && !canUseAction(st, s, act) && !sv[s.x + ',' + s.y]) doAct(st, { shipId: s.id, actionId: act.id });
+        if (act && st.ships.includes(s) && !canUseAction(st, s, act) && affordable(st, s, act) && !sv[s.x + ',' + s.y]) doAct(st, { shipId: s.id, actionId: act.id });
       }
       return;
     }

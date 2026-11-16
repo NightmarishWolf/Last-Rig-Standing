@@ -31,7 +31,8 @@ export function yardsOf(st, p) {
 }
 export const yardById = (st, p, id) => yardsOf(st, p).find(y => y.id === id);
 
-export const buildTurns = (st, p, type, yard) => Math.max(1, shipStat(st, p, type, 'build') - (yard?.faster || 0));
+export const buildTurns = (st, p, type, yard) =>
+  Math.max(1, shipStat(st, p, type, 'build') - (yard?.faster || 0) - (st.players[p].bonus?.build || 0)); // (Admiral+ bots build faster)
 
 export const buildsOf = (st, p) => (st.players[p].builds ||= []);
 export const yardQueue = (st, p, yardId) => buildsOf(st, p).filter(b => b.yard === yardId);

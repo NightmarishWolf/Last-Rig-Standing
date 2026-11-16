@@ -72,7 +72,8 @@ function barEl() {
 }
 function botLabel(st, p) {
   const ai = st.players[p].ai;
-  return `${PERSONALITIES[ai.personality].icon} <b style="color:${PLAYER_COLORS[p]}">${st.players[p].name}</b> <span class="muted small">${PERSONALITIES[ai.personality].name} · ${DIFFICULTY[ai.difficulty].name}</span>`;
+  // the personality stays secret: you find out how a bot plays by playing it
+  return `<b style="color:${PLAYER_COLORS[p]}">${st.players[p].name}</b> <span class="muted small">${DIFFICULTY[ai.difficulty].name}</span>`;
 }
 function showBar(st, p) {
   const el = barEl();

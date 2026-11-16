@@ -64,17 +64,17 @@ export function findPath(st, ship, tx, ty, tr = ship.rot, grid = blockedGrid(st,
   while (heap.size) {
     const i = heap.pop();
     if (isGoal(i)) { goal = i; break; }
-    const r = Math.floor(i / N), rem = i % N, x = rem % W, y = (rem / W) | 0, c = cost[i] + 1;
+    const r = Math.floor(i / N), rem = i % N, x = rem % W, y = (rem / W) | 0;
     const t1 = turns[r][0], t2 = turns[r][1];
     for (let k = 0; k < 6; k++) {
       let nx = x, ny = y, nr = r;
       if (k === 0) nx++; else if (k === 1) nx--; else if (k === 2) ny++; else if (k === 3) ny--;
       else { const t = k === 4 ? t1 : t2; nx += t[0]; ny += t[1]; nr = t[2]; }
       if (nx < 0 || ny < 0 || nx >= W || ny >= H || !fits(nx, ny, nr)) continue;
-      const j = idx(nx, ny, nr);
+      const j = idx(nx, ny, nr), c = cost[i] + (k < 4 ? 1 : 0); // turns are free
       if (c >= cost[j] || c > maxSteps) continue;
       cost[j] = c; prev[j] = i;
-      heap.push(c + Math.abs(nx - tx) + Math.abs(ny - ty) + (anyFacing || nr === tr ? 0 : 1), j);
+      heap.push(c + Math.abs(nx - tx) + Math.abs(ny - ty), j);
     }
   }
   if (goal === -1) return null;

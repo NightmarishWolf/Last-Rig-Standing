@@ -12,7 +12,7 @@ import { FLEET } from '../data/production.js';
 import { SHIPS } from '../data/ships.js';
 import { cellsOf, coord, inBounds, shipCells } from './geometry.js';
 import { shipStat } from './modifiers.js';
-import { sailPath, stepShip } from './movement.js';
+import { affordableMoves, prefixWithin, sailPath, stepShip } from './movement.js';
 import { blockedGrid, findPath } from './pathfind.js';
 import { chargeMove, moveCost } from './stats.js';
 import { checkWin } from './turns.js';
@@ -184,9 +184,8 @@ export function catchUp(st, f) {
       if (++tries >= 6) break;
     }
     if (!path || !path.length) continue;
-    let steps = Math.min(s.movesLeft, path.length);
-    while (steps > 0 && moveCost(st, s, steps) > st.players[s.owner].oil) steps--;
-    if (steps > 0) sailPath(st, s, path.slice(0, steps));
+    const part = prefixWithin(path, s.rot, affordableMoves(st, s, path));
+    if (part.length) sailPath(st, s, part);
   }
 }
 
@@ -209,9 +208,9 @@ export function advanceFleet(st, f, pt) {
   const steps = new Map([[L, 0], ...others.map(s => [s, 0])]);
   const oil = st.players[f.owner].oil;
   let taken = 0, out = null;
-  const n = Math.min(budget, path.length);
-  for (let k = 0; k < n; k++) {
-    const node = path[k], turning = node.r !== L.rot;
+  for (let k = 0; k < path.length; k++) {
+    const node = path[k], turning = node.r !== L.rot; // turns are free; only squares use up speed
+    if (!turning && taken >= budget) break;
     const dx = node.x - L.x, dy = node.y - L.y;
     let movers = turning ? [] : lock.filter(s => s.movesLeft - steps.get(s) > 0);
     // anyone whose next square is blocked drops out of step (they'll catch up later)
@@ -229,11 +228,11 @@ export function advanceFleet(st, f, pt) {
     if (cellsOf(L.type, node.x, node.y, node.r).some(([x, y]) => staticCells.has(y * W + x))) { out = 'stuck'; break; }
     // enough oil for everyone's step?
     let cost = 0;
-    for (const [s, c] of steps) cost += moveCost(st, s, c + (s === L || movers.includes(s) ? 1 : 0));
+    for (const [s, c] of steps) cost += moveCost(st, s, c + ((s === L && !turning) || movers.includes(s) ? 1 : 0));
     if (cost > oil) { out = 'nooil'; break; }
     const res = stepShip(st, L, node.x, node.y, node.r);
     if (res === 'blocked') { out = 'stuck'; break; }
-    steps.set(L, steps.get(L) + 1); taken++;
+    if (!turning) { steps.set(L, steps.get(L) + 1); taken++; }
     if (res === 'stopped') break;
     for (const s of movers) {
       const r2 = stepShip(st, s, s.x + dx, s.y + dy, s.rot);

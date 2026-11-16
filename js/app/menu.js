@@ -78,6 +78,13 @@ export function showSetup(overwriting) {
       </div>
     </div>
     <div class="setup-group">
+      <div class="label">Map layout</div>
+      <div class="seg">
+        <button data-mirror="1" class="${setup.mirror !== false ? 'on' : ''}" title="Every player's side of the map is a mirror image of the others: same islands, same oil, same distances.">⚖️ Mirrored<small>fair: same side for everyone</small></button>
+        <button data-mirror="0" class="${setup.mirror === false ? 'on' : ''}" title="Islands and No Man's Sea oil are placed at random. One side may get luckier.">🎲 Random<small>one side may get lucky</small></button>
+      </div>
+    </div>
+    <div class="setup-group">
       <div class="label">Turn timer</div>
       <div class="seg">${TIMER_OPTIONS.map(t => `
         <button data-timer="${t}" class="${setup.turnTimer === t ? 'on' : ''}">${t ? fmt(t) : 'Off'}</button>`).join('')}
@@ -104,6 +111,7 @@ export function showSetup(overwriting) {
     </div>`, (card, close) => {
     card.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { setup.size = b.dataset.size; showSetup(overwriting); });
     card.querySelectorAll('[data-vic]').forEach(b => b.onclick = () => { setup.victory[b.dataset.vic] = !setup.victory[b.dataset.vic]; showSetup(overwriting); });
+    card.querySelectorAll('[data-mirror]').forEach(b => b.onclick = () => { setup.mirror = b.dataset.mirror === '1'; showSetup(overwriting); });
     card.querySelectorAll('[data-timer]').forEach(b => b.onclick = () => { setup.turnTimer = Number(b.dataset.timer); showSetup(overwriting); });
     card.querySelectorAll('[data-players]').forEach(b => b.onclick = () => { setup.players = Number(b.dataset.players); showSetup(overwriting); });
     card.querySelectorAll('[data-seat]').forEach(b => b.onclick = () => { const [i, v] = b.dataset.seat.split(':'); setup.seats[i].seat = v; showSetup(overwriting); });
@@ -117,7 +125,7 @@ export function showSetup(overwriting) {
         const seats = setup.seats.slice(0, setup.players).map(o => o.seat === 'ai'
           ? { seat: 'ai', difficulty: o.difficulty, personality: o.personality === 'random' ? PERSONALITY_ORDER[Math.floor(Math.random() * PERSONALITY_ORDER.length)] : o.personality }
           : 'human');
-        A.state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, victory: { ...setup.victory }, seats });
+        A.state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, mirror: setup.mirror !== false, victory: { ...setup.victory }, seats });
         save(A.state); setState(A.state); handoff(A.state);
       };
       if (overwriting) showConfirm('Start a new game?', 'Your saved game will be lost.', 'Start new game', start, () => showSetup(overwriting));

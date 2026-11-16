@@ -49,10 +49,16 @@ function drawRoute(s, legs, color, label) {
   // end-of-turn stops
   const mv = SHIPS[s.type].move;
   ctx.fillStyle = color;
-  for (let i = s.movesLeft - 1; i < path.length; i += mv) {
-    if (i < 0) continue;
-    const n = path[i], [mx, my] = mid(n.x, n.y, n.r);
-    ctx.beginPath(); ctx.arc(mx, my, Math.max(2, S.cell * 0.14), 0, Math.PI * 2); ctx.fill();
+  // (turns are free, so only squares count toward each turn's moves)
+  let r = s.rot, sq = 0, next = s.movesLeft;
+  for (const n of path) {
+    if (n.r === r) sq++;
+    r = n.r;
+    if (sq >= next && sq > 0) {
+      const [mx, my] = mid(n.x, n.y, n.r);
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(2, S.cell * 0.14), 0, Math.PI * 2); ctx.fill();
+      next += mv;
+    }
   }
   // numbered waypoints
   let n = 0;
@@ -81,7 +87,7 @@ function drawRoute(s, legs, color, label) {
 function drawVoyage(s) {
   if (!s || !s.order || S.plan.length) return;
   const legs = routePreview(s, E.orderPoints(s.order));
-  if (legs) drawRoute(s, legs, 'rgba(255,214,102,0.85)', `Voyage: ${voyageLabel(s, legs.flat().length)} left`);
+  if (legs) drawRoute(s, legs, 'rgba(255,214,102,0.85)', `Voyage: ${voyageLabel(s, E.pathMoves(legs.flat(), s.rot))} left`);
 }
 
 // While planning: the waypoints so far, plus the leg to wherever the mouse is.
@@ -95,7 +101,7 @@ function drawPlan(s, hoverPoint) {
     if (ok) drawRoute(s, [...ok, []], 'rgba(255,214,102,0.7)', 'No route to here');
     return true;
   }
-  const len = legs.flat().length;
+  const len = E.pathMoves(legs.flat(), s.rot);
   drawRoute(s, hoverPoint ? legs : [...legs, []], 'rgba(255,214,102,0.8)', hoverPoint ? `${len} squares · ${voyageLabel(s, len)}` : null);
   return true;
 }
@@ -131,7 +137,7 @@ export function drawModeOverlay() {
       const planning = drawPlan(s, { x: ax, y: ay, rot: pr });
       if (!planning && !n && !S.fit && !(ax === s.x && ay === s.y && pr === s.rot)) {
         const legs = routePreview(s, [{ x: ax, y: ay, rot: pr }]);
-        const len = legs ? legs.flat().length : 0;
+        const len = legs ? E.pathMoves(legs.flat(), s.rot) : 0;
         if (len) drawRoute(s, legs, 'rgba(255,214,102,0.7)', `${len} squares · ${voyageLabel(s, len)}`);
       }
       if (n && !planning) {

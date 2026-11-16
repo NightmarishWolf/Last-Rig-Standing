@@ -36,8 +36,9 @@ sorties, sub-launched missiles and satellite passes. They cost oil (and money) p
 see, and are countered by AA Platforms, Frigates and Jammer Ships.
 
 **Computer players.** Any seat can be a bot: four difficulties (Easy, Normal, Hard, Admiral+) and four personalities
-(Admiral, Tycoon, Raider, Conqueror, or random). Bots play by the same rules and never see through the fog; Admiral+
-only gets an economic head start. Against one human, bot moves you can see play out on the board; with every seat a
+(Admiral, Tycoon, Raider, Conqueror, or random). Bots never see through the fog. Hard and Admiral+
+cheat a little: Hard starts with 2 extra Survey Ships, +$200 and a second rig base; Admiral+ gets that plus +1 oil from
+every rig, +2 research a turn and ships that build 1 turn faster. Against one human, bot moves you can see play out on the board; with every seat a
 bot, it's **spectator mode** with the whole map revealed.
 
 **Research.** A 100-tech tree in seven branches (press **T** or the 🔬 button). Research points come from your

@@ -11,7 +11,7 @@ import { checkWin } from './turns.js';
 import { hasTech } from './research.js';
 import { TECH } from '../data/research.js';
 import { scrambled, seesSquare } from './strikes.js';
-import { fail, log, ok, others, passives, portAt, rigAt, shipAt } from './util.js';
+import { fail, log, ok, others, passives, portAt, r2, rigAt, shipAt } from './util.js';
 
 // ---------- actions ----------
 export function actionRange(st, ship, act) {
@@ -40,6 +40,10 @@ function spend(st, ship, act) {
   else if (ship.activeAction === act.id && ship.shotsLeft > 0) { ship.shotsLeft--; }
   else { ship.acted = true; ship.activeAction = act.id; ship.shotsLeft = (act.kind === 'attack' ? weaponStat(st, ship.owner, act, 'shots') : 1) - 1; }
   if (act.cooldown && (ship.shotsLeft === 0 || act.free)) ship.cooldowns[act.id] = act.cooldown;
+  // every use costs money (each shot, for multi-shot weapons); long-range launches also burn oil
+  const pl = st.players[ship.owner];
+  if (act.money) pl.money = r2(pl.money - act.money);
+  if (act.oil) pl.oil = r2(pl.oil - act.oil);
 }
 
 export function doAct(st, a) {
@@ -63,8 +67,6 @@ export function doAct(st, a) {
       if (act.longRange && !seesSquare(st, p, x, y)) return fail("You can't see that square: scout it first (a recon drone, a scan or a ship's sight).");
       spend(st, ship, act);
       ship.combatRound = st.round; // firing counts as combat
-      if (act.oil) st.players[p].oil -= act.oil;
-      if (act.money) st.players[p].money -= act.money;
       if (firstUse) addFlash(st, ship);
       if (act.longRange && scrambled(st, p, x, y)) {
         st.players[p].shots.push({ x, y, r: 'intercepted', turn: st.turnCount });

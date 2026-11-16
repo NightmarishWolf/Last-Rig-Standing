@@ -5,7 +5,7 @@ import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
 import { shipCells } from './geometry.js';
 import { commandBonus, upkeepOf } from './stats.js';
-import { oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
+import { drillDeeper, oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
 import { shipStat } from './modifiers.js';
 import { processResearch } from './research.js';
 import { processYards } from './production.js';
@@ -46,8 +46,11 @@ export function startTurn(st, p, first = false) {
   for (const r of st.rigs.filter(r => r.owner === p)) {
     const d = st.deposits.find(d => d.id === r.depId);
     if (!d) continue;
+    drillDeeper(st, p, d); // a dry rig strikes a deeper layer (Drilling research)
     const amt = rigRate(st, r);
     d.reserves -= amt; produced += amt;
+    if (d.reserves <= 0) drillDeeper(st, p, d); // ran dry just now: drill on, so it never sits idle
+    if (amt > 0 && me.bonus?.pump) produced += me.bonus.pump; // Admiral+ bots: +1 oil from every pumping rig (a cheat: it doesn't drain the deposit)
   }
   for (const s of st.ships.filter(s => s.owner === p && passives(s).mobileRig)) {
     const d = st.deposits.find(d => shipCells(s).some(([x, y]) => x === d.x && y === d.y) && !rigAt(st, d.x, d.y));
@@ -57,7 +60,6 @@ export function startTurn(st, p, first = false) {
       me.known[d.id] = true;
     }
   }
-  if (me.bonus?.oil && produced) produced = Math.round(produced * me.bonus.oil); // Admiral+ bots: extra oil (not taken from the ground)
   const cap = oilCapOf(st, p);
   const room = Math.max(0, cap - me.oil);
   const spilled = Math.max(0, produced - room);

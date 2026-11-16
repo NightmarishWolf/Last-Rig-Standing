@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Last Rig Standing: a lone offshore rig on the sea -->
+  <rect width="64" height="64" rx="12" fill="#0b1724"/>
+  <path d="M0 50 Q8 46 16 50 T32 50 T48 50 T64 50 V64 H0 Z" fill="#12395a"/>
+  <!-- derrick -->
+  <path d="M32 6 L22 40 H42 Z" fill="none" stroke="#f0a531" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M27.5 22 H36.5 M25 31 H39 M28.5 22 L39 31 M35.5 22 L25 31" stroke="#f0a531" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- deck and legs -->
+  <rect x="14" y="39" width="36" height="5" rx="1.5" fill="#f0a531"/>
+  <path d="M18 44 V54 M46 44 V54 M32 44 V54" stroke="#c97f12" stroke-width="3.2" stroke-linecap="round"/>
+  <!-- flag on top -->
+  <path d="M32 6 V1.5 L38 3.5 L32 5.5" fill="#ffd666" stroke="#ffd666" stroke-width="1"/>
+</svg>

@@ -13,6 +13,7 @@
 //   defense.js    guards at bases, shooting at enemy ships and structures in range
 //   military.js   defending bases under threat, the strike fleet and its targets, raiders
 //   build.js      what to build at which shipyard
+//   review.js     selling ships that aren't worth their upkeep any more
 // Difficulty and personality numbers live in js/data/bots.js.
 // ============================================================
 import { makeContext } from './context.js';
@@ -22,6 +23,7 @@ import { guardBases, openFire } from './defense.js';
 import { defend, longRange, raid, spy, strike } from './military.js';
 import { shipbuilding } from './build.js';
 import { updateMemory } from './memory.js';
+import { reviewFleet } from './review.js';
 
 // (in the 'war' phase the shipyard gets first call on money, so 'build' moves ahead of 'bases')
 const STEPS = [
@@ -30,6 +32,7 @@ const STEPS = [
   ['long range', longRange],
   ['fire', openFire],
   ['sell', sellOil],
+  ['review', reviewFleet],
   ['research', research],
   ['defend', defend],
   ['expansion', expansion],

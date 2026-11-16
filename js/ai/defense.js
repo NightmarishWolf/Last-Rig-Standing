@@ -2,7 +2,7 @@
 // (Attacking and fleet warfare come in the military step.)
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
-import { isArmed, myShips, sharp, spotNextTo, taskOf } from './context.js';
+import { canSpend, isArmed, myShips, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear } from './memory.js';
 
 const free = (ctx, s) => !taskOf(ctx, s) && !s.order && !E.fleetOf(ctx.st, s.id);
@@ -37,11 +37,15 @@ export async function openFire(ctx) {
     for (const act of SHIPS[s.type].actions.filter(a => a.kind === 'attack').sort((a, b) => (b.dmg || 0) - (a.dmg || 0))) {
       for (let shot = 0; shot < 8; shot++) {
         if (!st.ships.includes(s) || E.canUseAction(st, s, act)) break;
+        // every shot costs money: enemy ships are always worth it while upkeep is covered...
+        if (!canSpend(ctx, act.money, 1)) break;
         const range = E.actionRange(st, s, act), cells = E.shipCells(s);
         const targets = ctx.view.enemyShips.filter(e => E.dist(cells, e.cells) <= range);
         if (!targets.length) {
           // no ships in range: enemy structures (a base's central rig first, then platforms, ports, wellheads)
           if (act.subsOnly) break;
+          // ...structures can wait for a richer turn (they don't shoot back from out of range)
+          if (!canSpend(ctx, act.money, sharp(ctx) ? 2 : 1)) break;
           const v = ctx.view;
           const structs = [
             ...v.enemyPlatforms.filter(o => o.kind === 'fusion').map(o => [o.x, o.y, 0]),

@@ -6,6 +6,7 @@ import { SHIPS } from '../data/ships.js';
 import { cellsOf, inRect, inSpawn, isLand, zoneOf } from './geometry.js';
 import { rand, randInt } from './rng.js';
 import { generateTerrain } from './terrain.js';
+import { findPath } from './pathfind.js';
 import { startTurn } from './turns.js';
 import { foundBase } from './bases.js';
 import { shipStat } from './modifiers.js';
@@ -80,6 +81,9 @@ export function newGame(opts = {}) {
   const layout = MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
   const st = {
     version: 3, seed, rng: seed, size, W, H,
+    // mirrored map (default): every player's side of the map is the same, so nobody starts with better
+    // islands or closer oil. Off = a fully random map.
+    mirror: opts.mirror !== false && !MAP_SIZES[size].classic,
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
     victory: { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is)
@@ -115,9 +119,11 @@ function generateMap(st) {
   const { W, H } = st;
   const cfg = MAP_SIZES[st.size];
   // terrain: try a few worlds until every home shares one ocean
+  // (and warships, not just one-square boats, must be able to sail from every home to every other)
   let okWorld = false;
-  for (let attempt = 0; attempt < 8 && !okWorld; attempt++) okWorld = generateTerrain(st, cfg.landShare);
+  for (let attempt = 0; attempt < 8 && !okWorld; attempt++) okWorld = generateTerrain(st, cfg.landShare) && warshipsCanCross(st);
   if (!okWorld) { st.land.fill(0); generateTerrain(st, cfg.landShare * 0.5) || st.land.fill(0); }
+  if (!warshipsCanCross(st)) carveSeaLanes(st);
 
   const pickReserves = (type, where) => { const [a, b] = DEPOSITS[type][where]; return randInt(st, a, b); };
   const placeDeposit = (type, rect, ok, reserves) => {
@@ -132,10 +138,24 @@ function generateMap(st) {
     }
     return null;
   };
-  // equal home deposits for every player (same types and amounts, independent positions)
+  // equal home deposits for every player (same types and amounts; on a mirrored map, mirrored positions too)
   const homeSet = ['medium', 'small', 'small', 'small', 'medium', ...cfg.extraHome];
   const homeReserves = homeSet.map(t => pickReserves(t, 'home'));
+  const sym = st.mirror ? symmetry(st) : null;
+  if (sym) {
+    // place player 1's deposits, then copy them to each mirrored player (a 3rd player at the bottom gets its own)
+    homeSet.forEach((t, i) => {
+      const dep = placeDeposit(t, st.players[0].home, (x, y) => !inRect(st.players[0].spawn, x, y), homeReserves[i]);
+      if (!dep) return;
+      sym.images(dep.x, dep.y).forEach(([x, y], k) => {
+        const p = sym.players[k];
+        const d = k === 0 ? dep : addDeposit(st, t, x, y, homeReserves[i]);
+        if (i === 0) { st.players[p].known[d.id] = true; foundBase(st, p, d, true); }
+      });
+    });
+  }
   st.players.forEach((pl, p) => {
+    if (sym && sym.players.includes(p)) return; // already done
     homeSet.forEach((t, i) => {
       const dep = placeDeposit(t, pl.home, (x, y) => !inRect(pl.spawn, x, y), homeReserves[i]);
       if (i === 0 && dep) {
@@ -151,8 +171,85 @@ function generateMap(st) {
   const midTypes = ['rich', 'rich'];
   while (midTypes.length < count) midTypes.push(rand(st) < 0.4 ? 'rich' : 'medium');
   const whole = { x0: 0, y0: 0, x1: W - 1, y1: H - 1 };
-  midTypes.forEach(t => placeDeposit(t, whole, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle')));
+  if (sym) {
+    // place in one mirrored section and copy (squares on the mirror line would copy onto themselves: skip them)
+    const n = Math.max(1, Math.round(midTypes.length / sym.parts));
+    midTypes.slice(0, n).forEach(t => {
+      const res = pickReserves(t, 'middle');
+      const dep = placeDeposit(t, sym.section, (x, y) => zoneOf(st, x, y) === 'middle' && sym.images(x, y).every(([a, b], k) => k === 0 || a !== x || b !== y), res);
+      if (dep) sym.images(dep.x, dep.y).slice(1).forEach(([x, y]) => addDeposit(st, t, x, y, res));
+    });
+  } else midTypes.forEach(t => placeDeposit(t, whole, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle')));
   placeStartingFleets(st);
+  giveHeadStarts(st);
+}
+
+// Hard and Admiral+ bots cheat with a head start (js/data/bots.js): extra Survey Ships, money and rig bases.
+function giveHeadStarts(st) {
+  st.players.forEach((pl, p) => {
+    const start = pl.seat === 'ai' && DIFFICULTY[pl.ai.difficulty].start;
+    if (!start) return;
+    pl.money += start.money || 0;
+    // extra rig bases on its own home deposits (the richest ones not already taken)
+    for (let i = 0; i < (start.bases || 0); i++) {
+      const dep = st.deposits.filter(d => inRect(pl.home, d.x, d.y) && !st.rigs.some(r => r.depId === d.id))
+        .sort((a, b) => b.reserves - a.reserves)[0];
+      if (!dep) break;
+      pl.known[dep.id] = true;
+      foundBase(st, p, dep, false);
+    }
+    // extra Survey Ships anywhere free in the spawn strip
+    let n = start.survey || 0;
+    for (let y = pl.spawn.y0; y <= pl.spawn.y1 && n > 0; y += 3)
+      for (let x = pl.spawn.x0; x <= pl.spawn.x1 && n > 0; x++) {
+        const near = st.ships.some(s => E_cells(s).some(([a, b]) => Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1));
+        if (near || isLand(st, x, y) || !inSpawn(st, p, x, y)) continue;
+        addShip(st, p, 'survey', x, y, 0, true); n--;
+      }
+  });
+}
+
+// Can a Cruiser (a long ship that needs room to turn) sail from player 1's spawn strip to every other one?
+function warshipsCanCross(st) {
+  const grid = Uint8Array.from(st.land);
+  const spotIn = rect => {
+    for (const r of [1, 0]) for (let y = rect.y0; y <= rect.y1; y++) for (let x = rect.x0; x <= rect.x1; x++)
+      if (cellsOf('cruiser', x, y, r).every(([a, b]) => inRect(rect, a, b) && !grid[b * st.W + a])) return { x, y, r };
+    return null;
+  };
+  const a = spotIn(st.players[0].spawn);
+  if (!a) return false;
+  const ship = { type: 'cruiser', x: a.x, y: a.y, rot: a.r, owner: 0 };
+  return st.players.slice(1).every(pl => { const b = spotIn(pl.spawn); return b && findPath(st, ship, b.x, b.y, null, grid) != null; });
+}
+// Last resort: open 5-square-wide sea lanes between the homes (straight through, kept symmetric).
+function carveSeaLanes(st) {
+  const { W, H } = st;
+  const open = (x, y) => { if (x >= 0 && y >= 0 && x < W && y < H) st.land[y * W + x] = 0; };
+  const mid = pl => ({ x: Math.round((pl.home.x0 + pl.home.x1) / 2), y: Math.round((pl.home.y0 + pl.home.y1) / 2) });
+  const rows = new Set(st.players.map(pl => mid(pl).y));
+  for (const y of rows) for (let x = 0; x < W; x++) for (let d = -2; d <= 2; d++) open(x, y + d);
+  if (st.players.length > 2) {
+    const cols = new Set(st.players.map(pl => mid(pl).x));
+    if (st.players.length === 3) cols.add(Math.floor(W / 2)).add(W - 1 - Math.floor(W / 2));
+    for (const x of cols) for (let y = 0; y < H; y++) for (let d = -2; d <= 2; d++) open(x + d, y);
+  }
+}
+
+// Map symmetry for fair maps: the mirror images of a square (the first is the square itself), which
+// player owns the home each image falls in, how many parts the map splits into, and the section to place in.
+function symmetry(st) {
+  const { W, H } = st, n = st.players.length;
+  if (n === 4) return {
+    parts: 4, players: [0, 1, 2, 3], section: { x0: 0, y0: 0, x1: Math.floor(W / 2) - 1, y1: Math.floor(H / 2) - 1 },
+    images: (x, y) => [[x, y], [W - 1 - x, y], [W - 1 - x, H - 1 - y], [x, H - 1 - y]],
+  };
+  return { parts: 2, players: [0, 1], section: { x0: 0, y0: 0, x1: Math.floor(W / 2) - 1, y1: H - 1 }, images: (x, y) => [[x, y], [W - 1 - x, y]] };
+}
+function addDeposit(st, type, x, y, reserves) {
+  const dep = { id: 'd' + st.nextId++, x, y, type, reserves, max: reserves };
+  st.deposits.push(dep);
+  return dep;
 }
 
 // Starting fleets: 2 patrol boats and 2 survey ships each, spread out along the outer edge of the spawn strip
@@ -232,7 +329,50 @@ function generateClassic(st) {
   while (midTypes.length < count) midTypes.push(rand(st) < 0.45 ? 'rich' : 'medium');
   midTypes.forEach(t => placeDeposit(t, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle')));
 
-  // Starting fleets: 2 patrol boats each, spread out in the spawn strip
+  // Can a Cruiser (a long ship that needs room to turn) sail from player 1's spawn strip to every other one?
+function warshipsCanCross(st) {
+  const grid = Uint8Array.from(st.land);
+  const spotIn = rect => {
+    for (const r of [1, 0]) for (let y = rect.y0; y <= rect.y1; y++) for (let x = rect.x0; x <= rect.x1; x++)
+      if (cellsOf('cruiser', x, y, r).every(([a, b]) => inRect(rect, a, b) && !grid[b * st.W + a])) return { x, y, r };
+    return null;
+  };
+  const a = spotIn(st.players[0].spawn);
+  if (!a) return false;
+  const ship = { type: 'cruiser', x: a.x, y: a.y, rot: a.r, owner: 0 };
+  return st.players.slice(1).every(pl => { const b = spotIn(pl.spawn); return b && findPath(st, ship, b.x, b.y, null, grid) != null; });
+}
+// Last resort: open 5-square-wide sea lanes between the homes (straight through, kept symmetric).
+function carveSeaLanes(st) {
+  const { W, H } = st;
+  const open = (x, y) => { if (x >= 0 && y >= 0 && x < W && y < H) st.land[y * W + x] = 0; };
+  const mid = pl => ({ x: Math.round((pl.home.x0 + pl.home.x1) / 2), y: Math.round((pl.home.y0 + pl.home.y1) / 2) });
+  const rows = new Set(st.players.map(pl => mid(pl).y));
+  for (const y of rows) for (let x = 0; x < W; x++) for (let d = -2; d <= 2; d++) open(x, y + d);
+  if (st.players.length > 2) {
+    const cols = new Set(st.players.map(pl => mid(pl).x));
+    if (st.players.length === 3) cols.add(Math.floor(W / 2)).add(W - 1 - Math.floor(W / 2));
+    for (const x of cols) for (let y = 0; y < H; y++) for (let d = -2; d <= 2; d++) open(x + d, y);
+  }
+}
+
+// Map symmetry for fair maps: the mirror images of a square (the first is the square itself), which
+// player owns the home each image falls in, how many parts the map splits into, and the section to place in.
+function symmetry(st) {
+  const { W, H } = st, n = st.players.length;
+  if (n === 4) return {
+    parts: 4, players: [0, 1, 2, 3], section: { x0: 0, y0: 0, x1: Math.floor(W / 2) - 1, y1: Math.floor(H / 2) - 1 },
+    images: (x, y) => [[x, y], [W - 1 - x, y], [W - 1 - x, H - 1 - y], [x, H - 1 - y]],
+  };
+  return { parts: 2, players: [0, 1], section: { x0: 0, y0: 0, x1: Math.floor(W / 2) - 1, y1: H - 1 }, images: (x, y) => [[x, y], [W - 1 - x, y]] };
+}
+function addDeposit(st, type, x, y, reserves) {
+  const dep = { id: 'd' + st.nextId++, x, y, type, reserves, max: reserves };
+  st.deposits.push(dep);
+  return dep;
+}
+
+// Starting fleets: 2 patrol boats each, spread out in the spawn strip
   st.players.forEach((pl, p) => {
     const spots = [];
     for (let y = pl.spawn.y0; y <= pl.spawn.y1; y++)
