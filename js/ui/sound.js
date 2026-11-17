@@ -5,7 +5,7 @@ const PREF_KEY = 'lrs-prefs';
 const prefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; } };
 const setPref = (k, v) => { try { localStorage.setItem(PREF_KEY, JSON.stringify({ ...prefs(), [k]: v })); } catch { /* blocked */ } };
 
-let ac = null, master = null, noise = null;
+let ac = null, master = null, noise = null, analyser = null;
 export const volume = () => prefs().volume ?? 0.6;
 export const muted = () => !!prefs().muted;
 export function setVolume(v) { setPref('volume', v); if (master) master.gain.value = muted() ? 0 : v; }
@@ -20,15 +20,28 @@ function audio() {
   // a gentle limiter so overlapping explosions don't clip
   const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 6;
   master.connect(comp); comp.connect(ac.destination);
+  analyser = ac.createAnalyser(); comp.connect(analyser);
   noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
   const d = noise.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   return ac;
 }
-// unlock on the first click / key (browsers block audio before that)
-const unlock = () => { const a = audio(); if (a?.state === 'suspended') a.resume(); };
-addEventListener('pointerdown', unlock, { capture: true });
-addEventListener('keydown', unlock, { capture: true });
+// Unlock on clicks / taps / keys (browsers block audio until the player interacts).
+// iPhones and iPads also mute web audio when the ring/silent switch is on, unless the page is
+// playing "media": a silent looping <audio> and the audio-session hint fix that.
+let silent = null;
+function unlock() {
+  const a = audio();
+  if (!a) return;
+  if (a.state !== 'running') a.resume().catch(() => {});
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older browsers */ }
+  if (!silent) {
+    silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+    silent.loop = true; silent.volume = 0.01; silent.setAttribute('playsinline', '');
+  }
+  if (silent.paused) silent.play().catch(() => {});
+}
+for (const ev of ['pointerdown', 'pointerup', 'click', 'touchend', 'keydown']) addEventListener(ev, unlock, { capture: true });
 
 // ---------- building blocks ----------
 function env(g, t, a, peak, decay) {
@@ -81,6 +94,15 @@ const SOUNDS = {
 export function play(name, delay = 0) {
   if (muted() || !SOUNDS[name]) return;
   const a = audio();
-  if (!a || a.state !== 'running') return;
-  try { SOUNDS[name](a.currentTime + Math.max(0, delay)); } catch { /* ignore */ }
+  if (!a) return;
+  const go = () => { try { SOUNDS[name](a.currentTime + Math.max(0, delay)); } catch (e) { console.warn('sound', name, e); } };
+  if (a.state === 'running') go();
+  else a.resume().then(() => { if (a.state === 'running') go(); }, () => {}); // still waking up: play as soon as it can
+}
+
+// for checking: the audio state and the current output level
+export function soundCheck() {
+  if (!analyser) return { state: ac?.state || 'none' };
+  const d = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(d);
+  return { state: ac.state, level: Math.sqrt(d.reduce((t, v) => t + v * v, 0) / d.length) };
 }

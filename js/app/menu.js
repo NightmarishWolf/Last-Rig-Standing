@@ -16,7 +16,7 @@ import { DIFFICULTY, DIFFICULTY_ORDER, PERSONALITIES, PERSONALITY_ORDER } from '
 import { closeOverlay, showConfirm, showOverlay, showRules } from '../ui/dialogs.js';
 import { setState } from '../ui/index.js';
 import { toast } from '../ui/status.js';
-import { muted, play, setMuted, setVolume, volume } from '../ui/sound.js';
+import { muted, play, setMuted, setVolume, soundCheck, volume } from '../ui/sound.js';
 
 const home = () => document.getElementById('home');
 export const homeOpen = () => document.body.classList.contains('at-home');
@@ -72,7 +72,8 @@ function mainPage() {
       ${inGame() ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[st.current].name}</small></button>` : ''}
     </nav>
     ${last ? `<div class="home-card continue-card"><div class="muted small">Your last game</div><div class="cc-players">${playersLine(last.entry)}</div></div>` : ''}
-    <div class="home-sound"><label>🔊 Sound <input type="range" min="0" max="1" step="0.05" value="${muted() ? 0 : volume()}" data-volume></label></div>
+    <div class="home-sound"><label>🔊 Sound <input type="range" min="0" max="1" step="0.05" value="${muted() ? 0 : volume()}" data-volume></label>
+      <button class="ghost" data-testsound>Test</button><div class="muted small" data-soundnote></div></div>
     <div class="home-foot muted small">Games save automatically. Press <b>Esc</b> to go back to your game.</div>`;
 }
 
@@ -219,6 +220,15 @@ function bind(view) {
     on('[data-resume]', () => hideHome());
     const vol = h.querySelector('[data-volume]');
     if (vol) { vol.oninput = () => { setMuted(+vol.value === 0); if (+vol.value > 0) setVolume(+vol.value); }; vol.onchange = () => play('gun'); }
+    on('[data-testsound]', () => {
+      if (muted()) { setMuted(false); if (vol && +vol.value === 0) { vol.value = 0.6; setVolume(0.6); } }
+      play('heavy'); play('boom', 0.5);
+      setTimeout(() => {
+        const c = soundCheck(), note = h.querySelector('[data-soundnote]');
+        if (note) note.textContent = c.state === 'running' ? 'If you heard nothing, check your device volume (and the silent switch on a phone).'
+          : c.state === 'none' ? 'This browser doesn\'t support web audio.' : `Your browser is holding the sound back (${c.state}): click anywhere on the page, then Test again.`;
+      }, 900);
+    });
     on('[data-continue]', () => { const l = latest(); if (l?.st) openGame(l.st); });
     on('[data-new]', () => showHome('setup'));
     on('[data-load]', () => showHome('load'));
