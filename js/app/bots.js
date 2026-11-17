@@ -15,6 +15,7 @@ import { animateStep } from '../ui/board/fx.js';
 import { showOverlay } from '../ui/dialogs.js';
 import { refresh } from '../ui/index.js';
 import { S } from '../ui/state.js';
+import { botAction, mySeat, online } from './online.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const humans = st => st.players.map((_, i) => i).filter(i => st.players[i].seat !== 'ai' && !st.players[i].out);
@@ -31,9 +32,10 @@ export async function playBotTurns(after) {
   if (runningFor !== st) paused = false; // a pause belongs to the game it was pressed in
   runningFor = st;
   const hs = humans(st);
-  const curtain = hs.length > 1;
-  S.spectate = hs.length === 0;
-  S.viewer = hs.length === 1 ? hs[0] : null;
+  const net = online(); // online: every player watches from their own seat on their own screen
+  const curtain = !net && hs.length > 1;
+  S.spectate = !net && hs.length === 0;
+  S.viewer = net ? mySeat() : hs.length === 1 ? hs[0] : null;
   S.botTurn = true; S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' };
   try {
     while (st === A.state && st.phase === 'playing' && isBot(st, st.current)) {
@@ -45,7 +47,9 @@ export async function playBotTurns(after) {
         while ((paused || overlayOpen()) && st === A.state) await sleep(150); // menu open or paused: wait
         if (st !== A.state || st.phase !== 'playing') return { ok: false };
         const ms = curtain || skipTurn ? 0 : speedMs();
-        return ms ? animateStep(st, a, ms) : E.applyAction(st, a);
+        const r = ms ? await animateStep(st, a, ms) : E.applyAction(st, a);
+        botAction(a, r); // online: pass the bot's move on to the other players
+        return r;
       };
       await runBotTurn(st, p, step);
       if (st !== A.state) break; // the player left for a new game
@@ -58,7 +62,7 @@ export async function playBotTurns(after) {
     if (runningFor === st) runningFor = null;
     if (st !== A.state) return; // a newer game owns the screen now
     S.botTurn = false; S.tween = null; S.fx = [];
-    if (!S.spectate) S.viewer = null;
+    if (!S.spectate) S.viewer = net ? mySeat() : null;
     hideBar();
   }
   if (st === A.state) after(st);

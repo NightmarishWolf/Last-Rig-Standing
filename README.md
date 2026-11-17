@@ -129,9 +129,12 @@ js/
                          units, fog, modes (move/target/placing/voyages), fleets (fleets, standing
                          orders, yard badges), tooltip, markers, minimap; weapons.js draws turrets and every
                          weapon's shots and impacts (fx.js animates computer turns)
+  net/                   online play: transport.js (how browsers connect: PeerJS peer-to-peer, or
+                         BroadcastChannel between tabs with ?net=local), session.js (host/client messages)
   app/                   menus and game flow
     menu.js              full-screen main menu: Continue/Resume, new-game setup, load/save pages
-    gameover.js          the game-over page: results table and charts over the game
+    gameover.js          the game-over page: results table, charts, game-data download
+    online.js            online games: lobby start, passing moves, whose turn, skip / bot takeover
     bots.js              computer turns on screen: animation, curtain, spectator controls
     flow.js              pass-the-device, game over, tutorial enter/exit
     timer.js             turn timer
@@ -187,3 +190,17 @@ Known limitation to fix at that stage: in this version the full game state (incl
 enemy positions) lives in each browser, which is fine on one screen but lets a player cheat online.
 The fix is to run `applyAction()` on the server side (Firebase Cloud Functions or Supabase Edge
 Functions) and send each player only `getView(state, player)`.
+
+## Online play
+
+Menu → 🌐 Online. The host's browser runs the game (and the bots); the other players connect to it
+peer-to-peer with the invite code, through PeerJS (loaded from unpkg.com when you go online; its free
+public server only introduces the browsers). Moves are sent, not whole games: every browser replays
+them on its own copy, and after each turn the host checks everyone's copy still matches.
+
+To try it on one computer, open the page with `?net=local` in two tabs: they connect to each other
+without the internet. Peer-to-peer is meant for testing; a Cloudflare server can replace
+`js/net/transport.js` later without changing the rest.
+
+After any game, **⬇️ Download game data** on the results page saves the settings, every player's
+totals, the round-by-round history and (online) every move, for balancing.

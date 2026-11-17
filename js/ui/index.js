@@ -101,6 +101,7 @@ export function dispatch(action) {
   const r = E.applyAction(S.st, action);
   if (!r.ok) toast(r.error);
   else if (['act', 'baseStrike', 'satellite'].includes(action.type)) effectsForAction(S.st, action, p, shotsBefore); // shells, missiles, sounds...
+  S.hooks.onAction?.(action, r); // online games: send the move to the others
   S.hooks.save(S.st);
   if (S.selectedId && !S.st.ships.find(s => s.id === S.selectedId)) { S.selectedId = null; S.mode = { kind: 'idle' }; }
   if (S.st.phase === 'over') { refresh(); S.hooks.gameOver(S.st); return r; }

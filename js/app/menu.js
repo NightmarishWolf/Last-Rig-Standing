@@ -9,13 +9,18 @@ import { gameOver, handoff, startTutorial } from './flow.js';
 import { TIMER_OPTIONS, fmt, setup } from './settings.js';
 import { A } from './state.js';
 import { deleteSave, exportSave, importSave, latest, listSaves, loadSave, manualFull, newGameId, renameSave, save, saveAs } from './storage.js';
-import { bindGameOver, renderGameOver } from './gameover.js';
+import { bindGameOver, downloadGameData, renderGameOver } from './gameover.js';
 import { MAP_SIZES, PLAYER_COLORS } from '../data/maps.js';
 import { VICTORIES } from '../data/victory.js';
 import { DIFFICULTY, DIFFICULTY_ORDER, PERSONALITIES, PERSONALITY_ORDER } from '../data/bots.js';
 import { closeOverlay, showConfirm, showOverlay, showRules } from '../ui/dialogs.js';
 import { setState } from '../ui/index.js';
 import { toast } from '../ui/status.js';
+import { dispatch } from '../ui/index.js';
+import { S } from '../ui/state.js';
+import { N, hostLobby, join, leaveOnline, lobbyReady, mySeat, online, onlineRole, resumeHosting, startOnlineGame } from './online.js';
+import { forgetGame, joinLink, myName, normCode, recentGames, setLobby, setMyName } from '../net/session.js';
+import { transportName } from '../net/transport.js';
 import { muted, play, setMuted, setVolume, soundCheck, volume } from '../ui/sound.js';
 
 const home = () => document.getElementById('home');
@@ -23,12 +28,14 @@ export const homeOpen = () => document.body.classList.contains('at-home');
 // a game the player can go back to without loading anything
 const inGame = () => A.sessionActive && A.state && !A.state.tutorial && A.state.phase === 'playing';
 
-export function showHome(view = 'main') {
+let homeOpts = {};
+export function showHome(view = 'main', opts = {}) {
+  homeOpts = opts;
   closeOverlay();
   document.body.classList.add('at-home');
   home().classList.remove('hidden');
   home().dataset.view = view;
-  const body = { main: mainPage, setup: setupPage, load: loadPage, over: () => renderGameOver(A.state) }[view]();
+  const body = { main: mainPage, setup: setupPage, load: loadPage, over: () => renderGameOver(A.state), online: onlinePage, lobby: lobbyPage }[view]();
   home().innerHTML = `
     <div class="home-sea"></div>
     ${RIG_ART}
@@ -65,11 +72,13 @@ function mainPage() {
       ${last ? `<button class="hm primary" data-continue>▶ Continue <small>round ${last.entry.round} · ${MAP_SIZES[last.entry.size]?.name || ''} map · saved ${ago(last.entry.savedAt)}</small></button>` : ''}
       <button class="hm ${inGame() || last ? '' : 'primary'}" data-new>⚓ New game</button>
       <button class="hm" data-load>📂 Load game</button>
+      <button class="hm" data-online>🌐 Online <small>${online() ? `in game ${N.s.code}` : 'play with friends: host or join with a code'}</small></button>
       ${inGame() ? `<button class="hm" data-save>💾 Save game <small>a named copy you can come back to</small></button>` : ''}
       ${A.state && !A.state.tutorial && A.state.phase === 'over' && A.state.history ? '<button class="hm" data-results>🏁 Results of your last game</button>' : ''}
       <button class="hm" data-tutorial>🎓 Tutorial</button>
       <button class="hm" data-rules>📖 Rules</button>
-      ${inGame() ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[st.current].name}</small></button>` : ''}
+      ${inGame() && (!online() || st.current === mySeat()) ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[online() ? mySeat() : st.current].name}</small></button>` : ''}
+      ${online() ? `<button class="hm danger" data-leaveonline>🚪 Leave online game <small>${onlineRole() === 'host' ? 'it stays saved: load it to host it again' : 'you can rejoin with the code'}</small></button>` : ''}
     </nav>
     ${last ? `<div class="home-card continue-card"><div class="muted small">Your last game</div><div class="cc-players">${playersLine(last.entry)}</div></div>` : ''}
     <div class="home-sound"><label>🔊 Sound <input type="range" min="0" max="1" step="0.05" value="${muted() ? 0 : volume()}" data-volume></label>
@@ -158,6 +167,7 @@ function startGame() {
   A.state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, mirror: setup.mirror !== false, victory: { ...setup.victory }, seats });
   A.state.gameId = newGameId(); // its own save slot: the game you were playing stays saved
   A.sessionActive = false;
+  leaveOnline();
   save(A.state); hideHome(); setState(A.state); handoff(A.state);
 }
 
@@ -189,6 +199,11 @@ function loadPage() {
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function openGame(st) {
+  leaveOnline();
+  if (st.online && st.phase === 'playing') { // a saved online game: host it again under its code
+    resumeHosting(st).then(() => toast(`Hosting ${st.online.code} again: players can rejoin with that code.`), err => toast(err.message));
+    return;
+  }
   A.state = st;
   A.state.gameId ||= newGameId();
   A.sessionActive = false;
@@ -212,10 +227,115 @@ function askName(title, value, onOk, onCancel) {
   });
 }
 
+// ---------- online ----------
+function onlinePage() {
+  const recent = recentGames();
+  return `<div class="home-card online-card">
+    <h2>🌐 Online</h2>
+    <p class="muted small">Play with friends over the internet: one player hosts and shares a short code, the others join with it. Computer players can fill any seat.${transportName() === 'local' ? ' <b>Same-browser mode</b> (?net=local): games connect between tabs of this browser only.' : ''}</p>
+    <div class="setup-group"><div class="label">Your name</div>
+      <input class="text-in" data-myname maxlength="20" placeholder="Admiral" value="${escapeHtml(myName())}"></div>
+    <div class="online-cols">
+      <div class="home-card inner">
+        <h3>Host a game</h3>
+        <p class="muted small">You pick the map and seats, get a code to share, and start when everyone's in. Your browser runs the game, so keep it open while you play.</p>
+        <button class="primary big" data-host>Host a game</button>
+      </div>
+      <div class="home-card inner">
+        <h3>Join a game</h3>
+        <input class="text-in code-in" data-code maxlength="6" placeholder="CODE" value="${escapeHtml(normCode(homeOpts.code || ''))}">
+        <button class="primary big" data-join style="margin-top:8px">Join</button>
+      </div>
+    </div>
+    ${recent.length ? `<div class="setup-group"><div class="label">Your recent online games</div>
+      ${recent.map(g => `<div class="save-row"><div class="sv-main"><div class="sv-name">${g.code} <span class="muted small">· ${g.host ? 'you hosted' : 'you joined'} · ${ago(g.at)}</span></div></div>
+        <div class="sv-actions">${g.host ? '<span class="muted small">load it from Load game to host again</span>' : `<button class="primary" data-rejoin="${g.code}">Rejoin</button>`}<button class="ghost" data-forget="${g.code}" title="Remove from this list">✕</button></div></div>`).join('')}</div>` : ''}
+    <div class="row" style="margin-top:16px"><button class="big ghost" data-back>Back</button></div>
+  </div>`;
+}
+
+function lobbyPage() {
+  const s = N.s;
+  if (!s) return onlinePage();
+  const host = s.role === 'host', L = s.lobby;
+  if (!L) return `<div class="home-card"><h2>Joining ${s.code}…</h2><p class="muted">Waiting for the host.</p><div class="row"><button class="big ghost" data-leavelobby>Cancel</button></div></div>`;
+  const max = MAP_SIZES[L.size].maxPlayers;
+  const seatRowOnline = i => {
+    const o = L.seats[i];
+    const tag = o.kind === 'host' ? `<span class="seat-tag">⭐ ${escapeHtml(host ? (myName() || 'You') + ' (you, host)' : (L.hostName || 'Host') + ' (host)')}</span>`
+      : o.kind === 'online' ? `<span class="seat-tag ${o.clientId ? '' : 'muted'}">${o.clientId ? '🧑 ' + escapeHtml(o.name || 'Admiral') + (!host && i === s.seat ? ' (you)' : '') : '⏳ waiting for a player…'}</span>`
+      : `<span class="seat-tag">🤖 ${DIFFICULTY[o.difficulty].name}${o.personality !== 'random' ? ' · ' + PERSONALITIES[o.personality].name : ''}</span>`;
+    const ctrls = host && o.kind !== 'host' ? `<div class="seg small-seg">
+        <button data-oseat="${i}:online" class="${o.kind === 'online' ? 'on' : ''}">🌐 Online player</button>
+        <button data-oseat="${i}:ai" class="${o.kind === 'ai' ? 'on' : ''}">🤖 CPU</button></div>
+      ${o.kind === 'ai' ? `<div class="seg small-seg">${DIFFICULTY_ORDER.map(k => `<button data-odiff="${i}:${k}" class="${o.difficulty === k ? 'on' : ''}">${DIFFICULTY[k].icon} ${DIFFICULTY[k].name}</button>`).join('')}</div>
+        <select data-opers="${i}"><option value="random" ${o.personality === 'random' ? 'selected' : ''}>🎲 Random personality</option>${PERSONALITY_ORDER.map(k => `<option value="${k}" ${o.personality === k ? 'selected' : ''}>${PERSONALITIES[k].icon} ${PERSONALITIES[k].name}</option>`).join('')}</select>` : ''}` : '';
+    return `<div class="seat-row" style="--c:${PLAYER_COLORS[i]}"><span class="chip" style="--c:${PLAYER_COLORS[i]}">Player ${i + 1}</span>${tag}${ctrls}</div>`;
+  };
+  const seg = (label, items) => `<div class="setup-group"><div class="label">${label}</div><div class="seg">${items}</div></div>`;
+  const ro = !host ? 'disabled' : '';
+  return `<div class="home-card">
+    <div class="lobby-head">
+      <div><h2>Game ${s.code}</h2><div class="muted small">${host ? 'Share the code or the link. Players appear here as they join.' : 'The host is setting up the game. It starts when they press Start.'}</div></div>
+      <div class="code-box"><div class="code-big">${s.code}</div>${host ? `<button class="ghost" data-copylink>📋 Copy invite link</button>` : ''}</div>
+    </div>
+    <div class="setup-cols">
+      <div>
+        ${seg('Map size', Object.entries(MAP_SIZES).filter(([, m]) => !m.hidden).map(([k, m]) => `<button data-osize="${k}" class="${L.size === k ? 'on' : ''}" ${ro}>${m.name}<small>${m.w}×${m.h}</small></button>`).join(''))}
+        ${seg('Map layout', `<button data-omirror="1" class="${L.mirror !== false ? 'on' : ''}" ${ro}>⚖️ Mirrored</button><button data-omirror="0" class="${L.mirror === false ? 'on' : ''}" ${ro}>🎲 Random</button>`)}
+        ${seg('Turn timer', TIMER_OPTIONS.map(t => `<button data-otimer="${t}" class="${L.turnTimer === t ? 'on' : ''}" ${ro}>${t ? fmt(t) : 'Off'}</button>`).join(''))}
+        ${seg('Ways to win', Object.entries(VICTORIES).map(([k, v]) => `<button data-ovic="${k}" class="${v.always || L.victory[k] ? 'on' : ''}" ${v.always || !host ? 'disabled' : ''}>${v.icon} ${v.name}</button>`).join(''))}
+      </div>
+      <div>
+        ${seg('Players', [2, 3, 4].map(n => `<button data-oplayers="${n}" class="${L.players === n ? 'on' : ''}" ${n > max || !host ? 'disabled' : ''}>${n} players</button>`).join(''))}
+        <div class="seats">${Array.from({ length: L.players }, (_, i) => seatRowOnline(i)).join('')}</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:18px">
+      ${host ? `<button class="primary big" data-ostart ${lobbyReady(L) ? '' : 'disabled'}>Start game</button>${lobbyReady(L) ? '' : '<span class="muted small">Waiting for every online seat to fill (or make it a CPU).</span>'}` : ''}
+      <button class="big ghost" data-leavelobby>${host ? 'Close the game' : 'Leave'}</button>
+    </div>
+  </div>`;
+}
+
+function bindOnline(view, h, on) {
+  if (view === 'online') {
+    const nameIn = h.querySelector('[data-myname]'), codeIn = h.querySelector('[data-code]');
+    nameIn.oninput = () => setMyName(nameIn.value.trim());
+    codeIn.oninput = () => { codeIn.value = normCode(codeIn.value); };
+    codeIn.onkeydown = e => { if (e.key === 'Enter') h.querySelector('[data-join]').click(); };
+    const go = async (fn, b) => {
+      if (!myName()) setMyName(nameIn.value.trim() || 'Admiral');
+      b.disabled = true; b.textContent = 'Connecting…';
+      try { await fn(); showHome('lobby'); } catch (err) { toast(err.message); showHome('online', { code: codeIn.value }); }
+    };
+    on('[data-host]', b => go(() => hostLobby(), b));
+    on('[data-join]', b => { const c = normCode(codeIn.value); if (c.length < 4) { toast('Type the 4-letter code first.'); return; } go(() => join(c), b); });
+    on('[data-rejoin]', b => go(() => join(b.dataset.rejoin), b));
+    on('[data-forget]', b => { forgetGame(b.dataset.forget); showHome('online'); });
+  }
+  if (view === 'lobby') {
+    on('[data-leavelobby]', () => { leaveOnline(); showHome('online'); });
+    on('[data-copylink]', () => { navigator.clipboard?.writeText(joinLink(N.s.code)).then(() => toast('Invite link copied.'), () => toast(joinLink(N.s.code))); });
+    if (N.s?.role !== 'host') return;
+    const L = N.s.lobby, re = changes => { setLobby(changes); showHome('lobby'); };
+    on('[data-osize]', b => { const m = MAP_SIZES[b.dataset.osize]; re({ size: b.dataset.osize, players: Math.min(L.players, m.maxPlayers) }); });
+    on('[data-omirror]', b => re({ mirror: b.dataset.omirror === '1' }));
+    on('[data-otimer]', b => re({ turnTimer: Number(b.dataset.otimer) }));
+    on('[data-ovic]', b => re({ victory: { ...L.victory, [b.dataset.ovic]: !L.victory[b.dataset.ovic] } }));
+    on('[data-oplayers]', b => re({ players: Number(b.dataset.oplayers) }));
+    on('[data-oseat]', b => { const [i, k] = b.dataset.oseat.split(':'); const seats = [...L.seats]; seats[i] = { ...seats[i], kind: k, ...(k === 'ai' ? { clientId: null, name: null } : {}) }; re({ seats }); });
+    on('[data-odiff]', b => { const [i, k] = b.dataset.odiff.split(':'); const seats = [...L.seats]; seats[i] = { ...seats[i], difficulty: k }; re({ seats }); });
+    h.querySelectorAll('[data-opers]').forEach(sel => sel.onchange = () => { const seats = [...L.seats]; seats[sel.dataset.opers] = { ...seats[sel.dataset.opers], personality: sel.value }; re({ seats }); });
+    on('[data-ostart]', () => { if (lobbyReady(L)) startOnlineGame(); });
+  }
+}
+
 // ---------- wiring ----------
 function bind(view) {
   const h = home(), on = (sel, fn) => h.querySelectorAll(sel).forEach(b => b.addEventListener('click', e => fn(b, e)));
   on('[data-back]', () => showHome('main'));
+  bindOnline(view, h, on);
   if (view === 'main') {
     on('[data-resume]', () => hideHome());
     const vol = h.querySelector('[data-volume]');
@@ -233,7 +353,9 @@ function bind(view) {
     on('[data-new]', () => showHome('setup'));
     on('[data-load]', () => showHome('load'));
     on('[data-results]', () => showHome('over'));
-    on('[data-tutorial]', () => { hideHome(); startTutorial(); });
+    on('[data-online]', () => showHome(online() || N.s ? 'lobby' : 'online'));
+    on('[data-leaveonline]', () => showConfirm('Leave the online game?', onlineRole() === 'host' ? 'Everyone else will be disconnected. The game stays saved: load it from Load game to host it again with the same code.' : 'You can rejoin later with the code.', 'Leave', () => { leaveOnline(); A.sessionActive = false; showHome('main'); }, () => showHome('main')));
+    on('[data-tutorial]', () => { leaveOnline(); hideHome(); startTutorial(); });
     on('[data-rules]', () => showRules());
     on('[data-save]', () => {
       if (manualFull()) { toast('You have 12 saved games: delete one on the Load game page first.'); return; }
@@ -241,8 +363,10 @@ function bind(view) {
     });
     on('[data-surrender]', () => showConfirm('Surrender?',
       `${A.state.players[A.state.current].name} will be knocked out and their whole fleet will sink.`, 'Surrender', () => {
-        E.applyAction(A.state, { type: 'surrender' });
-        save(A.state); hideHome(); setState(A.state);
+        hideHome();
+        if (online()) { S.botTurn = false; dispatch({ type: 'surrender' }); } // sent on to the others
+        else { E.applyAction(A.state, { type: 'surrender' }); save(A.state); }
+        setState(A.state);
         if (A.state.phase === 'over') gameOver(A.state); else handoff(A.state);
       }));
   }
@@ -280,6 +404,7 @@ function bind(view) {
     on('[data-menu]', () => { A.sessionActive = false; showHome('main'); });
     on('[data-viewmap]', () => hideHome());
     bindGameOver(h, A.state);
+    on('[data-gamedata]', () => downloadGameData(A.state));
   }
 }
 
@@ -288,7 +413,7 @@ document.addEventListener('keydown', e => {
   if (!homeOpen() || !document.getElementById('overlay').classList.contains('hidden')) return;
   if (e.key !== 'Escape') return;
   const view = home().dataset.view;
-  if (view === 'setup' || view === 'load') showHome('main');
+  if (view === 'setup' || view === 'load' || view === 'online') showHome('main');
   else if (view === 'main' && inGame()) hideHome();
 });
 

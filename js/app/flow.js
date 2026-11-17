@@ -15,6 +15,7 @@ import { refresh, setState } from '../ui/index.js';
 import { toast } from '../ui/status.js';
 import { isBot } from '../ai/index.js';
 import { humans, playBotTurns } from './bots.js';
+import { onlineHandoff } from './online.js';
 
 export function startTutorial() {
   stopTimer(); A.sessionActive = false;
@@ -40,6 +41,7 @@ export function handoff(st, reason) {
     refresh();
     return;
   }
+  if (onlineHandoff(st)) return; // online games decide whose screen does what
   // a computer's turn: let the bots play, then come back here for the next human
   if (isBot(st, st.current)) { playBotTurns(s => (s.phase === 'over' ? gameOver(s) : handoff(s, reason))); return; }
   const p = st.current, pl = st.players[p];

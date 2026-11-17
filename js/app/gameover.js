@@ -45,6 +45,7 @@ export function renderGameOver(st) {
       <button class="primary big" data-new>New game</button>
       <button class="big" data-viewmap>View the final map</button>
       <button class="big ghost" data-menu>Main menu</button>
+      <button class="big ghost" data-gamedata title="Stats, round-by-round history and every move, for balancing">⬇️ Download game data</button>
     </div>
   </div>`;
 }
@@ -151,3 +152,24 @@ function hover(root, st) {
   svg.addEventListener('mouseleave', () => { tip.classList.add('hidden'); cx.classList.add('hidden'); });
 }
 export const fleetValue = (st, p) => st.ships.filter(s => s.owner === p).reduce((t, s) => t + SHIPS[s.type].cost, 0);
+
+// Everything about a finished game in one file, for balancing: settings, every player's totals,
+// the round-by-round history, and (for online games) every move in order.
+export function downloadGameData(st, moves = []) {
+  const data = {
+    lastRigStanding: 'game-data', version: 1, savedAt: new Date().toISOString(),
+    settings: { size: st.size, players: st.players.length, mirror: st.mirror, victory: st.victory, seed: st.seed, online: !!st.online },
+    result: { winner: st.winner, reason: st.winReason, rounds: st.round },
+    players: st.players.map((pl, i) => ({
+      seat: i, name: pl.name, kind: pl.seat === 'ai' ? 'bot' : 'human', difficulty: pl.ai?.difficulty, personality: pl.ai?.personality,
+      out: !!pl.out, stats: pl.stats || {}, techs: Object.keys(pl.research?.done || {}),
+    })),
+    history: { columns: ['oil', 'money', 'ships', 'bases', 'techs', 'fleetValue'], rounds: st.history || [] },
+    moves: moves.length ? moves : (window.__lrsMoves || []),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  a.download = `last-rig-standing-game-${new Date().toISOString().slice(0, 10)}-round-${st.round}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}

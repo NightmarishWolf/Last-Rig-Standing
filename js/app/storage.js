@@ -18,13 +18,13 @@ const writeIndex = list => { try { localStorage.setItem(INDEX_KEY, JSON.stringif
 
 // ---------- compact encoding ----------
 // The land map is a long array of 0s and 1s: store it as runs ("12a5b..." style: counts, alternating 0/1).
-function pack(st) {
+export function pack(st) {
   const runs = []; let cur = 0, n = 0;
   for (const v of st.land) { if (v === cur) n++; else { runs.push(n); cur = v; n = 1; } }
   runs.push(n);
   return JSON.stringify({ ...st, land: undefined, landRuns: runs.join('.') });
 }
-function unpack(raw) {
+export function unpack(raw) {
   const st = JSON.parse(raw);
   if (st.landRuns != null) {
     const land = []; let v = 0;
