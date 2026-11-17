@@ -9,7 +9,7 @@ import { showRules } from './dialogs.js';
 import { cancelMode, onBoardClick, onKey, onPanelClick, onResearchClick } from './input.js';
 import { closeResearch, openResearch, renderResearch } from './research.js';
 import { renderPanel, renderTop } from './panel.js';
-import { S } from './state.js';
+import { S, asMe } from './state.js';
 import { toast, updateStatus } from './status.js';
 import { reopenSummary } from './summary.js';
 import { effectsForAction } from './board/weapons.js';
@@ -31,12 +31,12 @@ export function initUI(state, h) {
       if (!S.drag.moved && Math.abs(dx) + Math.abs(dy) > 5 && !S.fit) S.drag.moved = true;
       if (S.drag.moved) { panBy(dx, dy); S.drag.x = e.clientX; S.drag.y = e.clientY; S.canvas.style.cursor = 'grabbing'; }
     }
-    if (e.target === S.canvas) { S.hover = cellFromEvent(e); requestDraw(); updateStatus(); }
+    if (e.target === S.canvas) { S.hover = cellFromEvent(e); requestDraw(); asMe(updateStatus); }
     else if (S.drag?.moved) requestDraw();
   });
   window.addEventListener('mouseup', e => {
     const d = S.drag; S.drag = null; S.canvas.style.cursor = '';
-    if (d && !d.moved && d.button === 0 && e.target === S.canvas) onBoardClick(cellFromEvent(e), e.shiftKey);
+    if (d && !d.moved && d.button === 0 && e.target === S.canvas) asMe(() => onBoardClick(cellFromEvent(e), e.shiftKey));
   });
   S.canvas.addEventListener('mouseleave', () => { S.hover = null; requestDraw(); });
   S.canvas.addEventListener('contextmenu', e => { e.preventDefault(); cancelMode(); });
@@ -56,8 +56,8 @@ export function initUI(state, h) {
     window.addEventListener('mousemove', e => { if (mmDrag) jump(e); });
     window.addEventListener('mouseup', () => { mmDrag = false; });
   }
-  document.getElementById('panel').addEventListener('click', onPanelClick);
-  document.getElementById('research').addEventListener('click', onResearchClick);
+  document.getElementById('panel').addEventListener('click', e => asMe(() => onPanelClick(e)));
+  document.getElementById('research').addEventListener('click', e => asMe(() => onResearchClick(e)));
   document.getElementById('turn-info').addEventListener('click', e => { if (e.target.closest('#btn-research')) openResearch(); });
   document.getElementById('btn-help').onclick = showRules;
   document.getElementById('btn-summary').onclick = () => reopenSummary();
@@ -66,7 +66,7 @@ export function initUI(state, h) {
   snd.onclick = () => { setMuted(!muted()); showSnd(); };
   showSnd();
   document.getElementById('btn-menu').onclick = () => S.hooks.showMenu();
-  window.addEventListener('keydown', onKey);
+  window.addEventListener('keydown', e => asMe(() => onKey(e)));
   resize();
 }
 
@@ -77,7 +77,8 @@ export function setState(state) {
   refresh();
 }
 
-export function refresh() {
+export const refresh = () => asMe(refreshScreen);
+function refreshScreen() {
   if (S.planFor !== S.selectedId) { S.planRot = null; S.plan = []; S.planFor = S.selectedId; }
   S.reachCache = null; renderPanel(); renderTop();
   if (S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode })) { renderPanel(); S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode }); }
@@ -88,6 +89,7 @@ export const redraw = () => draw();
 
 // End the current player's turn (End turn button, or the turn timer running out).
 export function endTurnNow(reason) {
+  if (S.st.simul) { S.hooks.simulReady?.(reason); return; } // simultaneous rounds: Ready, not End turn
   closeResearch(); // never leave one player's research on screen for the next
   dispatch({ type: 'endTurn' });
   S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' };
@@ -97,7 +99,11 @@ export function endTurnNow(reason) {
 
 // ---------- dispatch ----------
 export function dispatch(action) {
-  const p = S.st.current, shotsBefore = S.st.players[p]?.shots.length || 0;
+  // simultaneous rounds: every action says who's acting (this screen's player)
+  if (S.st.simul && S.viewer != null && action.by == null) action = { ...action, by: S.viewer };
+  // online, simultaneous, not the host: the move goes to the host, and plays out when it comes back
+  if (S.hooks.sendInstead?.(action)) return { ok: true, pending: true };
+  const p = S.st.simul && action.by != null ? action.by : S.st.current, shotsBefore = S.st.players[p]?.shots.length || 0;
   const r = E.applyAction(S.st, action);
   if (!r.ok) toast(r.error);
   else if (['act', 'baseStrike', 'satellite'].includes(action.type)) effectsForAction(S.st, action, p, shotsBefore); // shells, missiles, sounds...

@@ -19,7 +19,8 @@ export const BASE_LEVELS = {
 export const ADMIRALTY = { name: 'Admiralty', rp: 4, bonusRadius: 1, bonusSlots: 1 };
 
 // Founding a new base (building the central rig) costs this, plus `costPerBase` for each base you already own.
-export const BASE_FOUNDING = { baseCost: 150, costPerBase: 40 };
+// founding a rig base: baseCost, plus costPerBase for every base you already have, but never more than maxCost
+export const BASE_FOUNDING = { baseCost: 150, costPerBase: 40, maxCost: 400 };
 
 // Upgrading to level 2 or higher also needs a finished Crew Quarters platform in that base.
 export const QUARTERS_NEEDED_FROM = 2;

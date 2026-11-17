@@ -25,15 +25,18 @@ function seesSquare(st, viewer, x, y) {
 const centre = cells => [cells.reduce((t, c) => t + c[0], 0) / cells.length, cells.reduce((t, c) => t + c[1], 0) / cells.length];
 
 // Apply one bot action and animate what the viewer could see of it. Resolves when the animation is done.
-export async function animateStep(st, a, ms) {
+// onApplied(r) runs right after the action is applied (before the animation), so online games can pass
+// it on in the right order; quiet = don't move the camera (simultaneous rounds: you're busy playing).
+export async function animateStep(st, a, ms, onApplied, quiet = false) {
   const viewer = S.spectate ? null : S.viewer;
-  const actor = st.current;
+  const actor = st.simul && a.by != null ? a.by : st.current;
   const before = shipsSeen(st, viewer);
   const shotsBefore = st.players[actor].shots.length;
   const shooter = a.type === 'act' ? st.ships.find(s => s.id === a.shipId) : null;
   const shooterCells = shooter ? E.shipCells(shooter) : null;
   const shooterSeen = shooter && before.has(shooter.id);
   const r = E.applyAction(st, a);
+  onApplied?.(r);
   const after = shipsSeen(st, viewer);
   const moves = new Map();
   for (const [id, b] of before) {
@@ -45,7 +48,7 @@ export async function animateStep(st, a, ms) {
   const pinged = a.type === 'act' && shooterSeen && (pingAct?.kind === 'scan' || pingAct?.kind === 'survey');
   if (!moves.size && !shots.length && !pinged) return r;
   // bring the action into view
-  if (!S.fit) {
+  if (!S.fit && !quiet) {
     const R = visibleRange();
     const focus = shots.length ? [shots[0].x, shots[0].y] : (() => { const [id] = moves.keys(); const n = after.get(id); return n ? n.cells[0] : [shooter.x, shooter.y]; })();
     if (focus[0] < R.x0 + 2 || focus[0] > R.x1 - 2 || focus[1] < R.y0 + 2 || focus[1] > R.y1 - 2) centerOn(focus[0], focus[1]);

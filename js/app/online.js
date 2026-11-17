@@ -18,7 +18,8 @@ import { toast } from '../ui/status.js';
 import { play } from '../ui/sound.js';
 import { showTurnSummary } from '../ui/summary.js';
 
-let app = {}; // { handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns }
+let app = {}; // { handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns, afterSimul }
+const afterSimul = (st, round0) => app.afterSimul?.(st, round0);
 export const initOnline = a => { app = a; };
 export const online = () => !!(N.s && N.s.st && A.state === N.s.st);
 export const onlineRole = () => N.s?.role;
@@ -48,7 +49,7 @@ export function startOnlineGame() {
   const seats = L.seats.slice(0, L.players).map(o => (o.kind === 'ai'
     ? { seat: 'ai', difficulty: o.difficulty, personality: o.personality === 'random' ? PERSONALITY_ORDER[Math.floor(Math.random() * PERSONALITY_ORDER.length)] : o.personality }
     : 'human'));
-  const st = E.newGame({ size: L.size, players: L.players, turnTimer: L.turnTimer, mirror: L.mirror !== false, victory: { ...L.victory }, seats });
+  const st = E.newGame({ size: L.size, players: L.players, turnTimer: L.turnTimer, mirror: L.mirror !== false, victory: { ...L.victory }, seats, simultaneous: L.turnOrder === 'simul' });
   st.gameId = newGameId();
   st.online = { code: N.s.code, seats: L.seats.slice(0, L.players).map(o => (o.kind === 'online' ? { clientId: o.clientId, name: o.name } : null)), hostId: clientId() };
   st.players[0].name = (myName() || 'Host').slice(0, 20);
@@ -90,8 +91,25 @@ const queue = [];
 let working = false;
 const replayMs = () => BOT_SPEEDS[1].ms;
 
+// simultaneous, not the host: the move isn't played here, it goes to the host (who decides the order)
+export function sendInstead(a) {
+  if (!online() || N.s.role !== 'client' || !A.state.simul) return false;
+  sendHost({ t: 'act', a });
+  return true;
+}
+// simultaneous, on the host: a move by a bot or the host itself, already applied (simul.js)
+export function simulBroadcast(a, r) {
+  if (!online() || N.s.role !== 'host' || !r?.ok) return;
+  moveLog.push({ by: a.by, a });
+  sendAll({ t: 'act', a, by: a.by });
+}
+export function roundEnded(st) {
+  if (online() && N.s.role === 'host') sendAll({ t: 'check', tc: st.turnCount, fp: fingerprint(st) });
+}
+
 // a move made on this screen (UI dispatch): send it on
 export function localAction(a, r) {
+  if (online() && A.state.simul) { if (N.s.role === 'host') simulBroadcast(a, r); return; }
   if (!online() || !r.ok) return;
   moveLog.push({ by: A.state.current, a });
   if (N.s.role === 'client') sendHost({ t: 'act', a });
@@ -127,6 +145,7 @@ async function work() {
         continue;
       }
       const a = it.a;
+      if (st.simul) { await simulRemote(st, it); continue; }
       if (N.s.role === 'host' && (it.seat !== st.current || st.phase !== 'playing')) { resyncOne(it.cid); continue; } // not their turn: put them straight
       const r = await animateStep(st, a, a.type === 'endTurn' ? 0 : replayMs());
       if (!r.ok) {
@@ -141,6 +160,26 @@ async function work() {
     }
   } finally { working = false; }
 }
+// simultaneous rounds: the host plays each move in the order it arrives and passes it to everyone
+// (the sender included: their screen only plays it when it comes back); everyone else just replays.
+async function simulRemote(st, it) {
+  const a = it.a, round0 = st.round;
+  if (N.s.role === 'host') {
+    if (a.by !== it.seat) { resyncOne(it.cid); return; }
+    const r = await animateStep(st, a, replayMs(), res => {
+      if (res.ok) { moveLog.push({ by: it.seat, a }); sendAll({ t: 'act', a, by: it.seat }); }
+      else sendTo(it.cid, { t: 'nope', error: res.error, a });
+    }, true);
+    afterSimul(st, round0);
+    return r;
+  }
+  const mine = a.by === N.s.seat;
+  const r = await animateStep(st, a, mine ? Math.min(replayMs(), 160) : replayMs(), null, true);
+  if (!r.ok) { sendHost({ t: 'sync' }); queue.length = 0; return; }
+  moveLog.push({ by: a.by, a });
+  afterSimul(st, round0);
+}
+
 function resyncOne(cid) { sendTo(cid, { t: 'state', state: pack(A.state), seat: (A.state.online.seats || []).findIndex(x => x?.clientId === cid), code: N.s.code }); }
 
 // ---------- whose turn ----------
@@ -235,6 +274,7 @@ function fromHost(m) {
   }
   if (m.t === 'act') { enqueue({ kind: 'act', a: m.a, by: m.by }); return; }
   if (m.t === 'check') { enqueue({ kind: 'check', tc: m.tc, fp: m.fp }); return; }
+  if (m.t === 'nope') { toast(`Too late: ${m.error || 'that didn\'t work'} (someone else's move got there first)`); afterSimul(A.state, A.state.round); return; }
   if (m.t === 'presence') { s.online = m.online; badge(); return; }
   if (m.t === 'end') { toast('The host closed the game.'); hostLost(true); }
 }
@@ -282,7 +322,7 @@ function askNotify() {
   try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { /* unsupported */ }
 }
 const baseTitle = document.title;
-function notifyTurn(st) {
+export function notifyTurn(st) {
   if (!document.hidden) return;
   document.title = '▶ Your turn · ' + baseTitle;
   try { if (Notification.permission === 'granted') new Notification('Last Rig Standing', { body: `Your turn (round ${st.round})`, icon: 'favicon-32.png', tag: 'lrs-turn' }); } catch { /* unsupported */ }

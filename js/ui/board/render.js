@@ -19,7 +19,7 @@ import { drawHull, drawPort, drawRig } from './units.js';
 import { visibleRange } from '../camera.js';
 import { CODES, COL, MARGIN } from '../constants.js';
 import { me, pcol, px, py } from '../helpers.js';
-import { S } from '../state.js';
+import { S, asMe } from '../state.js';
 
 // Spectator mode: the whole map, every fleet, no fog.
 export function spectatorView(st) {
@@ -64,7 +64,8 @@ export function terrainImage(p) {
   return canvas;
 }
 
-export function draw() {
+export const draw = () => asMe(drawBoard);
+function drawBoard() {
   if (!S.st) return;
   const p = me();
   const v = S.spectate ? spectatorView(S.st) : E.getView(S.st, p);

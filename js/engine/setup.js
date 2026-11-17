@@ -84,6 +84,8 @@ export function newGame(opts = {}) {
     // mirrored map (default): every player's side of the map is the same, so nobody starts with better
     // islands or closer oil. Off = a fully random map.
     mirror: opts.mirror !== false && !MAP_SIZES[size].classic,
+    // simultaneous rounds: everyone plays at once and the round ends when all are ready (actions.js)
+    simul: !!opts.simultaneous,
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
     victory: { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is)
@@ -110,7 +112,8 @@ export function newGame(opts = {}) {
   }
   generateMap(st);
   st.oilTotal = st.deposits.reduce((t, d) => t + d.reserves, 0); // for Last Rig Standing
-  startTurn(st, 0, true);
+  if (st.simul) { st.ready = st.players.map(() => false); st.players.forEach((_, p) => startTurn(st, p, true)); st.current = 0; }
+  else startTurn(st, 0, true);
   return st;
 }
 

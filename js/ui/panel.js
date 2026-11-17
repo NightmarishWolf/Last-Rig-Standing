@@ -19,6 +19,7 @@ export function renderTop() {
   const left = cur ? E.turnsLeft(S.st, p) : null;
   document.getElementById('turn-info').innerHTML =
     `<b style="color:${pcol(p)}">${pname(p)}</b> · Round ${S.st.round}` +
+    (S.st.simul ? ` <span class="simul-badge" title="Simultaneous rounds: everyone plays at once; the round ends when all are ready">⚡ ${S.st.players.filter((pl, i) => !pl.out && S.st.ready?.[i]).length}/${S.st.players.filter(pl => !pl.out).length} ready</span>` : '') +
     ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>` +
     (S.st.finalReserves ? ` <span class="alert-badge">🛢️ Final Reserves: ${S.st.finalReserves.roundsLeft} rounds</span>` : '') +
     (S.st.players[p].exile != null ? ` <span class="alert-badge red">⚠ Admiralty lost: ${S.st.players[p].exile} turns</span>` : '') +
@@ -82,7 +83,7 @@ export function renderPanel() {
     <div class="row">
       <button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a Survey, Command, Repair Ship or Carrier): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
       ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}
-      <button data-end="1" class="primary" style="margin-left:auto">End turn <span class="key-hint">⏎</span></button>
+      <button data-end="1" class="primary" style="margin-left:auto" ${S.st.simul ? 'title="Done for this round: the round ends when everyone is ready"' : ''}>${S.st.simul ? 'Ready ✓' : 'End turn'} <span class="key-hint">⏎</span></button>
     </div>
     ${upkeepWarning(st, p)}
   </div>`;

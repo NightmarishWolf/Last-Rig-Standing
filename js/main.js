@@ -5,7 +5,8 @@
 import * as E from './engine/index.js';
 import { gameOver, handoff } from './app/flow.js';
 import { hideHome, showHome, showMenu } from './app/menu.js';
-import { initOnline, localAction, onlineRole } from './app/online.js';
+import { initOnline, localAction, mySeat, notifyTurn, online, onlineRole, roundEnded, sendInstead, simulBroadcast } from './app/online.js';
+import { afterAction, initSimul, simulReady } from './app/simul.js';
 import { playBotTurns } from './app/bots.js';
 import { startTimer, stopTimer } from './app/timer.js';
 import { setup } from './app/settings.js';
@@ -22,6 +23,8 @@ initUI(A.state, {
   save: st => { if (onlineRole() !== 'client') save(st); },
   handoff, gameOver, showMenu,
   onAction: localAction,
+  sendInstead,
+  simulReady,
   afterRender: (st, ui) => tutorial.afterRender(st, ui),
   markers: () => (A.state.tutorial ? tutorial.markers() : []),
 });
@@ -31,8 +34,12 @@ initUI(A.state, {
 
 setState(A.state);
 
+initSimul({
+  handoff, gameOver, startTimer, stopTimer, online, mySeat, role: onlineRole,
+  broadcast: simulBroadcast, notify: notifyTurn, roundEnded,
+});
 initOnline({
-  handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns,
+  handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns, afterSimul: afterAction,
   lobbyChanged: () => { if (document.getElementById('home').dataset.view === 'lobby' && document.body.classList.contains('at-home')) showHome('lobby'); },
 });
 

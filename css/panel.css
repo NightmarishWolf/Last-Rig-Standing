@@ -74,3 +74,4 @@ details.shop-tier > summary.tier-head::-webkit-details-marker { display: none; }
 details.shop-tier > summary.tier-head span:first-child::before { content: '▸ '; color: var(--muted); }
 details.shop-tier[open] > summary.tier-head span:first-child::before { content: '▾ '; }
 .key-hint { opacity: .6; font-size: 11px; margin-left: 2px; }
+.simul-badge { margin-left: 8px; font-size: 12px; color: #ffd666; border: 1px solid rgba(255,214,102,.4); border-radius: 999px; padding: 1px 8px; }

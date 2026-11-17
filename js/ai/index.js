@@ -53,9 +53,16 @@ export async function runBotTurn(st, p, act) {
   const bases = st.bases.filter(b => b.owner === p && !b.wrecked).length;
   ctx.phase = bases >= ctx.pers.bases || st.round > 45 ? 'war' : 'expand';
   const steps = ctx.phase === 'war' ? [...STEPS.filter(([n]) => n !== 'bases'), STEPS.find(([n]) => n === 'bases')] : STEPS;
-  for (const [name, step] of steps) {
-    if (st.phase !== 'playing' || st.current !== p) return;
-    try { await step(ctx); }
-    catch (e) { console.error(`Bot ${st.players[p].name}: "${name}" failed`, e); } // a bot bug never freezes the game
-  }
+  // simultaneous rounds: the engine's checks the bot runs ("can I build here?") are about whoever
+  // st.current is, so it points at this bot while it thinks (a human's action in between restores it)
+  const prev = st.current;
+  if (st.simul) st.current = p;
+  try {
+    for (const [name, step] of steps) {
+      if (st.phase !== 'playing' || (!st.simul && st.current !== p)) return;
+      if (st.simul) st.current = p;
+      try { await step(ctx); }
+      catch (e) { console.error(`Bot ${st.players[p].name}: "${name}" failed`, e); } // a bot bug never freezes the game
+    }
+  } finally { if (st.simul && st.phase === 'playing') st.current = prev; }
 }

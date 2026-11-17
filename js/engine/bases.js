@@ -42,7 +42,7 @@ export const baseMaxHp = (st, b) => Math.round(BASE_LEVELS[b.level].hp * pstat(s
 export const platformMaxHp = (st, o) => Math.max(1, Math.round(PLATFORMS[o.kind].hp * pstat(st, o.owner, 'platformHpMult')));
 export const platformCost = (st, p, kind) => Math.round(PLATFORMS[kind].cost * pstat(st, p, 'platformCostMult'));
 export const baseFoundCost = (st, p) =>
-  Math.round((BASE_FOUNDING.baseCost + BASE_FOUNDING.costPerBase * basesOf(st, p).filter(b => !b.wrecked).length) * pstat(st, p, 'baseCostMult'));
+  Math.round(Math.min(BASE_FOUNDING.maxCost, BASE_FOUNDING.baseCost + BASE_FOUNDING.costPerBase * basesOf(st, p).filter(b => !b.wrecked).length) * pstat(st, p, 'baseCostMult'));
 
 // Which live base claims a square (the oldest base wins where claims overlap).
 export function claimAt(st, x, y) {

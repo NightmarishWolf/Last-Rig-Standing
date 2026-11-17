@@ -110,6 +110,7 @@ function seatNote() {
 }
 function setupPage() {
   const max = MAP_SIZES[setup.size].maxPlayers;
+  const shared = setup.seats.slice(0, setup.players).filter(o => o.seat !== 'ai').length > 1; // several people, one screen
   if (setup.players > max) setup.players = max;
   return `<div class="home-card">
     <h2>New game</h2>
@@ -126,6 +127,13 @@ function setupPage() {
           <div class="seg">
             <button data-mirror="1" class="${setup.mirror !== false ? 'on' : ''}" title="Every player's side of the map is a mirror image of the others: same islands, same oil, same distances.">⚖️ Mirrored<small>fair: same side for everyone</small></button>
             <button data-mirror="0" class="${setup.mirror === false ? 'on' : ''}" title="Islands and No Man's Sea oil are placed at random. One side may get luckier.">🎲 Random<small>one side may get lucky</small></button>
+          </div>
+        </div>
+        <div class="setup-group">
+          <div class="label">Turn order</div>
+          <div class="seg">
+            <button data-order="turns" class="${setup.turnOrder !== 'simul' ? 'on' : ''}" title="Players take turns, one after another.">⏯ Take turns<small>one player at a time</small></button>
+            <button data-order="simul" class="${setup.turnOrder === 'simul' && !shared ? 'on' : ''}" ${shared ? 'disabled title="Not with two or more people sharing this screen: you\'d see each other\'s moves."' : 'title="Everyone plays the round at once; it ends when all are ready."'}>⚡ Simultaneous<small>${shared ? 'not with a shared screen' : 'everyone at once'}</small></button>
           </div>
         </div>
         <div class="setup-group">
@@ -164,7 +172,8 @@ function startGame() {
   const seats = setup.seats.slice(0, setup.players).map(o => o.seat === 'ai'
     ? { seat: 'ai', difficulty: o.difficulty, personality: o.personality === 'random' ? PERSONALITY_ORDER[Math.floor(Math.random() * PERSONALITY_ORDER.length)] : o.personality }
     : 'human');
-  A.state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, mirror: setup.mirror !== false, victory: { ...setup.victory }, seats });
+  const shared = seats.filter(o => o === 'human').length > 1;
+  A.state = E.newGame({ size: setup.size, players: setup.players, turnTimer: setup.turnTimer, mirror: setup.mirror !== false, victory: { ...setup.victory }, seats, simultaneous: setup.turnOrder === 'simul' && !shared });
   A.state.gameId = newGameId(); // its own save slot: the game you were playing stays saved
   A.sessionActive = false;
   leaveOnline();
@@ -283,6 +292,7 @@ function lobbyPage() {
       <div>
         ${seg('Map size', Object.entries(MAP_SIZES).filter(([, m]) => !m.hidden).map(([k, m]) => `<button data-osize="${k}" class="${L.size === k ? 'on' : ''}" ${ro}>${m.name}<small>${m.w}×${m.h}</small></button>`).join(''))}
         ${seg('Map layout', `<button data-omirror="1" class="${L.mirror !== false ? 'on' : ''}" ${ro}>⚖️ Mirrored</button><button data-omirror="0" class="${L.mirror === false ? 'on' : ''}" ${ro}>🎲 Random</button>`)}
+        ${seg('Turn order', `<button data-oorder="turns" class="${L.turnOrder !== 'simul' ? 'on' : ''}" ${ro}>⏯ Take turns</button><button data-oorder="simul" class="${L.turnOrder === 'simul' ? 'on' : ''}" ${ro} title="Everyone plays the round at once; it ends when all are ready">⚡ Simultaneous</button>`)}
         ${seg('Turn timer', TIMER_OPTIONS.map(t => `<button data-otimer="${t}" class="${L.turnTimer === t ? 'on' : ''}" ${ro}>${t ? fmt(t) : 'Off'}</button>`).join(''))}
         ${seg('Ways to win', Object.entries(VICTORIES).map(([k, v]) => `<button data-ovic="${k}" class="${v.always || L.victory[k] ? 'on' : ''}" ${v.always || !host ? 'disabled' : ''}>${v.icon} ${v.name}</button>`).join(''))}
       </div>
@@ -322,6 +332,7 @@ function bindOnline(view, h, on) {
     on('[data-osize]', b => { const m = MAP_SIZES[b.dataset.osize]; re({ size: b.dataset.osize, players: Math.min(L.players, m.maxPlayers) }); });
     on('[data-omirror]', b => re({ mirror: b.dataset.omirror === '1' }));
     on('[data-otimer]', b => re({ turnTimer: Number(b.dataset.otimer) }));
+    on('[data-oorder]', b => re({ turnOrder: b.dataset.oorder }));
     on('[data-ovic]', b => re({ victory: { ...L.victory, [b.dataset.ovic]: !L.victory[b.dataset.ovic] } }));
     on('[data-oplayers]', b => re({ players: Number(b.dataset.oplayers) }));
     on('[data-oseat]', b => { const [i, k] = b.dataset.oseat.split(':'); const seats = [...L.seats]; seats[i] = { ...seats[i], kind: k, ...(k === 'ai' ? { clientId: null, name: null } : {}) }; re({ seats }); });
@@ -376,6 +387,7 @@ function bind(view) {
     on('[data-vic]', b => { setup.victory[b.dataset.vic] = !setup.victory[b.dataset.vic]; re(); });
     on('[data-mirror]', b => { setup.mirror = b.dataset.mirror === '1'; re(); });
     on('[data-timer]', b => { setup.turnTimer = Number(b.dataset.timer); re(); });
+    on('[data-order]', b => { setup.turnOrder = b.dataset.order; re(); });
     on('[data-players]', b => { setup.players = Number(b.dataset.players); re(); });
     on('[data-seat]', b => { const [i, v] = b.dataset.seat.split(':'); setup.seats[i].seat = v; re(); });
     on('[data-diff]', b => { const [i, v] = b.dataset.diff.split(':'); setup.seats[i].difficulty = v; re(); });

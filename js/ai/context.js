@@ -23,9 +23,9 @@ export function makeContext(st, p, act) {
   };
   // run one action (through the UI when there is one, so it can be animated)
   ctx.do = async a => {
-    if (st.phase !== 'playing' || st.current !== p || ctx.actions > 400) return { ok: false };
+    if (st.phase !== 'playing' || (!st.simul && st.current !== p) || ctx.actions > 400) return { ok: false };
     ctx.actions++;
-    const r = await act(a);
+    const r = await act(st.simul ? { ...a, by: p } : a); // simultaneous rounds: say who's acting
     ctx._view = null;
     return r || { ok: false };
   };

@@ -2,7 +2,8 @@
 
  // true once a player has revealed their fleet this session
 export const setup = {
-  size: 'small', players: 2, turnTimer: 90, mirror: true, victory: { domination: true, postoil: true, lastrig: true },
+  // turnOrder: 'turns' (one player at a time) or 'simul' (everyone at once)
+  size: 'small', players: 2, turnTimer: 90, mirror: true, turnOrder: 'turns', victory: { domination: true, postoil: true, lastrig: true },
   // one entry per seat: { seat: 'human' | 'ai', difficulty, personality ('random' or a personality id) }
   seats: [
     { seat: 'human', difficulty: 'normal', personality: 'random' },

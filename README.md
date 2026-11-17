@@ -135,6 +135,7 @@ js/
     menu.js              full-screen main menu: Continue/Resume, new-game setup, load/save pages
     gameover.js          the game-over page: results table, charts, game-data download
     online.js            online games: lobby start, passing moves, whose turn, skip / bot takeover
+    simul.js             simultaneous rounds: bots playing alongside you, Ready / Not ready, round changes
     bots.js              computer turns on screen: animation, curtain, spectator controls
     flow.js              pass-the-device, game over, tutorial enter/exit
     timer.js             turn timer
@@ -204,3 +205,12 @@ without the internet. Peer-to-peer is meant for testing; a Cloudflare server can
 
 After any game, **⬇️ Download game data** on the results page saves the settings, every player's
 totals, the round-by-round history and (online) every move, for balancing.
+
+## Simultaneous rounds
+
+With **⚡ Simultaneous** turn order (New game page or the online lobby) everyone plays the same round at
+once. Every action names who's acting (`a.by`), the engine points `st.current` at them for that action,
+and a `ready` action marks a player done; when everyone still in the game is ready, `endRound`
+(engine/actions.js) runs the end-of-round for all of them and starts the next round. Online, the host
+decides the order moves happen in: players send their moves and see them play out when the host
+passes them back, so every copy of the game applies them in the same order.

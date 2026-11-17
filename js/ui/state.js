@@ -33,3 +33,13 @@ export const S = {
   pathCache: null,      // last voyage preview route
   terrainCache: null, fogCanvas: null,
 };
+
+// Simultaneous rounds: the engine's "acting player" (st.current) can belong to a bot that's thinking.
+// Everything this screen draws or does for its player runs with st.current pointed at them.
+export function asMe(fn) {
+  const st = S.st;
+  if (!st?.simul || S.viewer == null) return fn();
+  const prev = st.current;
+  st.current = S.viewer;
+  try { return fn(); } finally { if (st.phase === 'playing') st.current = prev; }
+}

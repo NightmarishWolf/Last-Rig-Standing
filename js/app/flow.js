@@ -16,6 +16,7 @@ import { toast } from '../ui/status.js';
 import { isBot } from '../ai/index.js';
 import { humans, playBotTurns } from './bots.js';
 import { onlineHandoff } from './online.js';
+import { simulHandoff } from './simul.js';
 
 export function startTutorial() {
   stopTimer(); A.sessionActive = false;
@@ -41,6 +42,7 @@ export function handoff(st, reason) {
     refresh();
     return;
   }
+  if (st.simul) { simulHandoff(st); return; } // simultaneous rounds: everyone at once (simul.js)
   if (onlineHandoff(st)) return; // online games decide whose screen does what
   // a computer's turn: let the bots play, then come back here for the next human
   if (isBot(st, st.current)) { playBotTurns(s => (s.phase === 'over' ? gameOver(s) : handoff(s, reason))); return; }

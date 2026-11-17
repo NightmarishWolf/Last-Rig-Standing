@@ -2,6 +2,7 @@
 import { ECONOMY, PORT } from '../data/economy.js';
 import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
 import { FLEET } from '../data/production.js';
+import { BASE_FOUNDING } from '../data/bases.js';
 
 export function showOverlay(html, bind) {
   const ov = document.getElementById('overlay');
@@ -33,6 +34,7 @@ export function showRules() {
       <li><b>Voyages:</b> click anywhere beyond a ship's teal movement area to send it on a multi-turn voyage. It sails on by itself every time you end your turn, until it arrives. Clicking a normal move or <b>Cancel voyage</b> stops it.</li>
       <li><b>Waypoints:</b> hold <b>Shift</b> and click to add stops along the way (A, then B, then C) to route ships around islands, mines or enemy waters, then click normally to set the final destination. Esc clears the stops.</li>
       <li><b>Getting around:</b> drag the map or use WASD / arrow keys to scroll, the mouse wheel or +/- to zoom, and click the minimap to jump. <b>Tab</b> selects your next ready ship, <b>Space</b> centres on the selected one, and <b>Enter</b> ends your turn.</li>
+      <li><b>Turn order</b> (picked when you set up a game): <b>⏯ Take turns</b>, one player at a time, or <b>⚡ Simultaneous</b>: everyone plays the round at once, and moves happen the moment they're made (if two ships go for the same square, the first move to land wins). Press <b>Ready ✓</b> (or Enter) when you're done; you can take it back with <b>Not ready</b> until everyone is ready. Then voyages, fleets and standing orders run for everyone and the next round starts. Bots play their round alongside you. Not available with two or more people sharing one screen.</li>
       <li><b>Online:</b> Menu → 🌐 Online. One player hosts and shares the 4-letter code (or the invite link); the others join with it. Seats can be online players or computers. The host's browser runs the game, so the host keeps it open; if someone drops out, the host can skip their turn or let a bot play for them until they rejoin. A paused game stays in the host's saves: loading it hosts it again under the same code. When it's your turn and the tab is in the background, you get a notification.</li>
       <li><b>Sound:</b> 🔊 in the top bar mutes it; the volume slider is on the main menu.</li>
       <li><b>Shipyards:</b> buy ships in the Shipyard. You pay up front, and the yard builds them over a few turns (⏱ in the list: bigger ships take longer). Finished ships appear next to the yard at the start of your turn, ready to sail. Your <b>Home Yard</b> (your spawn strip) builds 2 at a time; forward ports build 1; Dry Docks build 2, each a turn faster. Extra ships wait in line, and you can cancel (full refund before work starts, half after).</li>
@@ -50,7 +52,7 @@ export function showRules() {
       <li>Deposits are hidden and move every game. Use <b>Survey</b> to find them. S/M/R = small/medium/rich. Water you've surveyed turns <b style="color:#a9d77a">green</b>, so you know where you've already looked.</li>
       <li>Every deposit starts with a random amount of oil. Hover over a deposit or rig to see what's left (e.g. 18/35). Rigs pump the same rate until the deposit runs dry.</li>
       <li>Home deposits are modest and run dry after a while (every player's home gets the exact same amounts). No Man's Sea deposits hold several times more, so sooner or later you have to go fight for them.</li>
-      <li>Build a rig on a discovered deposit to found a <b>rig base</b>. You need a ship right next to it, or a Survey Ship, Command Ship, Repair Ship or Carrier within 5 squares. You start with one: your <b>Admiralty</b> (★).</li>
+      <li>Build a rig on a discovered deposit to found a <b>rig base</b>. You need a ship right next to it, or a Survey Ship, Command Ship, Repair Ship or Carrier within 5 squares. You start with one: your <b>Admiralty</b> (★). A new base costs $${BASE_FOUNDING.baseCost} plus $${BASE_FOUNDING.costPerBase} for every base you already have, up to $${BASE_FOUNDING.maxCost} at most.</li>
     </ul>
     <h4>Rig bases</h4>
     <ul>
