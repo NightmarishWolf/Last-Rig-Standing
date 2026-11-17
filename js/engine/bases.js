@@ -15,7 +15,7 @@ import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { maxBaseLevel, platformUnlocked } from './research.js';
-import { fail, log, ok, others, pname, shipAt } from './util.js';
+import { fail, log, ok, others, pname, shipAt, tally } from './util.js';
 import { fusionFinished, victoryOn } from './victory.js';
 import { hiddenBlocker, revealBlocker } from './visibility.js';
 import { sink } from './combat.js';
@@ -71,7 +71,7 @@ export function drillDeeper(st, p, d) {
   if (layer >= Math.min(DEEP_LAYERS.length, pstat(st, p, 'deepLayers'))) return 0;
   const found = Math.max(1, Math.round((d.max || 0) * DEEP_LAYERS[layer]));
   d.layers = layer + 1; d.reserves = found;
-  log(st, p, `🛢️ A dry rig at ${coord(d.x, d.y)} drilled deeper and struck oil: ${found} more in layer ${layer + 2}.`);
+  log(st, p, `🛢️ A dry rig at ${coord(d.x, d.y)} drilled deeper and struck oil: ${found} more in layer ${layer + 2}.`, { k: 'oil', x: d.x, y: d.y });
   return found;
 }
 
@@ -121,6 +121,7 @@ export function doBuyRig(st, a) {
   }
   if (old) return captureBase(st, p, old, dep);
   foundBase(st, p, dep, false);
+  tally(st, p, 'basesFounded');
   log(st, p, `Founded a rig base at ${coord(a.x, a.y)}. It claims the ${claimSize(st, st.bases[st.bases.length - 1])}×${claimSize(st, st.bases[st.bases.length - 1])} water around it.`);
   return ok();
 }
@@ -139,8 +140,8 @@ function captureBase(st, p, b, dep) {
   for (const o of platformsOf(st, b)) o.owner = p;
   for (const r of st.rigs.filter(r => r.baseId === b.id)) r.owner = p;
   st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: dep.x, y: dep.y, hp: baseMaxHp(st, b), depId: dep.id, baseId: b.id, center: true });
-  log(st, p, `You captured ${pname(st, from)}'s ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}, with ${platformsOf(st, b).length} platforms!`);
-  log(st, from, `${pname(st, p)} captured your ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}!`);
+  log(st, p, `You captured ${pname(st, from)}'s ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}, with ${platformsOf(st, b).length} platforms!`, { k: 'win', x: b.x, y: b.y });
+  log(st, from, `${pname(st, p)} captured your ${wasCapital ? 'Admiralty' : 'rig base'} at ${coord(b.x, b.y)}!`, { k: 'hit', x: b.x, y: b.y });
   return ok();
 }
 
@@ -153,8 +154,9 @@ export function removeBase(st, b) {
 // The central rig was destroyed: the base is wrecked until rebuilt.
 export function wreckBase(st, b, by) {
   b.wrecked = true;
-  log(st, b.owner, `${baseName(st, b)} has been wrecked! Its platforms are offline until you rebuild the central rig.`);
-  if (by !== undefined && by !== b.owner) log(st, by, `You wrecked ${pname(st, b.owner)}'s rig base at ${coord(b.x, b.y)}!`);
+  log(st, b.owner, `${baseName(st, b)} has been wrecked! Its platforms are offline until you rebuild the central rig.`, { k: 'hit', x: b.x, y: b.y });
+  if (by !== undefined && by !== b.owner) tally(st, by, 'destroyed');
+  if (by !== undefined && by !== b.owner) log(st, by, `You wrecked ${pname(st, b.owner)}'s rig base at ${coord(b.x, b.y)}!`, { k: 'win', x: b.x, y: b.y });
 }
 
 // ---------- platforms ----------
@@ -195,7 +197,7 @@ export function doBuildPlatform(st, a) {
   o.hp = platformMaxHp(st, o);
   (st.platforms ||= []).push(o);
   log(st, p, `Started building a ${def.name} at ${coord(a.x, a.y)} (${def.turns} turns).`);
-  if (def.megaproject) for (const o of others(st, p)) log(st, o, `⚛ ${pname(st, p)} has started a ${def.name} at ${coord(a.x, a.y)}! It finishes in ${def.turns} turns unless someone destroys it.`);
+  if (def.megaproject) for (const o of others(st, p)) log(st, o, `⚛ ${pname(st, p)} has started a ${def.name} at ${coord(a.x, a.y)}! It finishes in ${def.turns} turns unless someone destroys it.`, { k: 'world', x: a.x, y: a.y });
   return ok();
 }
 
@@ -218,7 +220,7 @@ export function doUpgradeBase(st, a) {
   b.level++;
   const center = st.rigs.find(r => r.baseId === b.id && r.center);
   if (center) center.hp += baseMaxHp(st, b) - oldMax;
-  log(st, p, `${baseName(st, b)} is now a ${BASE_LEVELS[b.level].name}: claim ${claimSize(st, b)}×${claimSize(st, b)}, ${baseSlots(st, b)} platform slots.`);
+  log(st, p, `${baseName(st, b)} is now a ${BASE_LEVELS[b.level].name}: claim ${claimSize(st, b)}×${claimSize(st, b)}, ${baseSlots(st, b)} platform slots.`, { k: 'done', x: b.x, y: b.y });
   return ok();
 }
 
@@ -238,8 +240,8 @@ export function processBases(st, p, visibleShips) {
       const dep = st.deposits.find(d => d.x === o.x && d.y === o.y);
       if (dep && !dep.tapped) { dep.reserves = Math.round(dep.reserves * pstat(st, p, 'reservesMult')); dep.tapped = true; }
       st.rigs.push({ id: 'r' + st.nextId++, owner: p, x: o.x, y: o.y, hp: RIG.hp, depId: dep?.id, baseId: o.baseId, center: false });
-      log(st, p, `Wellhead finished at ${coord(o.x, o.y)}: it starts pumping next turn.`);
-    } else log(st, p, `${PLATFORMS[o.kind].name} finished at ${coord(o.x, o.y)}.`);
+      log(st, p, `Wellhead finished at ${coord(o.x, o.y)}: it starts pumping next turn.`, { k: 'done', x: o.x, y: o.y });
+    } else log(st, p, `${PLATFORMS[o.kind].name} finished at ${coord(o.x, o.y)}.`, { k: 'done', x: o.x, y: o.y });
   }
   // healing inside your claims, and dry dock repairs
   const heal = pstat(st, p, 'heal');
@@ -274,7 +276,7 @@ export function processBases(st, p, visibleShips) {
     best.hp -= dmg;
     best.combatRound = st.round;
     log(st, p, `Your ${def.name} at ${coord(o.x, o.y)} hit an enemy ship for ${dmg}.`);
-    log(st, best.owner, `Your ship was hit for ${dmg} by ${pname(st, p)}'s ${def.name} at ${coord(o.x, o.y)}!`);
-    if (best.hp <= 0) { sink(st, best); log(st, p, `Your ${def.name} sank an enemy ship!`); }
+    log(st, best.owner, `Your ship was hit for ${dmg} by ${pname(st, p)}'s ${def.name} at ${coord(o.x, o.y)}!`, { k: 'hit', x: best.x, y: best.y });
+    if (best.hp <= 0) { sink(st, best); tally(st, p, 'kills'); log(st, p, `Your ${def.name} sank an enemy ship!`, { k: 'win', x: o.x, y: o.y }); }
   }
 }

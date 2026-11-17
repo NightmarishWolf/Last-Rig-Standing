@@ -11,6 +11,9 @@ import { closeResearch, openResearch, renderResearch } from './research.js';
 import { renderPanel, renderTop } from './panel.js';
 import { S } from './state.js';
 import { toast, updateStatus } from './status.js';
+import { reopenSummary } from './summary.js';
+import { effectsForAction } from './board/weapons.js';
+import { muted, setMuted } from './sound.js';
 
 export function initUI(state, h) {
   S.st = state; S.hooks = h;
@@ -57,6 +60,11 @@ export function initUI(state, h) {
   document.getElementById('research').addEventListener('click', onResearchClick);
   document.getElementById('turn-info').addEventListener('click', e => { if (e.target.closest('#btn-research')) openResearch(); });
   document.getElementById('btn-help').onclick = showRules;
+  document.getElementById('btn-summary').onclick = () => reopenSummary();
+  const snd = document.getElementById('btn-sound');
+  const showSnd = () => { snd.textContent = muted() ? '🔇' : '🔊'; snd.title = muted() ? 'Sound off (click to turn on)' : 'Sound on (click to mute)'; };
+  snd.onclick = () => { setMuted(!muted()); showSnd(); };
+  showSnd();
   document.getElementById('btn-menu').onclick = () => S.hooks.showMenu();
   window.addEventListener('keydown', onKey);
   resize();
@@ -89,8 +97,10 @@ export function endTurnNow(reason) {
 
 // ---------- dispatch ----------
 export function dispatch(action) {
+  const p = S.st.current, shotsBefore = S.st.players[p]?.shots.length || 0;
   const r = E.applyAction(S.st, action);
   if (!r.ok) toast(r.error);
+  else if (['act', 'baseStrike', 'satellite'].includes(action.type)) effectsForAction(S.st, action, p, shotsBefore); // shells, missiles, sounds...
   S.hooks.save(S.st);
   if (S.selectedId && !S.st.ships.find(s => s.id === S.selectedId)) { S.selectedId = null; S.mode = { kind: 'idle' }; }
   if (S.st.phase === 'over') { refresh(); S.hooks.gameOver(S.st); return r; }

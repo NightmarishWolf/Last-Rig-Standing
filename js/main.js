@@ -10,6 +10,7 @@ import { A } from './app/state.js';
 import { load, save } from './app/storage.js';
 import { tutorial } from './app/tutorialHost.js';
 import { initUI, redraw, setState } from './ui/index.js';
+import { S } from './ui/state.js';
 
 A.state = load() || E.newGame(setup);
 
@@ -20,7 +21,7 @@ initUI(A.state, {
 });
 
 // keep tutorial markers glowing
-(function tick() { if (A.state.tutorial) redraw(); requestAnimationFrame(tick); })();
+(function tick() { if (A.state.tutorial || S.ping || S.animating) redraw(); requestAnimationFrame(tick); })();
 
 setState(A.state);
 

@@ -20,9 +20,6 @@
 .shop-item .name { font-weight: 600; }
 .shop-item .meta { font-size: 11px; color: var(--muted); }
 .shop-item svg { display: block; }
-.log { max-height: 220px; overflow-y: auto; font-size: 12px; }
-.log div { padding: 3px 0; border-bottom: 1px solid #142c40; color: var(--muted); }
-.log div.new { color: var(--text); }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; }
 .chip::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
 .chip.me { border-color: var(--c); }

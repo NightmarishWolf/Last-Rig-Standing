@@ -3,7 +3,8 @@ import { DEPOSITS, MARKET } from '../data/economy.js';
 import { processConquest, processDomination, processLastRig } from './victory.js';
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
-import { shipCells } from './geometry.js';
+import { coord, shipCells } from './geometry.js';
+import { pstat } from './modifiers.js';
 import { commandBonus, upkeepOf } from './stats.js';
 import { drillDeeper, oilCapOf, platformUpkeep, processBases, rigRate } from './bases.js';
 import { shipStat } from './modifiers.js';
@@ -11,7 +12,7 @@ import { processResearch } from './research.js';
 import { processYards } from './production.js';
 import { tickStrikes } from './strikes.js';
 import { visibility } from './visibility.js';
-import { alivePlayers, log, others, passives, rigAt } from './util.js';
+import { alivePlayers, log, others, passives, rigAt, tally } from './util.js';
 
 // ---------- turns ----------
 export function startTurn(st, p, first = false) {
@@ -49,7 +50,8 @@ export function startTurn(st, p, first = false) {
     drillDeeper(st, p, d); // a dry rig strikes a deeper layer (Drilling research)
     const amt = rigRate(st, r);
     d.reserves -= amt; produced += amt;
-    if (d.reserves <= 0) drillDeeper(st, p, d); // ran dry just now: drill on, so it never sits idle
+    if (d.reserves <= 0 && amt > 0 && !drillDeeper(st, p, d)) // ran dry just now: drill on if we can, or say so
+      log(st, p, `Your rig at ${coord(d.x, d.y)} has run dry.${E_hasNoDeeper(st, p) ? ' Drilling research (Deeper Wells) can reach more oil below.' : ''}`, { k: 'oil', x: d.x, y: d.y });
     if (amt > 0 && me.bonus?.pump) produced += me.bonus.pump; // Admiral+ bots: +1 oil from every pumping rig (a cheat: it doesn't drain the deposit)
   }
   for (const s of st.ships.filter(s => s.owner === p && passives(s).mobileRig)) {
@@ -64,6 +66,8 @@ export function startTurn(st, p, first = false) {
   const room = Math.max(0, cap - me.oil);
   const spilled = Math.max(0, produced - room);
   me.oil += produced - spilled;
+  tally(st, p, 'oilPumped', produced);
+  if (spilled > 0) log(st, p, `Storage full: ${spilled} oil spilled. Sell oil or build Storage Tanks.`, { k: 'oil' });
   // research
   processResearch(st, p);
   // upkeep: ships and platforms cost money each turn; ships you can't pay for lose 1 HP
@@ -75,7 +79,7 @@ export function startTurn(st, p, first = false) {
     if (me.money >= u) { me.money -= u; paid += u; }
     else { unpaid++; s.hp -= 1; if (s.hp <= 0) sink(st, s); }
   }
-  if (unpaid) log(st, p, `Couldn't pay all upkeep: unpaid ships lost 1 HP each.`);
+  if (unpaid) log(st, p, `Couldn't pay all upkeep: unpaid ships lost 1 HP each.`, { k: 'hit' });
   for (const s of st.ships.filter(s => s.owner === p)) {
     s.acted = false; s.shotsLeft = 0; s.activeAction = null; s.freeUsed = {};
     s.screenUsed = false; s.adUsed = false;
@@ -108,7 +112,7 @@ export function eliminate(st, p, reason) {
   st.mines = st.mines.filter(m => m.owner !== p);
   st.fleets = (st.fleets || []).filter(f => f.owner !== p);
   pl.builds = [];
-  for (const o of alivePlayers(st)) log(st, o, `${pl.name} ${reason}.`);
+  for (const o of alivePlayers(st)) log(st, o, `${pl.name} ${reason}.`, { k: 'world' });
 }
 
 export function checkWin(st) {
@@ -123,6 +127,22 @@ export function checkWin(st) {
   if (left.length <= 1) { st.phase = 'over'; st.winner = left[0] ?? null; st.winReason = 'elimination'; }
 }
 
+// One row per finished round for the game-over charts: per player [oil, money, ships, bases, techs, fleet value].
+const E_hasNoDeeper = (st, p) => pstat(st, p, 'deepLayers') === 0;
+
+export function recordHistory(st, round) {
+  (st.history ||= []).push({
+    r: round,
+    p: st.players.map((pl, i) => pl.out ? null : [
+      Math.round(pl.oil), Math.round(pl.money),
+      st.ships.filter(s => s.owner === i).length,
+      st.bases.filter(b => b.owner === i && !b.wrecked).length,
+      Object.keys(pl.research?.done || {}).length,
+      st.ships.filter(s => s.owner === i).reduce((t, s) => t + SHIPS[s.type].cost, 0),
+    ]),
+  });
+}
+
 export function nextTurn(st) {
   const n = st.players.length;
   let p = st.current;
@@ -131,7 +151,7 @@ export function nextTurn(st) {
     p = (p + 1) % n;
     if (p === 0) st.round++;
   } while (st.players[p].out);
-  if (st.round !== round0) { processLastRig(st); if (st.phase !== 'playing') return; }
+  if (st.round !== round0) { recordHistory(st, round0); processLastRig(st); if (st.phase !== 'playing') return; }
   st.turnCount++;
   st.current = p;
   // a player knocked out at the start of their own turn passes straight on

@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="css/timer.css">
   <link rel="stylesheet" href="css/research.css">
   <link rel="stylesheet" href="css/bases.css">
+  <link rel="stylesheet" href="css/home.css">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -24,6 +25,8 @@
     <div id="turn-info" class="turn-info"></div>
     <div id="timer" class="timer hidden"></div>
     <div class="top-actions">
+      <button id="btn-sound" class="ghost" title="Sound">🔊</button>
+      <button id="btn-summary" class="ghost" title="Show the turn summary again">📋</button>
       <button id="btn-help" class="ghost">Rules</button>
       <button id="btn-menu" class="ghost">Menu</button>
     </div>
@@ -42,6 +45,7 @@
   </main>
 
   <!-- Full-screen overlays -->
+  <div id="home" class="home hidden"></div>
   <div id="research" class="research hidden"></div>
   <div id="overlay" class="overlay hidden"><div class="overlay-card" id="overlay-card"></div></div>
   <div id="toast" class="toast hidden"></div>

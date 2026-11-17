@@ -111,7 +111,7 @@ export function stepShip(st, ship, x, y, r) {
     const dmg = Math.max(0, mine.dmg - shipStat(st, p, ship.type, 'armor'));
     ship.hp -= dmg;
     ship.combatRound = st.round;
-    log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`);
+    log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`, { k: 'hit', x: ship.x, y: ship.y });
     if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
     if (ship.hp <= 0) sink(st, ship);
     return 'stopped';

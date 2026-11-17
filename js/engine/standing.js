@@ -172,7 +172,7 @@ function runUnit(st, p, u, isFleet) {
       break;
     case 'escort': {
       const t = st.ships.find(s => s.id === o.target);
-      if (!t) { u.standing = null; log(st, p, `${unitName(st, u, isFleet)}: the ship it was escorting is gone. Standing orders cleared.`); return; }
+      if (!t) { u.standing = null; log(st, p, `${unitName(st, u, isFleet)}: the ship it was escorting is gone. Standing orders cleared.`, { k: 'fleet' }); return; }
       if (dist(shipCells(lead), shipCells(t)) <= ESCORT_RANGE) break;
       for (const spot of escortSpot(st, lead, t)) if (go(spot.x, spot.y) !== 'noroute') break;
       break;
@@ -183,7 +183,7 @@ function runUnit(st, p, u, isFleet) {
       for (let tries = 0; tries < 3; tries++) {
         if (o.target && ex[chunkKey(o.target.x, o.target.y)]) o.target = null;
         if (!o.target) o.target = exploreTarget(st, p, lead, o.skip);
-        if (!o.target) { u.standing = null; log(st, p, `${unitName(st, u, isFleet)} has nothing left to explore. Standing orders cleared.`); return; }
+        if (!o.target) { u.standing = null; log(st, p, `${unitName(st, u, isFleet)} has nothing left to explore. Standing orders cleared.`, { k: 'fleet' }); return; }
         const tg = o.target;
         const r = go(tg.x, tg.y, Math.max(Math.abs(tg.x - lead.x), Math.abs(tg.y - lead.y)) * 3 + 30);
         if (r === 'noroute') { o.skip.push(chunkKey(tg.x, tg.y)); o.target = null; continue; }

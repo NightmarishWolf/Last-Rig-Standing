@@ -121,17 +121,21 @@ js/
     input.js             mouse and keyboard
     panel.js             side panel and top bar
     status.js            hint line under the board, error toasts
+    summary.js           "since your last turn" report at the start of each turn
+    sound.js             sound effects, made in code (Web Audio): guns, missiles, torpedoes, explosions...
     dialogs.js           overlays, confirm box, Rules screen
     research.js          the research tree screen
     board/               the canvas: render.js draws it layer by layer;
                          units, fog, modes (move/target/placing/voyages), fleets (fleets, standing
-                         orders, yard badges), tooltip, markers, minimap
+                         orders, yard badges), tooltip, markers, minimap; weapons.js draws turrets and every
+                         weapon's shots and impacts (fx.js animates computer turns)
   app/                   menus and game flow
-    menu.js              main menu and new-game setup (seats: Human / CPU)
+    menu.js              full-screen main menu: Continue/Resume, new-game setup, load/save pages
+    gameover.js          the game-over page: results table and charts over the game
     bots.js              computer turns on screen: animation, curtain, spectator controls
     flow.js              pass-the-device, game over, tutorial enter/exit
     timer.js             turn timer
-    storage.js           saving in the browser
+    storage.js           save slots in the browser (autosaves, named saves, export/import files)
     settings.js, state.js
   tutorial/
     steps.js             the tutorial steps and coach text (edit text here)

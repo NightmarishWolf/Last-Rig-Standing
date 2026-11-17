@@ -43,6 +43,7 @@ export const STEPS = [
   {
     title: 'Survey for oil',
     text: `Oil deposits are hidden until you find them. With your Patrol Boat selected, click <b>Survey</b> in the panel. It checks the squares around the ship.<br>
+      Every action costs a little money (shown on its button: a survey is $10), so sailing is cheap but surveying and shooting aren't free.<br>
       <span class="muted small">(If the ship got deselected, click it again first.)</span>`,
     highlight: '[data-act="survey"]',
     markers: [{ x0: 5, y0: 9, x1: 5, y1: 9 }],
@@ -65,15 +66,16 @@ export const STEPS = [
   },
   {
     title: 'Buy a ship',
-    text: `In the <b>Shipyard</b> (scroll down the panel), click <b>$100</b> next to <b>Patrol Boat</b>.<br>
-      You pay now and your <b>Home Yard</b> starts building it. Bigger ships take more turns to build.`,
+    text: `In the <b>Shipyard</b> (scroll down the panel), click <b>$${SHIPS.patrol.cost}</b> next to <b>Patrol Boat</b>.<br>
+      You pay now and your <b>Home Yard</b> starts building it. Bigger ships take more turns to build. (A ship you no longer need can be sold back for half price, from its card.)`,
     highlight: '[data-buy="patrol"]',
     check: st => (st.players[0].builds || []).length > 0 || st.ships.filter(s => s.owner === 0).length >= 3,
   },
   {
     title: 'End your turn',
     text: `The new Patrol Boat is in the yard's build line (see the Shipyard). It launches in your <b>spawn zone</b>, the lighter strip along your left edge, at the start of your next turn. Click <b>End turn</b>.<br>
-      In a real game you'd pass the device to the next player now. Here the enemy just sits still.`,
+      Tip: <b>Enter</b> ends your turn too. Each turn then starts with a short <b>"Since your last turn"</b> report (attacks, finished research, rigs running dry...): click a 📍 item to jump to it on the map.<br>
+      Here the enemy just sits still.`,
     highlight: '[data-end]',
     markers: [{ x0: 0, y0: 0, x1: 2, y1: 13, label: 'Spawn zone' }],
     check: st => st.round >= 2 && st.current === 0,
@@ -81,7 +83,7 @@ export const STEPS = [
   {
     title: 'Research',
     text: `Your new Patrol Boat has launched. Now click <b>🔬 Choose research</b> at the top (or press <b>T</b>) and click any glowing tech to start it (hover a tech to see what it does).<br>
-      Research points come in every turn. Close the tree with <b>Esc</b>.`,
+      Research points come in every turn. The <b>🛢️ Drilling</b> branch keeps your oil flowing: <b>Deeper Wells</b> lets dry rigs drill down and strike more oil. Close the tree with <b>Esc</b>.`,
     highlight: '#btn-research',
     check: st => !!st.players[0].research.current || st.players[0].research.queue.length > 0 || Object.keys(st.players[0].research.done).length > 1,
   },

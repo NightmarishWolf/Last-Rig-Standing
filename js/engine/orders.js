@@ -27,19 +27,19 @@ export function followOrder(st, ship) {
   while (ship.order && ship.movesLeft > 0 && st.ships.includes(ship)) {
     const pts = ship.order.points, pt = pts[0];
     const path = findPath(st, ship, pt.x, pt.y, pt.rot ?? null);
-    if (!path) { log(st, ship.owner, `${name} can't find a sea route to ${coord(pt.x, pt.y)} right now.`); break; }
+    if (!path) { log(st, ship.owner, `${name} can't find a sea route to ${coord(pt.x, pt.y)} right now.`, { k: 'fleet', x: ship.x, y: ship.y }); break; }
     if (path.length) {
       const mv = affordableMoves(st, ship, path);
       const part = prefixWithin(path, ship.rot, mv);
       let steps = part.length;
-      if (steps <= 0) { log(st, ship.owner, `${name} is out of oil and waiting on its voyage.`); break; }
+      if (steps <= 0) { log(st, ship.owner, `${name} is out of oil and waiting on its voyage.`, { k: 'fleet', x: ship.x, y: ship.y }); break; }
       const taken = sailPath(st, ship, part);
       total += taken;
       if (!st.ships.includes(ship) || taken < steps) break; // sunk, or bumped into something
     }
     if (!at(ship, pt)) break; // ran out of movement this turn
     pts.shift();
-    if (!pts.length) { ship.order = null; log(st, ship.owner, `${name} arrived at ${coord(pt.x, pt.y)}.`); }
+    if (!pts.length) { ship.order = null; log(st, ship.owner, `${name} arrived at ${coord(pt.x, pt.y)}.`, { k: 'fleet', x: pt.x, y: pt.y }); }
     else log(st, ship.owner, `${name} reached a waypoint at ${coord(pt.x, pt.y)}.`);
   }
   return total;

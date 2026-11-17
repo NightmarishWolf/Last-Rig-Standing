@@ -95,7 +95,6 @@ export function renderPanel() {
   if (s) html += standingCard(s, f);
 
   html += shipyardCard(st, p);
-  html += `<div class="card"><h3>Log</h3><div class="log">${pl.log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
   document.getElementById('panel').innerHTML = html;
   if (!s) lastShownShip = null; // re-selecting the same ship later flashes again
   // a newly selected ship: bring its card into view
@@ -256,10 +255,8 @@ function spectatorPanel() {
       </div>
     </div>`;
   }).join('');
-  const log = st.players[st.current].log.slice(0, 30);
   return `${victoryCard(st, st.current)}
-    <div class="card"><h3>👁 Spectating · round ${st.round}</h3><div class="spec-list">${rows}</div></div>
-    <div class="card"><h3>${st.players[st.current].name}'s log</h3><div class="log">${log.map(l => `<div class="${l.turn >= st.turnCount - 1 ? 'new' : ''}">${l.text}</div>`).join('')}</div></div>`;
+    <div class="card"><h3>👁 Spectating · round ${st.round}</h3><div class="spec-list">${rows}</div></div>`;
 }
 
 // Everyone's standing, and your progress toward each way of winning.

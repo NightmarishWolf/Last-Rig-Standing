@@ -11,6 +11,7 @@ import { drawBasePieces, drawClaims } from './bases.js';
 import { drawMarkers } from './markers.js';
 import { drawUnitBadges, drawYardBadges } from './fleets.js';
 import { drawFx, tweenCells } from './fx.js';
+import { drawTurrets, endFrame } from './weapons.js';
 import { drawMinimap } from './minimap.js';
 import { drawModeOverlay } from './modes.js';
 import { drawOilTooltip } from './tooltip.js';
@@ -201,17 +202,26 @@ export function draw() {
   v.myPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(p)));
   v.enemyPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(o.owner)));
   drawBasePieces(v);
+  S.animating = false;
+  const foes = v.enemyShips.map(e => e.cells);
   for (const s of v.myShips) {
     if (!inView(s.x, s.y) && !inView(s.x + 4, s.y + 4)) continue;
-    drawHull(tweenCells(s.id, E.shipCells(s)), pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+    const cells = tweenCells(s.id, E.shipCells(s));
+    drawHull(cells, pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+    drawTurrets(s, cells, foes);
   }
   drawUnitBadges(v);
   drawYardBadges();
   for (const s of v.enemyShips) {
-    if (S.spectate) drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+    if (S.spectate) {
+      const cells = tweenCells(s.id, s.cells);
+      drawHull(cells, pcol(s.owner), false, 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
+      drawTurrets(s, cells, v.enemyShips.filter(e => e.owner !== s.owner).map(e => e.cells).concat(v.myShips.map(m => E.shipCells(m))));
+    }
     else drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, '?', undefined, true);
   }
   drawFx();
+  endFrame();
   for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
   // my shot markers
   const m = Math.max(1, Math.min(6, cell * 0.2));

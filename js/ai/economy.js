@@ -80,12 +80,22 @@ function techState(st, p, id) {
 
 // ---------- bases ----------
 // How many of each platform a bot wants in a base (and in total).
+// The bases worth growing: the Admiralty, plus the ones with the most rigs (one more for every 5 bases).
+// Only these get Crew Quarters and upgrades, so a bot doesn't put Quarters in every little outpost.
+function growBases(ctx) {
+  const all = E.basesOf(ctx.st, ctx.p).filter(b => !b.wrecked);
+  const rigs = b => ctx.st.rigs.filter(r => r.baseId === b.id).length;
+  const n = 1 + Math.floor(all.length / 5);
+  const picks = all.filter(b => !b.capital).sort((a, c) => rigs(c) - rigs(a) || c.level - a.level).slice(0, n);
+  return new Set([...all.filter(b => b.capital), ...picks].map(b => b.id));
+}
+
 function wanted(ctx, b, kind, have, total) {
   const st = ctx.st, rigs = st.rigs.filter(r => r.baseId === b.id).length;
   switch (kind) {
     case 'storage': return E.oilCapOf(st, ctx.p) - ctx.me.oil < 15 && have < 2;
     case 'lab': return have < (b.capital ? 2 : 1);
-    case 'quarters': return have < 1 && b.level < E.maxBaseLevel(st, ctx.p);
+    case 'quarters': return have < 1 && b.level < E.maxBaseLevel(st, ctx.p) && growBases(ctx).has(b.id);
     case 'pump': return rigs >= 2 && have < 1;
     case 'gun': return have < (ctx.pers.aggression < 0.4 ? 2 : 1);
     case 'radar': return have < 1 && b.level >= 2;
@@ -128,7 +138,7 @@ function pickProject(ctx) {
   }
   for (const b of bases) {
     const next = BASE_LEVELS[b.level + 1];
-    if (next && !E.upgradeProblem(st, p, b)) return { kind: 'upgrade', cost: next.cost };
+    if (next && !E.upgradeProblem(st, p, b) && growBases(ctx).has(b.id)) return { kind: 'upgrade', cost: next.cost };
   }
   return null;
 }
@@ -172,7 +182,7 @@ export async function buildBases(ctx) {
   // 2) upgrades
   for (const b of bases) {
     const next = BASE_LEVELS[b.level + 1];
-    if (!next || E.upgradeProblem(st, p, b)) continue;
+    if (!next || E.upgradeProblem(st, p, b) || !growBases(ctx).has(b.id)) continue;
     if (me.money - next.cost < platReserve + 50) continue;
     await ctx.do({ type: 'upgradeBase', baseId: b.id });
   }

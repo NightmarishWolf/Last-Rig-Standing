@@ -93,7 +93,7 @@ export function completeTech(st, p, id) {
   for (const [s, oldMax] of before) { const nm = shipStat(st, p, s.type, 'hp'); if (nm > oldMax) s.hp += nm - oldMax; else s.hp = Math.min(s.hp, nm); }
   const t = TECH[id];
   const locked = t.doctrine ? TECHS.filter(o => o.doctrine === t.doctrine && o.id !== id).map(o => o.name) : [];
-  log(st, p, `Research complete: ${t.name}.${locked.length ? ` (${locked.join(', ')} is now closed to you.)` : ''}`);
+  log(st, p, `Research complete: ${t.name}.${locked.length ? ` (${locked.join(', ')} is now closed to you.)` : ''}`, { k: 'done' });
 }
 
 export function doResearch(st, a) {

@@ -14,7 +14,7 @@ import { alivePlayers, fail, log, ok, others } from './util.js';
 export const victoryOn = (st, k) => !!VICTORIES[k]?.always || !!st.victory?.[k];
 
 const win = (st, p, reason) => { st.phase = 'over'; st.winner = p; st.winReason = reason; };
-const tellAll = (st, text) => alivePlayers(st).forEach(o => log(st, o, text));
+const tellAll = (st, text, meta = { k: 'world' }) => alivePlayers(st).forEach(o => log(st, o, text, meta));
 
 // ---------- ⚔️ Conquest ----------
 export const capitalOf = (st, p) => (st.bases || []).find(b => b.owner === p && b.capital);
@@ -23,15 +23,15 @@ export const capitalOf = (st, p) => (st.bases || []).find(b => b.owner === p && 
 export function processConquest(st, p) {
   if (st.tutorial) return null; // the tutorial's practice target has no Admiralty
   const me = st.players[p], cap = capitalOf(st, p);
-  if (cap && !cap.wrecked) { if (me.exile != null) log(st, p, 'Your Admiralty is back in action.'); me.exile = null; return; }
+  if (cap && !cap.wrecked) { if (me.exile != null) log(st, p, 'Your Admiralty is back in action.', { k: 'done' }); me.exile = null; return; }
   if (me.exile == null) {
     me.exile = CONQUEST.exileTurns;
-    log(st, p, `⚠ You have lost your Admiralty! Rebuild it, or move it to another of your bases, within ${me.exile} turns or you are out.`);
-    for (const o of others(st, p)) log(st, o, `${me.name} has lost their Admiralty! They have ${me.exile} turns to recover.`);
+    log(st, p, `⚠ You have lost your Admiralty! Rebuild it, or move it to another of your bases, within ${me.exile} turns or you are out.`, { k: 'hit' });
+    for (const o of others(st, p)) log(st, o, `${me.name} has lost their Admiralty! They have ${me.exile} turns to recover.`, { k: 'world' });
   } else {
     me.exile--;
     if (me.exile <= 0) return 'eliminate';
-    log(st, p, `⚠ Admiralty lost: ${me.exile} turn${me.exile > 1 ? 's' : ''} left to rebuild or move it.`);
+    log(st, p, `⚠ Admiralty lost: ${me.exile} turn${me.exile > 1 ? 's' : ''} left to rebuild or move it.`, { k: 'hit' });
   }
   return null;
 }
@@ -53,7 +53,7 @@ export function doMoveCapital(st, a) {
   b.capital = true;
   st.players[p].money -= CONQUEST.moveCapitalCost;
   st.players[p].exile = null;
-  tellAll(st, `${st.players[p].name} moved their Admiralty to ${coord(b.x, b.y)}.`);
+  tellAll(st, `${st.players[p].name} moved their Admiralty to ${coord(b.x, b.y)}.`, { k: 'world', x: b.x, y: b.y });
   return ok();
 }
 
@@ -87,8 +87,8 @@ export function processDomination(st, p) {
   const me = st.players[p], d = dominationStatus(st, p);
   me.domStreak = d.ok ? (me.domStreak || 0) + 1 : 0;
   if (me.domStreak > 0) {
-    log(st, p, `You dominate the seas (${Math.round(d.share * 100)}% of all claimed water): domination ${me.domStreak}/${DOMINATION.rounds}.`);
-    for (const o of others(st, p)) log(st, o, `Warning: ${me.name} dominates the seas! Domination ${me.domStreak}/${DOMINATION.rounds}.`);
+    log(st, p, `You dominate the seas (${Math.round(d.share * 100)}% of all claimed water): domination ${me.domStreak}/${DOMINATION.rounds}.`, { k: 'world' });
+    for (const o of others(st, p)) log(st, o, `Warning: ${me.name} dominates the seas! Domination ${me.domStreak}/${DOMINATION.rounds}.`, { k: 'world' });
   }
   if (me.domStreak >= DOMINATION.rounds) win(st, p, 'domination');
 }

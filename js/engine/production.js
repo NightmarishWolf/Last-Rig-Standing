@@ -14,7 +14,7 @@ import { pstat, shipStat } from './modifiers.js';
 import { shipNeeds, shipUnlocked } from './research.js';
 import { addShip } from './setup.js';
 import { forwardPorts } from './stats.js';
-import { fail, log, ok, rigAt, shipAt } from './util.js';
+import { fail, log, ok, rigAt, shipAt, tally } from './util.js';
 import { platformAt } from './bases.js';
 
 export const shipCost = (st, p, type) => shipStat(st, p, type, 'cost');
@@ -133,9 +133,10 @@ export function processYards(st, p) {
       if (b.left > 0) b.left--;
       if (b.left > 0) continue;
       const spot = launchSpot(st, p, b.ship, yard);
-      if (!spot) { if (!b.waiting) log(st, p, `${yard.name}: a finished ${SHIPS[b.ship].name} is waiting for room to launch.`); b.waiting = true; continue; }
+      if (!spot) { if (!b.waiting) log(st, p, `${yard.name}: a finished ${SHIPS[b.ship].name} is waiting for room to launch.`, { k: 'fleet' }); b.waiting = true; continue; }
       addShip(st, p, b.ship, spot.x, spot.y, spot.rot, true);
-      log(st, p, `${yard.name} launched a ${SHIPS[b.ship].name} at ${coord(spot.x, spot.y)}.`);
+      tally(st, p, 'shipsBuilt');
+      log(st, p, `${yard.name} launched a ${SHIPS[b.ship].name} at ${coord(spot.x, spot.y)}.`, { k: 'done', x: spot.x, y: spot.y });
       done.push(b);
     }
   }

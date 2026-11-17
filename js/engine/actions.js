@@ -57,6 +57,8 @@ function runAction(st, a) {
     case 'sell': return doSell(st, a);
     case 'sellShip': return doSellShip(st, a);      // { shipId }
     case 'endTurn':
+      // the turn summary next time shows everything from here on (what your ships do on their own included)
+      st.players[st.current].summaryFrom = st.logSeq || 0;
       // before the turn passes: voyages sail on, then fleets, then standing orders
       runVoyages(st, st.current);
       if (st.phase === 'playing') runFleetOrders(st, st.current);

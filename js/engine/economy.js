@@ -6,7 +6,7 @@ import { activePlatforms, claimAt, sellMultOf } from './bases.js';
 import { inSpawn, shipCells, zoneOf } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
-import { fail, fmt2, log, ok, r2 } from './util.js';
+import { fail, fmt2, log, ok, r2, tally } from './util.js';
 
 // Where new ships can appear: your spawn strip, near your forward ports, or near your dry docks.
 export function launchSites(st, p) {
@@ -40,6 +40,7 @@ export function doSell(st, a) {
   if (n <= 0) return fail('No oil to sell.');
   const { total, price } = sellValue(st, n, p);
   me.oil = r2(me.oil - n); me.money = r2(me.money + total); st.market.price = price;
+  tally(st, p, 'oilSold', n); tally(st, p, 'oilMoney', total);
   log(st, p, `Sold ${fmt2(n)} oil for $${fmt2(total)}.`);
   return ok();
 }

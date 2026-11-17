@@ -143,6 +143,7 @@ export function cancelMode() {
 
 export function onKey(e) {
   if (!document.getElementById('overlay').classList.contains('hidden')) return;
+  if (document.body.classList.contains('at-home')) return; // the main menu handles its own keys
   if (e.key === 'Escape') return cancelMode();
   if (S.botTurn && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S', '+', '=', '-', '_'].includes(e.key)) return; // only the camera during computer turns
   if (e.key === 't' || e.key === 'T') { if (researchOpen()) closeResearch(); else openResearch(); return; }

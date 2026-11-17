@@ -20,7 +20,7 @@ export function stopTimer() { timer.running = false; renderTimer(); }
 function renderTimer() {
   const el = document.getElementById('timer');
   if (!timer.running) { el.classList.add('hidden'); return; }
-  const paused = !document.getElementById('overlay').classList.contains('hidden');
+  const paused = !document.getElementById('overlay').classList.contains('hidden') || document.body.classList.contains('at-home');
   el.className = 'timer' + (timer.left <= 10 ? ' danger' : timer.left <= 30 ? ' warn' : '') + (paused ? ' paused' : '');
   el.textContent = (paused ? '⏸ ' : '') + fmt(Math.ceil(timer.left));
   el.title = paused ? 'Timer paused' : 'Time left this turn';
@@ -30,7 +30,7 @@ setInterval(() => {
   const now = performance.now(), dt = (now - timer.last) / 1000;
   timer.last = now;
   if (!timer.running) return;
-  const paused = !document.getElementById('overlay').classList.contains('hidden');
+  const paused = !document.getElementById('overlay').classList.contains('hidden') || document.body.classList.contains('at-home');
   if (!paused) timer.left -= dt;
   if (timer.left <= 0) {
     const who = A.state.players[A.state.current].name;

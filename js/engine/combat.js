@@ -1,7 +1,7 @@
 // Resolving shots: interception, screening, armor, damage, and sinking.
 import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, shipCells, zoneOf } from './geometry.js';
-import { log, passives, pname, portAt, rigAt, shipAt } from './util.js';
+import { log, passives, pname, portAt, rigAt, shipAt, tally } from './util.js';
 import { PLATFORMS } from '../data/bases.js';
 import { baseById, wreckBase } from './bases.js';
 import { shipStat, weaponStat } from './modifiers.js';
@@ -56,7 +56,7 @@ export function resolveShot(st, ship, act, tx, ty) {
       target.hp -= dmg;
       target.combatRound = st.round; // seen combat (can't be sold for a while)
       anyHit = true;
-      log(st, e, `Your ${SHIPS[target.type].name} was hit for ${dmg} damage by ${pname(st, p)} (${Math.max(0, target.hp)}/${shipStat(st, e, target.type, 'hp')} HP).`);
+      log(st, e, `Your ${SHIPS[target.type].name} was hit for ${dmg} damage by ${pname(st, p)} (${Math.max(0, target.hp)}/${shipStat(st, e, target.type, 'hp')} HP).`, { k: 'hit', x: target.x, y: target.y });
       if (target.hp <= 0) { sunkName = SHIPS[target.type].name; sink(st, target); }
       continue;
     }
@@ -69,10 +69,11 @@ export function resolveShot(st, ship, act, tx, ty) {
         anyHit = true;
         if (port.hp <= 0) {
           st.ports = st.ports.filter(o => o !== port);
-          log(st, p, `You destroyed ${pname(st, e)}'s forward port at ${coord(x, y)}!`);
-          log(st, e, `Your forward port at ${coord(x, y)} was destroyed by ${pname(st, p)}!`);
+          tally(st, p, 'destroyed');
+          log(st, p, `You destroyed ${pname(st, e)}'s forward port at ${coord(x, y)}!`, { k: 'win', x, y });
+          log(st, e, `Your forward port at ${coord(x, y)} was destroyed by ${pname(st, p)}!`, { k: 'hit', x, y });
           sunkName = sunkName || 'rig';
-        } else log(st, e, `Your forward port at ${coord(x, y)} was hit by ${pname(st, p)}!`);
+        } else log(st, e, `Your forward port at ${coord(x, y)} was hit by ${pname(st, p)}!`, { k: 'hit', x, y });
         continue;
       }
       const plat = (st.platforms || []).find(o => o.x === x && o.y === y);
@@ -83,10 +84,11 @@ export function resolveShot(st, ship, act, tx, ty) {
         anyHit = true;
         if (plat.hp <= 0) {
           st.platforms = st.platforms.filter(o => o !== plat);
-          log(st, p, `You destroyed ${pname(st, e)}'s ${name} at ${coord(x, y)}!`);
-          log(st, e, `Your ${name} at ${coord(x, y)} was destroyed by ${pname(st, p)}!`);
+          tally(st, p, 'destroyed');
+          log(st, p, `You destroyed ${pname(st, e)}'s ${name} at ${coord(x, y)}!`, { k: 'win', x, y });
+          log(st, e, `Your ${name} at ${coord(x, y)} was destroyed by ${pname(st, p)}!`, { k: 'hit', x, y });
           sunkName = sunkName || 'rig';
-        } else log(st, e, `Your ${name} at ${coord(x, y)} was hit by ${pname(st, p)}!`);
+        } else log(st, e, `Your ${name} at ${coord(x, y)} was hit by ${pname(st, p)}!`, { k: 'hit', x, y });
         continue;
       }
       const rig = rigAt(st, x, y);
@@ -100,19 +102,21 @@ export function resolveShot(st, ship, act, tx, ty) {
           const b = rig.center && baseById(st, rig.baseId);
           if (b) wreckBase(st, b, p);
           else {
-            log(st, p, `You destroyed ${pname(st, e)}'s oil rig at ${coord(x, y)}!`);
-            log(st, e, `Your oil rig at ${coord(x, y)} was destroyed by ${pname(st, p)}!`);
+            tally(st, p, 'destroyed');
+            log(st, p, `You destroyed ${pname(st, e)}'s oil rig at ${coord(x, y)}!`, { k: 'win', x, y });
+            log(st, e, `Your oil rig at ${coord(x, y)} was destroyed by ${pname(st, p)}!`, { k: 'hit', x, y });
           }
           sunkName = sunkName || 'rig';
         } else {
-          log(st, e, `Your oil rig at ${coord(x, y)} was hit by ${pname(st, p)}!`);
+          log(st, e, `Your oil rig at ${coord(x, y)} was hit by ${pname(st, p)}!`, { k: 'hit', x, y });
         }
       }
     }
   }
   notify.forEach(o => st.players[o].incoming.push({ x: tx, y: ty, turn: st.turnCount }));
   record(sunkName ? 'sunk' : anyHit ? 'hit' : 'miss');
-  if (sunkName && sunkName !== 'rig') log(st, p, `You sank an enemy ${sunkName}!`);
+  if (sunkName && sunkName !== 'rig') tally(st, p, 'kills');
+  if (sunkName && sunkName !== 'rig') log(st, p, `You sank an enemy ${sunkName}!`, { k: 'win', x: tx, y: ty });
   else if (anyHit && !sunkName) log(st, p, `${act.name}: HIT at ${coord(tx, ty)}!`);
   else if (!anyHit) log(st, p, `${act.name}: miss at ${coord(tx, ty)}.`);
 }
@@ -120,5 +124,6 @@ export function resolveShot(st, ship, act, tx, ty) {
 export function sink(st, ship) {
   st.ships = st.ships.filter(s => s !== ship);
   st.wrecks.push({ id: 'w' + st.nextId++, cells: shipCells(ship), type: ship.type, value: shipStat(st, ship.owner, ship.type, 'cost') });
-  log(st, ship.owner, `Your ${SHIPS[ship.type].name} was sunk!`);
+  tally(st, ship.owner, 'shipsLost');
+  log(st, ship.owner, `Your ${SHIPS[ship.type].name} was sunk!`, { k: 'hit', x: ship.x, y: ship.y });
 }

@@ -60,7 +60,7 @@ export function tidyFleets(st) {
     if (!last) continue;
     if (f.order?.points?.length) last.order = { points: f.order.points.map((q, i, a) => ({ x: q.x, y: q.y, rot: i === a.length - 1 ? last.rot : null })) };
     if (f.standing && !(f.standing.kind === 'escort' && f.standing.target === last.id)) last.standing = f.standing;
-    if (!st.players[f.owner].out) log(st, f.owner, `Fleet ${f.name} is down to one ship and has disbanded.`);
+    if (!st.players[f.owner].out) log(st, f.owner, `Fleet ${f.name} is down to one ship and has disbanded.`, { k: 'fleet' });
   }
   st.fleets = list.filter(f => f.members.length >= 2);
 }
@@ -257,12 +257,12 @@ export function runFleetOrder(st, f) {
     const res = advanceFleet(st, f, pt);
     if (res === 'arrived') {
       f.order.points.shift();
-      if (!f.order.points.length) { f.order = null; log(st, f.owner, `Fleet ${f.name} arrived at ${coord(pt.x, pt.y)}.`); }
+      if (!f.order.points.length) { f.order = null; log(st, f.owner, `Fleet ${f.name} arrived at ${coord(pt.x, pt.y)}.`, { k: 'fleet', x: pt.x, y: pt.y }); }
       else log(st, f.owner, `Fleet ${f.name} reached a waypoint at ${coord(pt.x, pt.y)}.`);
       continue;
     }
-    if (res === 'noroute') log(st, f.owner, `Fleet ${f.name} can't find a sea route to ${coord(pt.x, pt.y)} right now.`);
-    if (res === 'nooil') log(st, f.owner, `Fleet ${f.name} is out of oil and waiting.`);
+    if (res === 'noroute') log(st, f.owner, `Fleet ${f.name} can't find a sea route to ${coord(pt.x, pt.y)} right now.`, { k: 'fleet', x: pt.x, y: pt.y });
+    if (res === 'nooil') log(st, f.owner, `Fleet ${f.name} is out of oil and waiting.`, { k: 'fleet' });
     break;
   }
 }

@@ -9,6 +9,12 @@ import { sellValue } from './economy.js';
 
 // Replays next turn's upkeep (research funding first, then platforms, then ships cheapest first,
 // exactly like the engine) without changing anything.
+// What happened since p last ended their turn: the messages marked for the turn summary, oldest first.
+export function turnSummary(st, p) {
+  const pl = st.players[p], from = pl.summaryFrom ?? Infinity;
+  return pl.log.filter(l => l.k && (l.n || 0) > from).reverse();
+}
+
 export function upkeepForecast(st, p) {
   const me = st.players[p];
   let money = me.money;

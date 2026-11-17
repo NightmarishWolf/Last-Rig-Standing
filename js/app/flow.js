@@ -1,9 +1,11 @@
 // Game flow: pass-the-device screen, game over, entering and leaving the tutorial.
 import * as E from '../engine/index.js';
-import { showMenu, showSetup } from './menu.js';
+import { hideHome, showHome, showMenu, showSetup } from './menu.js';
 import { fmt, setup } from './settings.js';
 import { A } from './state.js';
 import { load } from './storage.js';
+import { showTurnSummary } from '../ui/summary.js';
+import { play } from '../ui/sound.js';
 import { startTimer, stopTimer } from './timer.js';
 import { tutorial } from './tutorialHost.js';
 import { PLAYER_COLORS } from '../data/maps.js';
@@ -25,6 +27,7 @@ export function exitTutorial() {
   stopTimer();
   tutorial.hide();
   A.state = load() || E.newGame(setup);
+  A.sessionActive = false;
   setState(A.state);
   showMenu();
 }
@@ -45,6 +48,8 @@ export function handoff(st, reason) {
     if (document.querySelector('#overlay [data-curtain]')) closeOverlay();
     A.sessionActive = true; refresh(); startTimer();
     if (reason) toast(reason);
+    play('chime');
+    showTurnSummary(st, p);
     return;
   }
   showOverlay(`
@@ -53,7 +58,7 @@ export function handoff(st, reason) {
     ${st.turnTimer ? `<p class="muted small">You'll have ${fmt(st.turnTimer)} once you reveal your fleet.</p>` : ''}
     <p class="muted">Pass the device to <b style="color:var(--text)">${pl.name}</b>. Everyone else, look away!</p>
     <div class="row" style="margin-top:16px"><button class="primary big" data-go>I'm ${pl.name}, show my fleet</button></div>`,
-  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); A.sessionActive = true; refresh(); startTimer(); });
+  (card, close) => card.querySelector('[data-go]').onclick = () => { close(); A.sessionActive = true; refresh(); startTimer(); play('chime'); showTurnSummary(st, p); });
 }
 
 export function gameOver(st) {
@@ -72,20 +77,11 @@ export function gameOver(st) {
       </ul>
       <div class="row" style="margin-top:16px"><button class="primary big" data-new>Start a real game</button><button class="big ghost" data-menu>Back to menu</button></div>`,
     (card, close) => {
-      card.querySelector('[data-new]').onclick = () => { tutorial.hide(); showSetup(!!(load() && load().phase === 'playing')); };
+      card.querySelector('[data-new]').onclick = () => { close(); tutorial.hide(); showSetup(); };
       card.querySelector('[data-menu]').onclick = () => { close(); exitTutorial(); };
     });
     return;
   }
-  const w = st.winner;
-  showOverlay(`
-    <h2>${w === null ? 'Nobody' : `<span style="color:${PLAYER_COLORS[w]}">${st.players[w].name}</span>`} wins!</h2>
-    <p style="font-size:18px">${w === null ? '' : { domination: '🗺️ Domination victory', postoil: '⚛️ Post-Oil victory', lastrig: '🛢️ Last Rig Standing victory' }[st.winReason] || '⚔️ Conquest victory'}</p>
-    <p class="muted">${w === null ? 'Every fleet went down.'
-      : st.winReason === 'domination' ? `${st.players[w].name} ruled the seas round after round. Victory in round ${st.round}.`
-      : st.winReason === 'postoil' ? `${st.players[w].name} brought the Deep-Sea Fusion Plant online. The oil age is over, in round ${st.round}.`
-      : st.winReason === 'lastrig' ? `The world's oil ran out, and ${st.players[w].name} held the last of it. Round ${st.round}.`
-      : `Every rival Admiralty has fallen. ${st.players[w].name} rules the sea after ${st.round} rounds.`}</p>
-    <div class="row" style="margin-top:16px"><button class="primary big" data-new>New game</button></div>`,
-  (card) => card.querySelector('[data-new]').onclick = () => showSetup(false));
+  A.sessionActive = false;
+  showHome('over');
 }

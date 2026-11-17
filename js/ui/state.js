@@ -11,7 +11,8 @@ export const S = {
   botTurn: false,       // a bot is playing: the board and panel don't take clicks
   viewer: null,         // the human watching a bot turn (their fog of war is shown)
   spectate: false,      // every seat is a bot: whole map, no fog
-  rsHover: null,        // research tech under the pointer (or last tapped)
+  rsHover: null,
+  ping: null,           // { x, y, until }: a pulsing ring on the map (turn summary links)        // research tech under the pointer (or last tapped)
   tween: null, fx: [],  // animations in progress (board/fx.js)
   planRot: null,        // facing you're planning for the selected ship (R); it only turns when it moves
   plan: [],             // waypoints added with Shift+click, before the final destination
