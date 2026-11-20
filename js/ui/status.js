@@ -62,10 +62,14 @@ export function updateStatus() {
       : S.hover && !why ? `Click to build a rig here for <b class="money">$${E.rigCost(S.st, me())}</b>.`
       : `Click a <b style="color:#7fd17a">highlighted deposit</b> to build a rig.${why && S.hover ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
   }
-  else t = S.fit ? 'Click one of your ships to select it. Red-outlined "?" = enemy contacts (coloured by owner). S/M/R = small/medium/rich oil.'
+  else t = S.fit ? 'Click one of your ships to select it. Enemies in sight show as ships; "?" = unidentified contact (scan/sonar/flash). S/M/R = small/medium/rich oil.'
     : 'Click a ship to select it (<b>Tab</b> = next ship). <b>Drag</b> or <b>WASD</b> to scroll, <b>mouse wheel</b> to zoom, click the minimap to jump. <b>Enter</b> ends your turn.';
   const oil = S.hover && oilInfo(E.getView(S.st, me()), S.hover.x, S.hover.y);
   if (oil && S.mode.kind !== 'target') t = oil.map(l => l.t).join(' · ');
+  if (S.hover && S.lastView && !S.spectate) { // what's under the cursor: a seen enemy is named, a contact is just "unidentified"
+    const e = S.lastView.enemyShips.find(e => e.owner >= 0 && e.cells.some(c => c[0] === S.hover.x && c[1] === S.hover.y));
+    if (e) t += ` <span style="color:#f09595">· ${pname(e.owner)}'s ${e.type ? (SHIPS[e.type]?.name || e.type) : 'unidentified contact'}${e.burning ? ' (burning)' : ''}</span>`;
+  }
   if (S.hover) t += ` <span class="muted">· ${E.coord(S.hover.x, S.hover.y)}${(S.st.players[me()].surveyed || {})[S.hover.x + ',' + S.hover.y] ? ' · <span style="color:#a9d77a">surveyed</span>' : ''} · ${(z => z === 'middle' ? "No Man's Sea" : z === me() ? 'Your waters' : pname(z) + "'s waters")(E.zoneOf(S.st, S.hover.x, S.hover.y))}</span>`;
   el.innerHTML = t;
 }

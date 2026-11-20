@@ -55,7 +55,9 @@ export function visibility(st, p) {
   const mine = st.ships.filter(s => s.owner === p);
   const rev = st.players[p].reveals;
   const src = sightSources(st, p);
-  const ships = new Set(), rigs = new Set(), ports = new Set(), platforms = new Set();
+  // ident: enemy ships seen with your own eyes (in sight, or a sub right next to you), so you can tell
+  // what they are; the rest of `ships` are contacts from scans, sonar, muzzle flashes or bumping into them
+  const ships = new Set(), ident = new Set(), rigs = new Set(), ports = new Set(), platforms = new Set();
   // stealth research on the *target's* side shortens how far it can be seen from
   const fogBank = st.events?.active?.some(e => e.kind === 'fogbank');
   const seenBy = (cells, owner) => {
@@ -71,16 +73,17 @@ export function visibility(st, p) {
   for (const e of st.ships) {
     if (e.owner === p) continue;
     const cells = shipCells(e);
-    if (rev.ships.includes(e.id)) { ships.add(e.id); continue; }
+    if (rev.ships.includes(e.id)) ships.add(e.id);
     if (passives(e).submerged) {
       // (Nyx's Phantoms: Ghost Boats aren't seen even right next to you, only by sonar)
       const phantom = passives(e).ghost && e.owner >= 0 && pstat(st, e.owner, 'ghostHidden') > 0;
-      const near = mine.some(s => {
+      let eyes = false, heard = false;
+      for (const s of mine) {
         const d = dist(shipCells(s), cells), sonar = shipStat(st, p, s.type, 'sonar');
-        return (d <= 1 && !phantom) || (sonar && d <= sonar);
-      });
-      if (near) ships.add(e.id);
-    } else if (seenBy(cells, e.owner)) ships.add(e.id);
+        if (d <= 1 && !phantom) eyes = true; else if (sonar && d <= sonar) heard = true;
+      }
+      if (eyes) { ships.add(e.id); ident.add(e.id); } else if (heard) ships.add(e.id);
+    } else if (seenBy(cells, e.owner)) { ships.add(e.id); ident.add(e.id); }
   }
   for (const r of st.rigs) {
     if (r.owner === p) continue;
@@ -94,7 +97,7 @@ export function visibility(st, p) {
     if (o.owner === p) continue;
     if (PLATFORMS[o.kind].public || (rev.platforms || []).includes(o.id) || seenBy([[o.x, o.y]])) platforms.add(o.id);
   }
-  return { ships, rigs, ports, platforms };
+  return { ships, ident, rigs, ports, platforms };
 }
 
 // Is a footprint legal for `owner`? Hidden enemies are ignored here

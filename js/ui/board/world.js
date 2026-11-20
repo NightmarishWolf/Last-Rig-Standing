@@ -5,21 +5,20 @@ import * as E from '../../engine/index.js';
 import { EVENTS } from '../../data/events.js';
 import { px, py } from '../helpers.js';
 import { S } from '../state.js';
+import { iceArt } from './landart.js';
 
 // under the units: ice, slicks, field areas
 export function drawWorldBelow(R, detail) {
   const st = S.st, ctx = S.ctx, cell = S.cell;
   if (st.ice) {
-    ctx.fillStyle = 'rgba(214, 236, 248, 0.82)';
-    for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (st.ice[y * st.W + x]) ctx.fillRect(px(x), py(y), cell, cell);
-    if (detail) {
-      ctx.strokeStyle = 'rgba(150, 190, 215, 0.6)'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (st.ice[y * st.W + x] && (x * 7 + y * 13) % 5 === 0) {
-        ctx.moveTo(px(x) + cell * 0.2, py(y) + cell * 0.7); ctx.lineTo(px(x) + cell * 0.55, py(y) + cell * 0.35); ctx.lineTo(px(x) + cell * 0.8, py(y) + cell * 0.55);
-      }
-      ctx.stroke();
+    // the painted floes (redrawn when an Icebreaker cracks some)
+    const art = iceArt(st);
+    const sx = Math.max(0, R.x0 - 1), sy = Math.max(0, R.y0 - 1), sw = Math.min(st.W, R.x1 + 2) - sx, sh = Math.min(st.H, R.y1 + 2) - sy;
+    if (art && sw > 0 && sh > 0) {
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(art.canvas, sx * art.s, sy * art.s, sw * art.s, sh * art.s, px(sx), py(sy), sw * cell, sh * cell);
     }
+    void detail;
   }
   for (const s of st.spills || []) {
     const x0 = Math.max(0, s.x - s.r), y0 = Math.max(0, s.y - s.r), x1 = Math.min(st.W - 1, s.x + s.r), y1 = Math.min(st.H - 1, s.y + s.r);

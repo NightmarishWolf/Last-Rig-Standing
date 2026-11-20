@@ -12,5 +12,6 @@ canvas#board { display: block; border-radius: var(--radius); cursor: crosshair; 
 .status b { color: var(--text); }
 
 .board-frame { position: relative; display: inline-block; }
+.waves-layer { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: var(--radius); }
 .minimap { position: absolute; right: 10px; bottom: 10px; border: 1px solid rgba(255,255,255,.35); border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,.6); cursor: pointer; background: #050d15; }
 .minimap.hidden { display: none; }

@@ -2,6 +2,9 @@
 // Only the squares inside the camera view are drawn, so huge maps stay fast.
 // Zoomed far out, detail is simplified (no labels, plain shapes) and the
 // terrain comes from a pre-drawn one-pixel-per-square image.
+import { drawWaves } from './waves.js';
+import { drawSprite, hasSprite, spriteZoom } from './sprites.js';
+import { drawLand, drawRipples, waterArt } from './landart.js';
 import * as E from '../../engine/index.js';
 import { DEPOSITS } from '../../data/economy.js';
 import { SHIPS } from '../../data/ships.js';
@@ -15,7 +18,7 @@ import { drawTurrets, endFrame } from './weapons.js';
 import { drawMinimap } from './minimap.js';
 import { drawModeOverlay } from './modes.js';
 import { drawOilTooltip } from './tooltip.js';
-import { drawHull, drawPort, drawRig } from './units.js';
+import { drawHull, drawPort, drawRig, drawShipMarks, drawContact } from './units.js';
 import { drawWorldAbove, drawWorldBelow } from './world.js';
 import { visibleRange } from '../camera.js';
 import { CODES, COL, MARGIN } from '../constants.js';
@@ -53,11 +56,12 @@ export function terrainImage(p) {
   const g = canvas.getContext('2d');
   const img = g.createImageData(W, H);
   const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-  const water = hex(COL.middle), mine = hex(COL.homeMine), theirs = hex(COL.homeEnemy), land = hex(COL.land), ice = [214, 236, 248];
+  const water = hex(COL.middle), mine = hex(COL.homeMine), theirs = hex(COL.homeEnemy), ice = [214, 236, 248];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const z = E.zoneOf(S.st, x, y);
-      const col = E.isLand(S.st, x, y) ? land : S.st.ice?.[y * W + x] ? ice : z === 'middle' ? water : z === p ? mine : theirs;
+      // (land is left as sea here: the painted land goes on top, and its curved coasts need sea under them)
+      const col = S.st.ice?.[y * W + x] && !E.isLand(S.st, x, y) ? ice : z === 'middle' ? water : z === p ? mine : theirs;
       const i = (y * W + x) * 4;
       img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
     }
@@ -71,6 +75,7 @@ function drawBoard() {
   if (!S.st) return;
   const p = me();
   const v = S.spectate ? spectatorView(S.st) : E.getView(S.st, p);
+  S.lastView = v; // (the surf layer cuts ships and rigs out of its waves)
   const ctx = S.ctx, cell = S.cell;
   const R = visibleRange();
   const inView = (x, y) => x >= R.x0 - 1 && x <= R.x1 + 1 && y >= R.y0 - 1 && y <= R.y1 + 1;
@@ -81,20 +86,20 @@ function drawBoard() {
   ctx.fillStyle = '#050d15'; ctx.fillRect(MARGIN, MARGIN, S.view.w, S.view.h); // beyond the map edge
 
   // ---- water and land ----
-  if (detail) {
-    ctx.fillStyle = COL.middle; ctx.fillRect(px(0), py(0), cell * S.st.W, cell * S.st.H);
-    S.st.players.forEach((pl, i) => {
-      const h = pl.home;
-      ctx.fillStyle = i === p ? COL.homeMine : COL.homeEnemy;
-      ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
-      ctx.globalAlpha = i === p ? 0.07 : 0.05; ctx.fillStyle = pcol(i);
-      ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
-      ctx.globalAlpha = 1;
-    });
-  } else {
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(terrainImage(p), px(0), py(0), cell * S.st.W, cell * S.st.H);
+  // the sea (deeper further from land), ripples close up, then each home area as a soft tint of its colour
+  const vx = Math.max(0, R.x0 - 1), vy = Math.max(0, R.y0 - 1), vw = Math.min(S.st.W, R.x1 + 2) - vx, vh = Math.min(S.st.H, R.y1 + 2) - vy;
+  if (vw > 0 && vh > 0) {
+    const wa = waterArt(S.st);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(wa.canvas, vx * wa.s, vy * wa.s, vw * wa.s, vh * wa.s, px(vx), py(vy), vw * cell, vh * cell);
+    drawRipples(ctx, vx, vy, vw, vh, px(vx), py(vy), cell);
   }
+  S.st.players.forEach((pl, i) => {
+    const h = pl.home;
+    ctx.globalAlpha = i === p ? 0.14 : 0.07; ctx.fillStyle = pcol(i);
+    ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
+    ctx.globalAlpha = 1;
+  });
   // my spawn zone
   { const sp = S.st.players[p].spawn; ctx.fillStyle = 'rgba(255,255,255,0.05)';
     ctx.fillRect(px(sp.x0), py(sp.y0), cell * (sp.x1 - sp.x0 + 1), cell * (sp.y1 - sp.y0 + 1)); }
@@ -106,12 +111,10 @@ function drawBoard() {
     for (let y = R.y0; y <= R.y1 + 1; y++) { ctx.moveTo(px(R.x0), Math.round(py(y)) + .5); ctx.lineTo(px(R.x1 + 1), Math.round(py(y)) + .5); }
     ctx.stroke();
   }
-  // land as rounded tiles when zoomed in
-  if (detail) {
-    ctx.fillStyle = COL.land;
-    for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (E.isLand(S.st, x, y)) {
-      roundRect(px(x) + 1, py(y) + 1, cell - 2, cell - 2, 4); ctx.fill();
-    }
+  // land: the painted islands (coasts, beaches, hills, shallows), drawn once per game and scaled to the view
+  {
+    const sx = Math.max(0, R.x0 - 1), sy = Math.max(0, R.y0 - 1), sw = Math.min(S.st.W, R.x1 + 2) - sx, sh = Math.min(S.st.H, R.y1 + 2) - sy;
+    if (sw > 0 && sh > 0) drawLand(ctx, S.st, sx, sy, sw, sh, px(sx), py(sy), cell);
   }
   // home borders in each owner's colour
   ctx.setLineDash([6, 6]);
@@ -209,31 +212,44 @@ function drawBoard() {
   drawBasePieces(v);
   S.animating = false;
   const foes = v.enemyShips.map(e => e.cells);
+  // a ship as its sprite when zoomed in (turned to its heading, in its owner's colour), else the plain hull
+  const sprite = (s, cells, color, alpha) => {
+    if (!spriteZoom() || !hasSprite(s.type)) return false;
+    const [ax, ay] = tweenCells(s.id, [[s.x, s.y]])[0];
+    return drawSprite(ctx, s.type, px(ax), py(ay), s.rot || 0, color, alpha);
+  };
   for (const s of v.myShips) {
     if (!inView(s.x, s.y) && !inView(s.x + 4, s.y + 4)) continue;
     const cells = tweenCells(s.id, E.shipCells(s));
-    drawHull(cells, pcol(p), s.id === S.selectedId, s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
-    drawTurrets(s, cells, foes);
+    const alpha = s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, hp = s.hp / SHIPS[s.type].hp;
+    if (sprite(s, cells, pcol(p), alpha)) drawShipMarks(cells, { sel: s.id === S.selectedId, hpFrac: hp });
+    else { drawHull(cells, pcol(p), s.id === S.selectedId, alpha, CODES[s.type], hp); drawTurrets(s, cells, foes); }
   }
   drawUnitBadges(v);
   drawYardBadges();
   for (const s of v.enemyShips) {
+    const cells = tweenCells(s.id, s.cells);
     if (s.owner < 0) { // pirates and the rogue sub: shown for what they are
-      const cells = tweenCells(s.id, s.cells);
-      drawHull(cells, pcol(s.owner), false, 1, s.neutral === 'rogue' ? '🦈' : '☠', Math.min(1, s.hp / SHIPS[s.type].hp));
+      const hp = Math.min(1, s.hp / SHIPS[s.type].hp);
+      if (sprite(s, cells, pcol(s.owner), 1)) drawShipMarks(cells, { enemy: true, hpFrac: hp, badge: s.neutral === 'rogue' ? '🦈' : '☠' });
+      else drawHull(cells, pcol(s.owner), false, 1, s.neutral === 'rogue' ? '🦈' : '☠', hp);
       continue;
     }
     if (S.spectate) {
-      const cells = tweenCells(s.id, s.cells);
-      drawHull(cells, pcol(s.owner), false, 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
-      drawTurrets(s, cells, v.enemyShips.filter(e => e.owner !== s.owner).map(e => e.cells).concat(v.myShips.map(m => E.shipCells(m))));
+      const hp = s.hp / SHIPS[s.type].hp;
+      if (sprite(s, cells, pcol(s.owner), 1)) drawShipMarks(cells, { hpFrac: hp });
+      else { drawHull(cells, pcol(s.owner), false, 1, CODES[s.type], hp); drawTurrets(s, cells, v.enemyShips.filter(e => e.owner !== s.owner).map(e => e.cells).concat(v.myShips.map(m => E.shipCells(m)))); }
+      continue;
     }
-    else drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, s.burning ? '🔥' : '?', undefined, true); // (burning: badly damaged, can be boarded)
+    // in plain sight: you can see what it is; picked up only by scans, sonar or flashes: an unidentified contact
+    if (s.type && sprite(s, cells, pcol(s.owner), 1)) drawShipMarks(cells, { enemy: true, badge: s.burning ? '🔥' : null });
+    else if (spriteZoom()) drawContact(cells, pcol(s.owner), s.burning ? '🔥' : '?'); // (burning: badly damaged, can be boarded)
+    else drawHull(cells, pcol(s.owner), false, 1, s.burning ? '🔥' : '?', undefined, true);
   }
   drawFx();
   endFrame();
   drawWorldAbove(); // storms, fog banks, next round's event, blowouts
-  for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
+  for (const sp of v.me.spoofs) spriteZoom() ? drawContact([[sp.x, sp.y]], pcol(sp.owner)) : drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
   // my shot markers
   const m = Math.max(1, Math.min(6, cell * 0.2));
   for (const s of v.me.shots) {
@@ -272,6 +288,7 @@ function drawBoard() {
     const ly = py(y) + cell / 2; if (ly > MARGIN) ctx.fillText(E.rowName(y), MARGIN / 2, ly);
   }
   drawMinimap(v);
+  drawWaves(); // (keep the surf in step with the camera)
 }
 
 // The Free Tide's raft network: a woven tint in the owner's colour over the water it covers

@@ -288,7 +288,7 @@ export const SHIPS = {
   },
   qship: {
     // a working oil barge (same hull, refuels nearby ships) with hidden launchers: its shots give no muzzle flash
-    faction: 'tide', role: 'cruiser', name: 'Q-Ship', cls: 'escort', cost: 480, build: 3, hp: 5, oil: 0.6, move: 3, sight: 3,
+    faction: 'tide', role: 'cruiser', name: 'Q-Ship', disguise: 'barge', cls: 'escort', cost: 480, build: 3, hp: 5, oil: 0.6, move: 3, sight: 3,
     shape: [[0, 0], [1, 0], [2, 0], [3, 0]],
     passives: { fuelLine: 2, noFlash: true },
     actions: [{ id: 'missile', kind: 'attack', tag: 'missile', name: 'Hidden Launchers', range: 6, dmg: 2, shots: 2, air: true, money: 12 }],

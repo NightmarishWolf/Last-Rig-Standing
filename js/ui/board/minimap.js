@@ -1,6 +1,7 @@
 // Minimap: the whole world in the corner of the board. Click or drag on it to move the camera.
 import { fogImage } from './fog.js';
 import { terrainImage } from './render.js';
+import { iceArt, landArt, waterArt } from './landart.js';
 import { viewSquares } from '../camera.js';
 import { me, pcol } from '../helpers.js';
 import { S } from '../state.js';
@@ -24,7 +25,10 @@ export function drawMinimap(v) {
   const g = el.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.imageSmoothingEnabled = true;
-  g.drawImage(terrainImage(me()), 0, 0, w, h);
+  g.drawImage(terrainImage(me()), 0, 0, w, h); // (home areas and pack ice)
+  g.globalAlpha = 0.75; g.drawImage(waterArt(S.st).canvas, 0, 0, w, h); g.globalAlpha = 1; // the sea, with the home areas showing through a little
+  const ice = iceArt(S.st); if (ice) g.drawImage(ice.canvas, 0, 0, w, h);
+  g.drawImage(landArt(S.st).canvas, 0, 0, w, h); // (the painted islands, as on the board)
   if (S.fogCanvas && !S.spectate && !S.st.noFog) g.drawImage(S.fogCanvas, 0, 0, w, h);
   const dot = (x, y, col, r = 1.6) => { g.fillStyle = col; g.fillRect(x * k - r / 2, y * k - r / 2, Math.max(r, k), Math.max(r, k)); };
   for (const d of v.deposits) if (d.reserves > 0) dot(d.x, d.y, '#f0a531', 1.4);

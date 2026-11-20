@@ -80,6 +80,7 @@ export function doAct(st, a) {
       if (act.longRange && !seesSquare(st, p, x, y)) return fail("You can't see that square: scout it first (a recon drone, a scan or a ship's sight).");
       spend(st, ship, act);
       ship.combatRound = st.round; // firing counts as combat
+      ship.firedRound = st.round; // (a disguised Q-Ship shows what it is for a round after firing)
       if (firstUse && !passives(ship).noFlash) addFlash(st, ship); // (a Q-Ship's hidden launchers give no flash)
       if (act.longRange && scrambled(st, p, x, y)) {
         st.players[p].shots.push({ x, y, r: 'intercepted', turn: st.turnCount });

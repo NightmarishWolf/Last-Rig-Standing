@@ -48,7 +48,10 @@ export const seatProfile = o => (o.profile && o.profile !== 'guest' ? getProfile
 export function commanderSelect(attr, i, o, faction, bot) {
   const facs = faction === 'random' || !FACTIONS[faction] ? FACTION_ORDER : [faction];
   const prof = bot ? null : seatProfile(o);
-  const cur = o.commander || 'auto';
+  // (a person with a known faction just sees their commanders, the first one picked by default; the
+  // "starting commander" choice only exists while the faction is still a random roll)
+  const known = facs.length === 1;
+  const cur = !bot && known && (!o.commander || o.commander === 'auto') ? COMMANDER_ORDER[facs[0]][0] : o.commander || 'auto';
   const opt = (v, label, extra = '') => `<option value="${v}" ${cur === v ? 'selected' : ''} ${extra}>${label}</option>`;
   const list = facs.flatMap(f => COMMANDER_ORDER[f]).map(id => {
     const c = COMMANDERS[id], open = bot || unlocked(prof, id);
@@ -56,7 +59,7 @@ export function commanderSelect(attr, i, o, faction, bot) {
     return opt(id, `${c.icon} ${c.name}: ${c.title}${open ? lvl : ' 🔒'}`, open ? `title="${c.text}"` : `disabled title="${unlockText(id)}"`);
   }).join('');
   return `<select data-${attr}="${i}" class="cmd-select" title="Commander: perks that grow with their level (see 🎖️ Commanders on the main menu)">
-    ${opt('auto', bot ? '🎲 Commander to suit' : '⭐ First commander')}${list}${opt('none', '— No commander')}</select>`;
+    ${bot ? opt('auto', '🎲 Commander to suit') : known ? '' : opt('auto', `🎲 Starting commander (${FACTION_ORDER.map(f => COMMANDERS[COMMANDER_ORDER[f][0]].name.replace(/^"[^"]*" |^\S+ /, '')).join(' or ')})`)}${list}${opt('none', '— No commander')}</select>`;
 }
 export function profileSelect(attr, i, o) {
   return `<select data-${attr}="${i}" class="prof-select" title="Whose profile earns the commander XP for this seat">

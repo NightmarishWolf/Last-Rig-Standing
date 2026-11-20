@@ -42,6 +42,64 @@ export function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false)
   S.ctx.globalAlpha = 1;
 }
 
+// An unidentified contact (picked up by scan, sonar or a gun flash, not seen): a dark, featureless hull
+// in the owner's colour outline with a "?" - you know something is there and whose it is, not what it is.
+export function drawContact(cells, color, badge = '?') {
+  const ctx = S.ctx, c = S.cell;
+  const xs = cells.map(q => q[0]), ys = cells.map(q => q[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const ins = Math.max(2, c * 0.14);
+  const X = px(minX) + ins, Y = py(minY) + ins, W = (maxX - minX + 1) * c - ins * 2, H = (maxY - minY + 1) * c - ins * 2;
+  const r = Math.min(W, H) / 2;
+  ctx.save();
+  roundRect(X, Y, W, H, r);
+  ctx.fillStyle = 'rgba(12,18,26,0.82)'; ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.5, c * 0.06); ctx.setLineDash([Math.max(3, c * 0.18), Math.max(2, c * 0.12)]);
+  ctx.stroke(); ctx.setLineDash([]);
+  roundRect(X - 2, Y - 2, W + 4, H + 4, r + 2);
+  ctx.strokeStyle = 'rgba(255,77,77,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+  if (c >= 12) {
+    ctx.fillStyle = color; ctx.font = `bold ${Math.max(10, c * 0.42)}px system-ui`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(badge, X + W / 2, Y + H / 2 + 1);
+  }
+  ctx.restore();
+}
+
+// For ships drawn as sprites: just the outline (selection, or red for an enemy), the HP bar and a badge.
+export function drawShipMarks(cells, { sel = false, enemy = false, hpFrac, badge } = {}) {
+  const ins = Math.max(2, S.cell * 0.08), ctx = S.ctx;
+  const set = new Set(cells.map(c => Math.round(c[0]) + ',' + Math.round(c[1])));
+  const edge = (color, w, dash) => {
+    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.setLineDash(dash || []);
+    ctx.beginPath();
+    for (const [x, y] of cells) {
+      const k = Math.round(x) + ',' + Math.round(y), X = px(x), Y = py(y), c = S.cell;
+      const has = (dx, dy) => set.has((Math.round(x) + dx) + ',' + (Math.round(y) + dy));
+      if (!has(0, -1)) { ctx.moveTo(X + ins, Y + ins); ctx.lineTo(X + c - ins, Y + ins); }
+      if (!has(0, 1)) { ctx.moveTo(X + ins, Y + c - ins); ctx.lineTo(X + c - ins, Y + c - ins); }
+      if (!has(-1, 0)) { ctx.moveTo(X + ins, Y + ins); ctx.lineTo(X + ins, Y + c - ins); }
+      if (!has(1, 0)) { ctx.moveTo(X + c - ins, Y + ins); ctx.lineTo(X + c - ins, Y + c - ins); }
+      void k;
+    }
+    ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+  };
+  if (enemy) edge('rgba(255,77,77,0.75)', 1.5, [5, 4]);
+  if (sel) edge('#ffffff', 2);
+  if (hpFrac !== undefined && hpFrac < 1 && S.cell >= 10) {
+    const minX = Math.min(...cells.map(c => c[0])), maxX = Math.max(...cells.map(c => c[0])), maxY = Math.max(...cells.map(c => c[1]));
+    const w = (maxX - minX + 1) * S.cell - 8;
+    ctx.fillStyle = '#300'; ctx.fillRect(px(minX) + 4, py(maxY) + S.cell - 5, w, 3);
+    ctx.fillStyle = hpFrac > 0.5 ? '#7fd17a' : hpFrac > 0.25 ? '#f0a531' : '#ff4d4d';
+    ctx.fillRect(px(minX) + 4, py(maxY) + S.cell - 5, w * Math.max(0, hpFrac), 3);
+  }
+  if (badge && S.cell >= 14) {
+    const mid = cells[Math.floor(cells.length / 2)];
+    ctx.font = `${Math.max(10, S.cell * 0.36)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(badge, px(mid[0]) + S.cell / 2, py(mid[1]) + S.cell / 2);
+  }
+}
+
 export function drawRig(r, color) {
   const x0 = px(r.x), y0 = py(r.y), u = S.cell / 10;
   if (S.cell < 10) { S.ctx.fillStyle = color; S.ctx.fillRect(x0, y0, S.cell, S.cell); S.ctx.fillStyle = '#f0a531'; S.ctx.fillRect(x0 + S.cell * .3, y0 + S.cell * .3, S.cell * .4, S.cell * .4); return; }

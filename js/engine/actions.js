@@ -1,4 +1,5 @@
 // The two public entry points: applyAction() changes the game, getView() is what one player may see.
+import { SHIPS } from '../data/ships.js';
 import { doPower } from './powers.js';
 import { doAct } from './abilities.js';
 import { doFixBlowout, worldRound } from './world.js';
@@ -111,8 +112,11 @@ export function getView(st, p) {
     myShips: st.ships.filter(s => s.owner === p),
     myRigs: st.rigs.filter(r => r.owner === p),
     myMines: st.mines.filter(m => m.owner === p),
-    // (pirates show what they are; anyone can see a ship burning: badly damaged enough to board)
-    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s), ...(burning(st, s, p) ? { burning: true } : {}), ...(s.owner < 0 ? { type: s.type, hp: s.hp, neutral: s.neutral } : {}) })),
+    // (pirates show what they are; a ship in sight shows if it's burning: badly damaged enough to board; a contact doesn't)
+    // (seen with your own eyes: you can tell its type and heading, though a Q-Ship passes for an Oil Barge
+    // until it fires)
+    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s), ...(vis.ident.has(s.id) && burning(st, s, p) ? { burning: true } : {}),
+      ...(vis.ident.has(s.id) ? { type: seenType(st, s), x: s.x, y: s.y, rot: s.rot } : {}), ...(s.owner < 0 ? { type: s.type, x: s.x, y: s.y, rot: s.rot, hp: s.hp, neutral: s.neutral } : {}) })),
     enemyRigs: st.rigs.filter(r => r.owner !== p && vis.rigs.has(r.id)),
     myPorts: forwardPorts(st, p),
     enemyPorts: (st.ports || []).filter(o => o.owner !== p && vis.ports.has(o.id)),
@@ -128,6 +132,12 @@ export function getView(st, p) {
     // the Free Tide's raft network: your own, and enemy Tide around bases and ships you can see
     tides: tidesSeen(st, p, vis),
   };
+}
+
+// what a ship looks like to someone watching it (disguised ships pass for something else until they fire)
+function seenType(st, s) {
+  const d = SHIPS[s.type].disguise;
+  return d && !((s.firedRound ?? -9) >= st.round - 1) ? d : s.type;
 }
 
 function tidesSeen(st, p, vis) {

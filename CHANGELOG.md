@@ -140,3 +140,24 @@ Everything since the oil rig cost cap ($400 maximum for a new rig base), newest 
 - **Bots use powers**, and they're smarter with their faction tools: marines travel with the fleet and land on bases it knocks down, Boarding Skiffs follow the warships, Fireships save themselves for big targets, and specialist ships are built in sensible numbers.
 - Balance: Nyx's Black Market Sale and Ruiz's Swarm Call were trimmed after testing.
 - Rules, the Commanders page and the design notes (`docs/FACTIONS.md`) cover all of the above.
+
+---
+
+## 15. Polish: the map
+
+- **Commander picker:** the "First commander" option is gone; with a faction chosen you just see its commanders (the first one picked). On a 🎲 random faction there's a "Starting commander (Hale or Ruiz)" choice.
+- **Painted land:** natural coastlines, beaches, grass, forest and hills inland, soft relief shading, pale shallows and surf at the shore; tundra and snow on Polar maps; fine grain close up. The squares and rules are unchanged.
+- **Water:** lighter near the coasts and deep blue in open ocean, slow swells, ripples close up, and home areas as soft tints of each player's colour.
+- **Pack ice:** soft-edged floes with cracks instead of flat squares (redrawn when an Icebreaker breaks some).
+- **Animated surf:** waves roll in and break against every coastline when zoomed in (they never wash over ships, rigs or platforms, and fade in fog). Toggle with the 🌊 button in the top bar; off automatically if your system asks for reduced motion.
+- The minimap shows the new land, water and ice.
+
+---
+
+## 16. Polish: ship sprites and identification
+
+- **Ships look like ships:** zoomed in, every ship is drawn as a top-down sprite (hull, deck, guns, flight decks, sails and so on) turned to its heading and marked in its owner's colour. Zoomed far out they're the old blocks.
+- **Seen vs detected:** an enemy you can see with your own ships shows as its sprite (with a red dashed outline), and hovering over it names it. One picked up only by a scan, sonar or a gun flash is an **unidentified contact**: a dark "?" hull outlined in its owner's colour. You know where it is and whose it is, not what it is. 🔥 (burning, can be boarded) now only shows on ships you can see, so a contact never gives away that it's a 1-HP boat.
+- **Q-Ships look like Oil Barges** to the enemy until they open fire; they're unmasked for the round they fire and the next.
+- Subs seen from the next square are identified; heard only on sonar, they stay contacts. Pirates and the rogue sub always show for what they are.
+- Rules and the hint line describe the new contacts.

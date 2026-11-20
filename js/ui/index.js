@@ -1,4 +1,5 @@
 // UI entry point: start-up, refreshing everything, and sending actions to the engine.
+import { setWaves, startWaves, stopWaves, wavesOn } from './board/waves.js';
 import * as E from '../engine/index.js';
 import { cellFromEvent, resize } from './board/canvas.js';
 import { draw, requestDraw } from './board/render.js';
@@ -65,6 +66,12 @@ export function initUI(state, h) {
   const showSnd = () => { snd.textContent = muted() ? '🔇' : '🔊'; snd.title = muted() ? 'Sound off (click to turn on)' : 'Sound on (click to mute)'; };
   snd.onclick = () => { setMuted(!muted()); showSnd(); };
   showSnd();
+  // animated surf on the coasts (on by default; off for people who ask their system for less motion)
+  const wv = document.getElementById('btn-waves');
+  const showWv = () => { wv.style.opacity = wavesOn() ? 1 : 0.45; wv.title = wavesOn() ? 'Animated waves on (click to turn off)' : 'Animated waves off (click to turn on)'; };
+  wv.onclick = () => { setWaves(!wavesOn()); showWv(); if (wavesOn()) startWaves(); else stopWaves(); };
+  showWv();
+  startWaves();
   document.getElementById('btn-menu').onclick = () => S.hooks.showMenu();
   window.addEventListener('keydown', e => asMe(() => onKey(e)));
   resize();
