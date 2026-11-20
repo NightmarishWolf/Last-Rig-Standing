@@ -10,6 +10,7 @@ export const YARDS = {
   home: { name: 'Home Yard', slots: 2, faster: 0 },     // your spawn strip
   port: { name: 'Port Yard', slots: 1, faster: 0 },     // forward ports (ships appear within port range)
   drydock: { name: 'Dry Dock', slots: 2, faster: 1 },   // dry dock platforms (ships appear within 2 squares)
+  tide: { name: 'Raft Dock', slots: 1, faster: 0 },     // Free Tide bases (ships appear anywhere on the base's Tide)
 };
 export const QUEUE = {
   max: 8,            // ships waiting in one yard's line

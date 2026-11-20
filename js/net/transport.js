@@ -10,8 +10,45 @@
 //   host(code)    -> Promise<{ onConnection(cb(conn)), close() }>
 //   join(code)    -> Promise<conn>
 //   conn          = { id, send(msg), onMessage(cb), onClose(cb), close() }
+import { DEFAULT_ICE, RELAYS } from './config.js';
+
 const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const PREFIX = 'last-rig-standing-';
+
+// ---------- relays (TURN servers) ----------
+// The site's own (config.js), plus one a player added on the Online page (kept in this browser).
+export function myRelay() { try { return JSON.parse(localStorage.getItem('lrs-relay')) || null; } catch { return null; } }
+export function setMyRelay(r) {
+  if (!r || !r.urls) localStorage.removeItem('lrs-relay');
+  else localStorage.setItem('lrs-relay', JSON.stringify(r));
+}
+const relayList = r => ({ urls: String(r.urls).split(/[\s,]+/).filter(Boolean), username: r.username || undefined, credential: r.credential || undefined });
+export function iceServers() {
+  const mine = myRelay();
+  return [...DEFAULT_ICE, ...RELAYS, ...(mine?.urls ? [relayList(mine)] : [])];
+}
+const peerOptions = () => ({ config: { iceServers: iceServers(), sdpSemantics: 'unified-plan' } });
+
+// Connection check: which ways out this browser can find. 'host' = this computer, 'srflx' = your
+// public address (direct connections), 'relay' = a relay answered (works even behind strict routers).
+export async function testConnection(servers = iceServers(), ms = 6000) {
+  if (!window.RTCPeerConnection) return { error: 'This browser has no WebRTC.' };
+  const pc = new RTCPeerConnection({ iceServers: servers });
+  const found = { host: 0, srflx: 0, relay: 0 };
+  pc.createDataChannel('test');
+  const done = new Promise(ok => {
+    pc.onicecandidate = e => {
+      if (!e.candidate) { ok(); return; }
+      const m = / typ (\w+)/.exec(e.candidate.candidate);
+      if (m && m[1] in found) found[m[1]]++;
+    };
+    setTimeout(ok, ms);
+  });
+  await pc.setLocalDescription(await pc.createOffer());
+  await done;
+  pc.close();
+  return found;
+}
 
 export const transportName = () => (new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'peer');
 export const transport = () => (transportName() === 'local' ? localTransport : peerTransport);
@@ -70,7 +107,7 @@ const peerError = e => new Error(
 const peerTransport = {
   async host(code) {
     const Peer = await loadPeer();
-    const peer = new Peer(PREFIX + code);
+    const peer = new Peer(PREFIX + code, peerOptions());
     await new Promise((ok, fail) => { peer.on('open', ok); peer.on('error', e => fail(peerError(e))); });
     const subs = [];
     peer.on('connection', c => c.on('open', () => { const w = wrapPeerConn(c); subs.forEach(f => f(w)); }));
@@ -80,13 +117,23 @@ const peerTransport = {
   },
   async join(code) {
     const Peer = await loadPeer();
-    const peer = new Peer();
+    const peer = new Peer(peerOptions());
     await new Promise((ok, fail) => { peer.on('open', ok); peer.on('error', e => fail(peerError(e))); });
     const c = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
     return new Promise((ok, fail) => {
-      const t = setTimeout(() => fail(new Error('No answer from that game. Check the code, and that the host has the game open.')), 15000);
-      peer.on('error', e => { clearTimeout(t); fail(peerError(e)); });
-      c.on('open', () => { clearTimeout(t); const w = wrapPeerConn(c); w.close = () => { c.close(); peer.destroy(); }; ok(w); });
+      // The host was found but the browsers can't reach each other: almost always a strict router or
+      // firewall on one side, which only a relay gets through.
+      const NO_ROUTE = 'Found the game, but your network and the host\'s couldn\'t connect (a strict router or firewall). '
+        + 'Add a relay under Connection settings on the Online page, or try another network (e.g. a phone hotspot).';
+      let finished = false;
+      const end = (err, w) => { if (finished) return; finished = true; clearTimeout(t); clearInterval(watch); if (err) { try { peer.destroy(); } catch { /* gone */ } fail(err); } else ok(w); };
+      const t = setTimeout(() => {
+        const ice = c.peerConnection?.iceConnectionState;
+        end(new Error(ice && ice !== 'new' ? NO_ROUTE : 'No answer from that game. Check the code, and that the host has the game open.'));
+      }, 20000);
+      const watch = setInterval(() => { if (c.peerConnection?.iceConnectionState === 'failed') end(new Error(NO_ROUTE)); }, 500);
+      peer.on('error', e => end(peerError(e)));
+      c.on('open', () => { const w = wrapPeerConn(c); w.close = () => { c.close(); peer.destroy(); }; end(null, w); });
     });
   },
 };

@@ -55,7 +55,7 @@ export const PLATFORMS = {
   // Strike platforms: you aim them yourself from the base card. Base weapons never reach further than 10
 // squares; ships with cruise missiles (range 14) outrange them all, so a turtle has to sail out and fight. They need a target you can see
   // (your own vision, a scan or a recon drone this turn), cost oil (and money) per shot, and can be
-  // intercepted by AA Platforms and Frigates or scrambled by Jammer Ships.
+  // intercepted by AA Platforms and Frigates or scrambled by Electronic Warfare Ships.
   cruise: { name: 'Cruise Missile Battery', code: 'C', cost: 580, turns: 4, hp: 3, upkeep: 7, tech: 'cruise_missiles',
     strike: { name: 'Cruise Missile', range: 6, dmg: 3, area: 1, oil: 4, money: 35, cooldown: 2 },
     text: 'Coastal defence: fires a cruise missile at anything you can see up to 6 squares away: 3 damage, 4 oil and $35 per launch, reloads in 2 turns. (Ships with cruise missiles outrange it.)' },

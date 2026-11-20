@@ -1,4 +1,5 @@
 // Mouse and keyboard: clicks on the board and on the side panel.
+import { POWERS } from '../data/commanders.js';
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
 import { draw } from './board/render.js';
@@ -46,6 +47,11 @@ export function onBoardClick(c, shift = false) {
   }
   if (S.mode.kind === 'placePlatform') {
     const r = dispatch({ type: 'buildPlatform', kind: S.mode.platform, x: c.x, y: c.y });
+    if (r.ok) S.mode = { kind: 'idle' };
+    return refresh();
+  }
+  if (S.mode.kind === 'power') {
+    const r = dispatch({ type: 'power', power: S.mode.power, x: c.x, y: c.y });
     if (r.ok) S.mode = { kind: 'idle' };
     return refresh();
   }
@@ -134,7 +140,7 @@ function planTurn() {
 export function cancelMode() {
   if (researchOpen()) { closeResearch(); return refresh(); }
   if (S.plan.length) { S.plan = []; return refresh(); } // Esc first clears planned waypoints
-  if (['placePlatform', 'baseStrike', 'satellite'].includes(S.mode.kind)) { S.mode = { kind: 'idle' }; return refresh(); }
+  if (['placePlatform', 'baseStrike', 'satellite', 'power'].includes(S.mode.kind)) { S.mode = { kind: 'idle' }; return refresh(); }
   if (S.selectedBase && S.mode.kind === 'idle') { S.selectedBase = null; return refresh(); }
   if (['target', 'placeRig', 'placePort', 'fleetPick', 'patrolPick', 'escortPick'].includes(S.mode.kind)) S.mode = selected() ? { kind: 'move' } : { kind: 'idle' };
   else { S.selectedId = null; S.mode = { kind: 'idle' }; }
@@ -142,6 +148,7 @@ export function cancelMode() {
 }
 
 export function onKey(e) {
+  if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return; // typing (chat, names)
   if (!document.getElementById('overlay').classList.contains('hidden')) return;
   if (document.body.classList.contains('at-home')) return; // the main menu handles its own keys
   if (e.key === 'Escape') return cancelMode();
@@ -186,10 +193,18 @@ export function onKey(e) {
 }
 
 export function onPanelClick(e) {
+  // the auto-sell amount: click it to type a number (Enter or clicking away sets it, Esc cancels)
+  const k = e.target.closest('[data-autokeep-edit]');
+  if (k && !S.botTurn) { editAutoKeep(k); return; }
+  const j = e.target.closest('[data-jump]');
+  if (j) { const [x, y] = j.dataset.jump.split(',').map(Number); centerOn(Math.max(0, Math.min(S.st.W - 1, x)), Math.max(0, Math.min(S.st.H - 1, y))); requestDraw(); return; }
   if (S.botTurn) return;
   const b = e.target.closest('button');
   if (!b || b.disabled) return;
   const d = b.dataset;
+  if (d.fixblowout) { dispatch({ type: 'fixBlowout', rigId: d.fixblowout }); refresh(); return; }
+  if (d.autosellToggle !== undefined) { const a = S.st.players[me()].autoSell; dispatch({ type: 'setAutoSell', on: !a?.on }); refresh(); return; }
+  if (d.autokeep) { const a = S.st.players[me()].autoSell; dispatch({ type: 'setAutoSell', keep: (a?.keep || 0) + (+d.autokeep) * (e.shiftKey ? 10 : 1) }); refresh(); return; }
   if (d.act) {
     const s = selected();
     const act = SHIPS[s.type].actions.find(a => a.id === d.act);
@@ -245,6 +260,12 @@ export function onPanelClick(e) {
   if (d.platform) S.mode = S.mode.kind === 'placePlatform' && S.mode.platform === d.platform ? { kind: 'idle' } : { kind: 'placePlatform', platform: d.platform, baseId: S.selectedBase };
   if (d.strike) S.mode = S.mode.kind === 'baseStrike' && S.mode.platformId === d.strike ? { kind: 'idle' } : { kind: 'baseStrike', platformId: d.strike };
   if (d.satellite) S.mode = S.mode.kind === 'satellite' ? { kind: 'idle' } : { kind: 'satellite' };
+  if (d.power) {
+    // commander powers: aimed ones wait for a square, the rest go off at once
+    const w = POWERS[d.power];
+    if (w.target) S.mode = S.mode.kind === 'power' && S.mode.power === d.power ? { kind: 'idle' } : { kind: 'power', power: d.power };
+    else { dispatch({ type: 'power', power: d.power }); S.mode = { kind: 'idle' }; }
+  }
   if (d.sellShip) {
     const sh = S.st.ships.find(x => x.id === d.sellShip);
     showConfirm('Sell this ship?', `Your ${SHIPS[sh.type].name} will be scrapped for ${usd(E.shipSaleValue(S.st, sh))}.`, 'Sell', () => { dispatch({ type: 'sellShip', shipId: sh.id }); S.selectedId = null; S.mode = { kind: 'idle' }; refresh(); }, () => {});
@@ -289,4 +310,28 @@ export function onResearchClick(e) {
   }
   refresh();
   renderResearch();
+}
+
+function editAutoKeep(span) {
+  const cur = S.st.players[me()].autoSell?.keep || 0;
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.min = '0'; inp.step = '1'; inp.value = cur;
+  inp.className = 'text-in autokeep-in';
+  span.replaceWith(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    done = true;
+    inp.classList.remove('autokeep-in'); // (so the redraw below doesn't keep this box)
+    const v = Math.round(+inp.value);
+    if (commit && Number.isFinite(v) && v !== cur) dispatch({ type: 'setAutoSell', keep: v });
+    refresh();
+  };
+  inp.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  };
+  inp.onblur = () => finish(true);
 }

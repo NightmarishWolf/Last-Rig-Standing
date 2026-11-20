@@ -75,3 +75,20 @@ details.shop-tier > summary.tier-head span:first-child::before { content: '▸ '
 details.shop-tier[open] > summary.tier-head span:first-child::before { content: '▾ '; }
 .key-hint { opacity: .6; font-size: 11px; margin-left: 2px; }
 .simul-badge { margin-left: 8px; font-size: 12px; color: #ffd666; border: 1px solid rgba(255,214,102,.4); border-radius: 999px; padding: 1px 8px; }
+/* world events card */
+.world-card .world-row { padding: 3px 0; font-size: 13px; }
+.world-card .world-row.next { color: #ffd666; }
+.world-card .jump { color: var(--accent, #6fb6ff); cursor: pointer; text-decoration: underline dotted; }
+/* auto-sell (Automated Trading) */
+.autosell { display: flex; align-items: center; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.autosell .autokeep { min-width: 34px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; padding: 2px 6px; border: 1px dashed var(--line, #2a3a4a); border-radius: 6px; cursor: text; }
+.autosell .autokeep:hover { border-color: var(--accent, #6fb6ff); }
+.autokeep-in { width: 58px; padding: 2px 4px; text-align: center; }
+
+/* commander powers */
+.cmd-panel h3 { display: flex; gap: 6px; align-items: baseline; }
+.power-row { flex-wrap: wrap; gap: 6px; }
+.power-btn { display: inline-flex; align-items: center; gap: 4px; }
+.power-btn.active { outline: 2px solid #f2c14e; }
+.power-btn .pw-icon { font-size: 15px; }
+.power-btn .pw-cd { background: rgba(0, 0, 0, .35); border-radius: 8px; padding: 0 6px; font-size: 11px; }

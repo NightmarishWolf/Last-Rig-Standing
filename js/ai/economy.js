@@ -20,7 +20,12 @@ export async function sellOil(ctx) {
   const coming = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
   const early = E.basesOf(st, p).length < 3;
   const expanding = ships.some(s => { const t = ctx.mem.tasks[s.id]; return t?.kind === 'expand' && cheb(s, t) <= (early ? 16 : 6); });
-  const keep = expanding ? 6 : Math.min(cap - 5, Math.max(10, Math.round(perTurn)));
+  // fuel for the strike groups at sea: a full move each, kept back from selling and from other sailing
+  const fleetNeed = ctx.phase === 'war' ? (ctx.mem.strikes || []).reduce((t, g) => {
+    const f = E.fleetById(st, g.fleetId);
+    return f ? t + E.fleetShips(st, f).reduce((a, s) => a + E.moveCost(st, s, E.fleetSpeed(st, f)), 0) : t;
+  }, 0) : 0;
+  const keep = expanding ? 6 + fleetNeed : Math.min(cap - 5, Math.max(10, Math.round(perTurn), Math.round(fleetNeed * 1.5)));
   // (a big stockpile isn't worth hoarding for a better price: it only buys anything once it's sold)
   const hoard = me.oil > Math.max(30, coming * 3);
   const floorPrice = sharp(ctx) ? MARKET.basePrice * (hoard ? 0.45 : 0.6) : 0;
@@ -46,7 +51,8 @@ export async function sellOil(ctx) {
   amount = Math.min(amount, me.oil);
   if (amount > 0) await ctx.do({ type: 'sell', amount });
   // what's left is this turn's budget for sailing (expanders first, then surveyors, the spy and the fleet)
-  ctx.oilBudget = Math.max(0, me.oil - (sharp(ctx) ? 1 : 0));
+  ctx.fleetOil = Math.min(me.oil, fleetNeed);
+  ctx.oilBudget = Math.max(0, me.oil - ctx.fleetOil - (sharp(ctx) ? 1 : 0));
 }
 
 // ---------- research ----------
@@ -58,7 +64,8 @@ export async function research(ctx) {
     // (and when its rigs are close to running dry, drilling deeper comes first: a dry rig pumps nothing)
     const drying = st.rigs.some(rg => rg.owner === p && (st.deposits.find(d => d.id === rg.depId)?.reserves ?? 99) < 25);
     const deeper = drying && sharp(ctx) ? ['deep_drilling', 'ultra_deep', 'abyssal_drilling'] : [];
-    const plan = sharp(ctx) ? ['seismic', ...deeper, ...ctx.pers.research] : ctx.pers.research;
+    const polar = st.ice ? ['ice_hulls'] : []; // Polar maps: the oil under the ice needs an Icebreaker
+    const plan = sharp(ctx) ? [...polar, 'seismic', ...deeper, ...ctx.pers.research] : [...polar, ...ctx.pers.research];
     for (const id of plan) {
       const s = techState(st, p, id);
       if (s === 'available' || s === 'blocked') { pick = id; break; }
@@ -178,7 +185,8 @@ export async function buildBases(ctx) {
   // platforms cost upkeep: wait until the oil is flowing
   const oilIn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
   if (oilIn < 5 && me.money < 600) return;
-  const platReserve = E.upkeepTotal(st, p) * 3 + 40;
+  // (at war, a share of the money being saved for the next warship stays put: build.js warFund)
+  const platReserve = E.upkeepTotal(st, p) * 3 + 40 + (ctx.phase === 'war' ? Math.round((ctx.mem.warFund || 0) * ctx.pers.fleetShare) : 0);
   // 2) upgrades
   for (const b of bases) {
     const next = BASE_LEVELS[b.level + 1];

@@ -12,12 +12,16 @@ import { hasTech } from './research.js';
 import { TECH } from '../data/research.js';
 import { scrambled, seesSquare } from './strikes.js';
 import { fail, log, ok, others, passives, portAt, r2, rigAt, shipAt } from './util.js';
+import { addSpill, doCleanSpill, inStorm, spillAt } from './world.js';
+import { doAssault, doBoard, doSiphon } from './factions.js';
+import { tallyUnit } from './util.js';
 
 // ---------- actions ----------
 export function actionRange(st, ship, act) {
   if (act.kind === 'attack' || act.kind === 'scan' || act.kind === 'spoof') return weaponStat(st, ship.owner, act, 'range') + commandBonus(st, ship);
   if (act.kind === 'survey') return 0;
-  return 1; // mine, repair, salvage: adjacent squares
+  if (act.kind === 'clean' || act.kind === 'assault') return act.range || 2;
+  return 1; // mine, repair, salvage, board: adjacent squares
 }
 
 export function canUseAction(st, ship, act) {
@@ -32,6 +36,7 @@ export function canUseAction(st, ship, act) {
     return 'Already acted this turn.';
   }
   if (act.kind === 'mine' && st.mines.filter(m => m.layer === ship.id).length >= act.max) return `Max ${act.max} mines out.`;
+  if (act.tag === 'air' && shipCells(ship).some(([x, y]) => inStorm(st, x, y))) return 'Grounded: no aircraft fly in the storm.';
   return null;
 }
 
@@ -39,10 +44,12 @@ function spend(st, ship, act) {
   if (act.free) { ship.freeUsed[act.id] = true; }
   else if (ship.activeAction === act.id && ship.shotsLeft > 0) { ship.shotsLeft--; }
   else { ship.acted = true; ship.activeAction = act.id; ship.shotsLeft = (act.kind === 'attack' ? weaponStat(st, ship.owner, act, 'shots') : 1) - 1; }
-  if (act.cooldown && (ship.shotsLeft === 0 || act.free)) ship.cooldowns[act.id] = act.cooldown;
+  const cd = act.cooldown ? weaponStat(st, ship.owner, act, 'cooldown') : 0; // (perks can shorten it)
+  if (cd && (ship.shotsLeft === 0 || act.free)) ship.cooldowns[act.id] = cd;
   // every use costs money (each shot, for multi-shot weapons); long-range launches also burn oil
   const pl = st.players[ship.owner];
-  if (act.money) pl.money = r2(pl.money - act.money);
+  // (Ruiz's skiffs survey for free from level 13)
+  if (act.money && !(act.kind === 'survey' && SHIPS[ship.type].pack && pstat(st, ship.owner, 'freeSkiffSurvey'))) pl.money = r2(pl.money - act.money);
   if (act.oil) pl.oil = r2(pl.oil - act.oil);
 }
 
@@ -61,19 +68,48 @@ export function doAct(st, a) {
     if (dist(cells, [[x, y]]) > actionRange(st, ship, act)) return fail('Out of range.');
   }
   const firstUse = !ship.acted || ship.activeAction !== act.id;
+  if (act.tag === 'air' && inStorm(st, x, y)) return fail('No aircraft fly into the storm.');
   switch (act.kind) {
+    case 'clean': {
+      if (!spillAt(st, x, y)) return fail('Pick a square of an oil slick within 2 squares.');
+      spend(st, ship, act);
+      return doCleanSpill(st, ship, act, x, y);
+    }
     case 'attack': {
       // long-range weapons need a target square you can actually see, and cost oil per launch
       if (act.longRange && !seesSquare(st, p, x, y)) return fail("You can't see that square: scout it first (a recon drone, a scan or a ship's sight).");
       spend(st, ship, act);
       ship.combatRound = st.round; // firing counts as combat
-      if (firstUse) addFlash(st, ship);
+      if (firstUse && !passives(ship).noFlash) addFlash(st, ship); // (a Q-Ship's hidden launchers give no flash)
       if (act.longRange && scrambled(st, p, x, y)) {
         st.players[p].shots.push({ x, y, r: 'intercepted', turn: st.turnCount });
         log(st, p, `${act.name} was scrambled by enemy jamming and missed.`);
         break;
       }
       resolveShot(st, ship, act, x, y);
+      // an Incendiary Junk's burning oil keeps burning on the water
+      if (act.fireSlick && !isLand(st, x, y)) addSpill(st, x, y, 'fire', 0, p);
+      // a Fireship goes up with its target
+      if (act.selfDestruct && st.ships.includes(ship)) {
+        st.ships = st.ships.filter(s => s !== ship);
+        tallyUnit(st, p, ship.type, 'lost');
+        log(st, p, `Your ${SHIPS[ship.type].name} rammed ${coord(x, y)} and went up in flames.`, { x, y });
+      }
+      break;
+    }
+    case 'board': {
+      const r = doBoard(st, ship, act, x, y, () => spend(st, ship, act));
+      if (r) return r;
+      break;
+    }
+    case 'siphon': {
+      const r = doSiphon(st, ship, act, x, y, () => spend(st, ship, act));
+      if (r) return r;
+      break;
+    }
+    case 'assault': {
+      const r = doAssault(st, ship, act, x, y, () => spend(st, ship, act));
+      if (r) return r;
       break;
     }
     case 'scan': {
@@ -153,7 +189,8 @@ function doScan(st, ship, act, tx, ty) { return doScanAt(st, ship.owner, act, tx
 
 // Reveal a size×size box for player p (ship scans, recon drones, satellite passes).
 export function doScanAt(st, p, act, tx, ty) {
-  const lo = -Math.floor((act.size - 1) / 2), hi = lo + act.size - 1;
+  const size = p >= 0 ? weaponStat(st, p, act, 'size') : act.size;
+  const lo = -Math.floor((size - 1) / 2), hi = lo + size - 1;
   const box = [];
   for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++)
     if (inBounds(st, tx + dx, ty + dy)) box.push([tx + dx, ty + dy]);

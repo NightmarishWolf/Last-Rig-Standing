@@ -1,11 +1,14 @@
 // Fog of war: what each player can see, and what blocks movement or placement.
 import { PLATFORMS } from '../data/bases.js';
+import { SHIPS } from '../data/ships.js';
+import { inFogBank } from './world.js';
 import { PORT, RIG } from '../data/economy.js';
 import { baseById, baseRadius } from './bases.js';
 import { dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
 import { passives, rigAt, shipAt } from './util.js';
+import { tideSources } from './factions.js';
 
 const platformAt = (st, x, y) => (st.platforms || []).find(o => o.x === x && o.y === y);
 
@@ -20,7 +23,31 @@ export function sightSources(st, p) {
   }
   for (const o of st.platforms || []) if (o.owner === p && !o.buildLeft) src.push([[[o.x, o.y]], PLATFORMS[o.kind].sight || 1]);
   for (const o of forwardPorts(st, p)) src.push([[[o.x, o.y]], PORT.sight]);
+  // the Free Tide sees across its rafts
+  for (const o of tideSources(st, p)) src.push([[[o.x, o.y]], o.r]);
+  // a fog bank: nothing inside sees further than 1 square
+  if (st.events?.active?.some(e => e.kind === 'fogbank')) for (const s of src) if (s[0].some(([x, y]) => inFogBank(st, x, y))) s[1] = Math.min(s[1], 1);
   return src;
+}
+
+// ---------- reveal fog (st.exploreFog) ----------
+// Squares a player has ever seen stay visible for good (live, not a memory), kept as bits:
+// pl.revealed[i >> 5] has bit (i & 31) set for square i = y * W + x.
+export function isExplored(st, p, x, y) {
+  const e = st.players[p].revealed, i = y * st.W + x;
+  return !!e && ((e[i >> 5] >>> (i & 31)) & 1) === 1;
+}
+export function exploreAll(st) {
+  if (!st.exploreFog) return;
+  const { W, H } = st, words = Math.ceil(W * H / 32);
+  st.players.forEach((pl, p) => {
+    if (pl.out) return;
+    const e = pl.revealed ||= new Array(words).fill(0);
+    for (const [cells, r] of sightSources(st, p))
+      for (const [cx, cy] of cells)
+        for (let y = Math.max(0, cy - r); y <= Math.min(H - 1, cy + r); y++)
+          for (let x = Math.max(0, cx - r); x <= Math.min(W - 1, cx + r); x++) { const i = y * W + x; e[i >> 5] |= 1 << (i & 31); }
+  });
 }
 
 // ---------- visibility ----------
@@ -30,8 +57,14 @@ export function visibility(st, p) {
   const src = sightSources(st, p);
   const ships = new Set(), rigs = new Set(), ports = new Set(), platforms = new Set();
   // stealth research on the *target's* side shortens how far it can be seen from
+  const fogBank = st.events?.active?.some(e => e.kind === 'fogbank');
   const seenBy = (cells, owner) => {
-    const minus = owner === undefined ? 0 : pstat(st, owner, 'stealth');
+    // inside a fog bank only things right next to you are seen (even with fog of war off)
+    const fogged = fogBank && cells.some(([x, y]) => inFogBank(st, x, y));
+    if (fogged) return src.some(([c]) => dist(c, cells) <= 1);
+    if (st.noFog) return true;
+    if (st.exploreFog && cells.some(([x, y]) => isExplored(st, p, x, y))) return true;
+    const minus = owner === undefined || owner < 0 ? 0 : pstat(st, owner, 'stealth');
     for (const [c, r] of src) if (dist(c, cells) <= r - minus) return true;
     return false;
   };
@@ -40,9 +73,11 @@ export function visibility(st, p) {
     const cells = shipCells(e);
     if (rev.ships.includes(e.id)) { ships.add(e.id); continue; }
     if (passives(e).submerged) {
+      // (Nyx's Phantoms: Ghost Boats aren't seen even right next to you, only by sonar)
+      const phantom = passives(e).ghost && e.owner >= 0 && pstat(st, e.owner, 'ghostHidden') > 0;
       const near = mine.some(s => {
         const d = dist(shipCells(s), cells), sonar = shipStat(st, p, s.type, 'sonar');
-        return d <= 1 || (sonar && d <= sonar);
+        return (d <= 1 && !phantom) || (sonar && d <= sonar);
       });
       if (near) ships.add(e.id);
     } else if (seenBy(cells, e.owner)) ships.add(e.id);
@@ -67,6 +102,7 @@ export function visibility(st, p) {
 export function placementOk(st, owner, cells, ignoreId, vis) {
   for (const [x, y] of cells) {
     if (!inBounds(st, x, y) || isLand(st, x, y)) return false;
+    if (st.ice?.[y * st.W + x] && !SHIPS[st.ships.find(s => s.id === ignoreId)?.type]?.passives?.iceBreaker) return false; // pack ice
     if (st.blocked && st.blocked.includes(x + ',' + y)) return false;
     const s = shipAt(st, x, y, o => o.id !== ignoreId && (o.owner === owner || vis.ships.has(o.id)));
     if (s) return false;

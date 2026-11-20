@@ -4,13 +4,15 @@ import { PLAYER_COLORS } from '../data/maps.js';
 import { MARGIN } from './constants.js';
 import { S } from './state.js';
 
-export const pcol = p => PLAYER_COLORS[p];
+// (p = -1: the neutral side, pirates or a rogue submarine)
+export const NEUTRAL_COLOR = '#d6455d';
+export const pcol = p => (p < 0 ? NEUTRAL_COLOR : PLAYER_COLORS[p]);
 
 // $122.78 / 52.51 (whole numbers without the decimals)
 export const usd = v => '$' + E.fmt2(v);
 export const oil = v => E.fmt2(v);
 
-export const pname = p => S.st.players[p].name;
+export const pname = p => E.pname(S.st, p);
 
 export const px = x => MARGIN + (x - S.cam.x) * S.cell;
 

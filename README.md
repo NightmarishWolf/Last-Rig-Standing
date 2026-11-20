@@ -98,7 +98,10 @@ js/
     economy.js           launch zones, selling oil
     ports.js             forward ports on island coasts
     turns.js             start of turn, upkeep, domination, elimination
-    visibility.js        fog of war
+    visibility.js        fog of war (on, off, or reveal: what you've seen stays visible)
+    terrain.js           the world's land, from seeded noise
+    maptypes.js          map types: how each one reshapes the land, and where its oil gathers
+    world.js             oil spills, world events (weather, economy, pirates, rogue sub), pack ice
     stats.js             prices, upkeep, movement cost, domination counts
     modifiers.js         every ship/weapon/player stat with research bonuses applied
     research.js          research points, queue, doctrines, unlocks
@@ -124,23 +127,33 @@ js/
     summary.js           "since your last turn" report at the start of each turn
     sound.js             sound effects, made in code (Web Audio): guns, missiles, torpedoes, explosions...
     dialogs.js           overlays, confirm box, Rules screen
+    chat.js              online chat panel and quick emotes
     research.js          the research tree screen
     board/               the canvas: render.js draws it layer by layer;
                          units, fog, modes (move/target/placing/voyages), fleets (fleets, standing
                          orders, yard badges), tooltip, markers, minimap; weapons.js draws turrets and every
                          weapon's shots and impacts (fx.js animates computer turns)
   net/                   online play: transport.js (how browsers connect: PeerJS peer-to-peer, or
-                         BroadcastChannel between tabs with ?net=local), session.js (host/client messages)
+                         BroadcastChannel between tabs with ?net=local; relay test), session.js (host/client
+                         messages, heartbeat, chat, pause, out-of-sync reports), config.js (relay servers)
   app/                   menus and game flow
     menu.js              full-screen main menu: Continue/Resume, new-game setup, load/save pages
     gameover.js          the game-over page: results table, charts, game-data download
-    online.js            online games: lobby start, passing moves, whose turn, skip / bot takeover
+    online.js            online games: lobby start, passing moves, whose turn, pausing when someone drops,
+                         bot takeover / carry on without them, host-kept timers, reconnecting, chat wiring
+    replay.js            records every game's moves (IndexedDB) for replays; replay files
+    replayer.js          the replay viewer: play, scrub, speeds, whose view
     simul.js             simultaneous rounds: bots playing alongside you, Ready / Not ready, round changes
     bots.js              computer turns on screen: animation, curtain, spectator controls
     flow.js              pass-the-device, game over, tutorial enter/exit
     timer.js             turn timer
     storage.js           save slots in the browser (autosaves, named saves, export/import files)
     settings.js, state.js
+  lab/                   the Balance lab (Main menu → 📊 Balance lab)
+    lab.js               the page: run bot games, add real games' data, download results
+    worker.js, run.js    plays bot games in the background (run.js is also used by tools/simulate.mjs)
+    stats.js             one record per game, and the totals over many games
+    dashboard.js         the charts and tables
   tutorial/
     steps.js             the tutorial steps and coach text (edit text here)
     map.js               the tutorial's hand-built map
@@ -148,7 +161,47 @@ js/
 
 tools/
   simulate.mjs           bot-vs-bot simulator (needs Node.js 18+): node tools/simulate.mjs games=20 size=small players=4
+                         out=results.json saves stats for the Balance lab; replays=folder saves watchable replays
 ```
+
+### Factions
+
+Two factions so far: the **Coalition Navy** and the **Free Tide** (design notes and what comes later,
+commanders included: `docs/FACTIONS.md`). Their numbers (supply ranges, Tide growth, plunder share,
+boarding threshold) are in `js/data/factions.js`; the rules in `js/engine/factions.js`. Ships carry a
+`faction` and a `role` (`js/data/ships.js`): bots look ships up by role (`shipFor('tide', 'line')` →
+Raider Brig), so each faction's version of a job is found the same way. Research branches with a
+`faction` belong to it; a Tide tech with `same: '<navy tech>'` counts as that tech wherever shared
+research or platforms need it. Personalities have a `tide` block (`js/data/bots.js`) with the Free
+Tide's ship likes and research order. To compare: `node tools/simulate.mjs games=8 factions=navy,tide`,
+or the Balance lab's faction pickers ("By faction" and "Faction matchups" tables).
+
+### Commanders and profiles
+
+Six commanders (three per faction): `js/data/commanders.js` has their perks per level (in the research
+effect format, plus `on` to aim a weapon bonus at one ship class), exclusive ships (in `ships.js`, with
+`commander` and `needs`), the XP curve, unlock rules and bot levels. Profiles (name, commander XP,
+mastery, records; export/import) are in `js/app/profile.js`; the Commanders page is `js/app/commanders.js`.
+The engine only sees `players[p].commander = { id, level, mastery }` (or null), set from the seat;
+`commanderLevel1` in the game options plays everyone at level 1. Powers (`powers` in each commander, the
+"power" action) live in `js/engine/powers.js`; bots use them from `js/ai/commanders.js`. Tests: `tests/commanders.test.mjs`.
+
+### World events and spills
+
+`js/data/events.js` has every event's name, description (also the setup page's hover text), how often
+they happen and their numbers (storm size, bounties, blowout fix cost, spill sizes...). The rules are in
+`js/engine/world.js`: `worldRound` runs once at the start of every round, announces the next event a
+round ahead and runs the active ones. Pirates and the rogue sub are ships with owner −1 (the neutral
+side) that the engine itself steers, so every copy of a game sees the same thing. Bots' handling:
+`js/ai/world.js` (blowouts, cleanup, Icebreakers) plus a nudge in `expansion.js` toward super-rich fields.
+
+### Map types
+
+`js/data/maps.js` MAP_TYPES has each type's name and description; `js/engine/maptypes.js` SHAPES has
+how it's made (noise mix, land share, a `bias(g, x, y)` that raises or lowers land per square, where the
+oil gathers, and a deposit multiplier). Whatever the shape, every map is mirrored (if chosen), keeps
+open water around the spawns, fills lakes, and guarantees a warship lane between every home. To check
+a type: `node tools/simulate.mjs games=8 map=strait` and the Balance lab's "By map type" table.
 
 ### Common edits
 
@@ -203,8 +256,40 @@ To try it on one computer, open the page with `?net=local` in two tabs: they con
 without the internet. Peer-to-peer is meant for testing; a Cloudflare server can replace
 `js/net/transport.js` later without changing the rest.
 
+If players can't connect (strict routers, mobile data, offices), they need a **relay** (TURN server).
+PeerJS's free public relay is always tried; for reliable games add your own in `js/net/config.js`
+(used by every player of your copy) or under Online → Connection settings (one browser). Free tiers
+exist, e.g. Cloudflare Realtime TURN or Metered.ca's Open Relay. "Test my connection" there shows
+whether direct connections and the relay work from that network.
+
+While playing: **chat** (💬, or press `/`) with quick emotes; if someone **drops**, the game pauses for
+everyone until they're back, or the host lets a bot play for them or carries on without them (their
+turns are skipped); the host can also pause by hand (⏸ by the 🌐 badge). Players who lose the host
+**reconnect by themselves** (for about 10 minutes), so a reload on either side doesn't end the game. With
+a turn timer, the **host enforces it** (a few seconds' grace), so nobody can stall. If a player's copy
+of the game drifts out of sync, the host gets a report of what differed (also in the game-data file)
+and sends them a fresh copy.
+
 After any game, **⬇️ Download game data** on the results page saves the settings, every player's
-totals, the round-by-round history and (online) every move, for balancing.
+totals (per ship class too), the round-by-round history, every move and any out-of-sync reports, for
+balancing: add these files to the Balance lab.
+
+## Replays
+
+Every game is recorded as you play (the starting game plus every move; the engine is deterministic,
+so playing the moves again gives the same game). **🎬 Watch replay** on the results page, or Load game →
+Replays: play, pause, step a turn at a time, scrub, five speeds, and watch with everything visible or
+through one admiral's fog of war. ⬇️ downloads a replay to share; Load game → Import plays it on another
+computer. Opening a replay checks it plays back exactly and warns if not (that would be a bug). The
+last 15 replays are kept (in the browser's IndexedDB).
+
+## Balance lab
+
+Main menu → 📊 Balance lab runs bot-vs-bot games in the background and shows: win rates by
+personality, difficulty and seat; how games end and how long they last; every ship class (built,
+survival, kills, damage and enemy value sunk per $ spent, winners vs the rest); the economy over time
+(winners vs the rest); and the research winners favour. Add **game data** files from real games to see
+how people play, and download results to compare before and after a change.
 
 ## Simultaneous rounds
 

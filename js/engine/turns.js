@@ -11,8 +11,11 @@ import { shipStat } from './modifiers.js';
 import { processResearch } from './research.js';
 import { processYards } from './production.js';
 import { tickStrikes } from './strikes.js';
+import { tickPowers } from './powers.js';
 import { visibility } from './visibility.js';
 import { alivePlayers, log, others, passives, rigAt, tally } from './util.js';
+import { calmBonus, stormMoves, worldRound } from './world.js';
+import { burnSlicks, processSupply, processTide, tideMoves, tideSources } from './factions.js';
 
 // ---------- turns ----------
 export function startTurn(st, p, first = false) {
@@ -39,9 +42,15 @@ export function startTurn(st, p, first = false) {
 
   // bases: finish construction, heal, repair, gun platforms fire
   processBases(st, p, visibility(st, p).ships);
+  // burning water: Incendiary Junk fire slicks, and (Kade's Slicks Burn) any slick, hurt ships starting a turn in them
+  burnSlicks(st, p);
+  // faction mechanics: Navy ships in supply repair; the Free Tide grows and heals its ships
+  processSupply(st, p);
+  processTide(st, p);
   // shipyards: build, and launch finished ships (ready to sail this turn)
   processYards(st, p);
   tickStrikes(st, p);
+  tickPowers(st, p); // commander powers recharge
   // oil from rigs (central rigs and Wellheads), plus drillships parked on deposits
   let produced = 0;
   for (const r of st.rigs.filter(r => r.owner === p)) {
@@ -80,11 +89,13 @@ export function startTurn(st, p, first = false) {
     else { unpaid++; s.hp -= 1; if (s.hp <= 0) sink(st, s); }
   }
   if (unpaid) log(st, p, `Couldn't pay all upkeep: unpaid ships lost 1 HP each.`, { k: 'hit' });
+  const tide = tideSources(st, p);
   for (const s of st.ships.filter(s => s.owner === p)) {
     s.acted = false; s.shotsLeft = 0; s.activeAction = null; s.freeUsed = {};
     s.screenUsed = false; s.adUsed = false;
     for (const k in s.cooldowns) s.cooldowns[k] = Math.max(0, s.cooldowns[k] - 1);
-    s.movesLeft = shipStat(st, p, s.type, 'move') + commandBonus(st, s);
+    // (world events: a storm halves the moves of ships starting their turn in it; calm seas give +1)
+    s.movesLeft = stormMoves(st, s, shipStat(st, p, s.type, 'move') + commandBonus(st, s) + calmBonus(st) + tideMoves(st, s, tide));
     s.maxMoves = s.movesLeft;
   }
   for (const o of (st.platforms || []).filter(o => o.owner === p)) o.adUsed = false;
@@ -103,7 +114,7 @@ export function eliminate(st, p, reason) {
   // whatever is left sinks and becomes salvage for everyone else
   for (const s of st.ships.filter(s => s.owner === p)) {
     st.ships = st.ships.filter(o => o !== s);
-    st.wrecks.push({ id: 'w' + st.nextId++, cells: shipCells(s), type: s.type, value: SHIPS[s.type].cost });
+    st.wrecks.push({ id: 'w' + st.nextId++, cells: shipCells(s), type: s.type, value: SHIPS[s.type].cost / (SHIPS[s.type].pack || 1) });
   }
   st.rigs = st.rigs.filter(r => r.owner !== p);
   st.ports = (st.ports || []).filter(o => o.owner !== p);
@@ -138,7 +149,7 @@ export function recordHistory(st, round) {
       st.ships.filter(s => s.owner === i).length,
       st.bases.filter(b => b.owner === i && !b.wrecked).length,
       Object.keys(pl.research?.done || {}).length,
-      st.ships.filter(s => s.owner === i).reduce((t, s) => t + SHIPS[s.type].cost, 0),
+      st.ships.filter(s => s.owner === i).reduce((t, s) => t + SHIPS[s.type].cost / (SHIPS[s.type].pack || 1), 0),
     ]),
   });
 }
@@ -151,7 +162,7 @@ export function nextTurn(st) {
     p = (p + 1) % n;
     if (p === 0) st.round++;
   } while (st.players[p].out);
-  if (st.round !== round0) { recordHistory(st, round0); processLastRig(st); if (st.phase !== 'playing') return; }
+  if (st.round !== round0) { recordHistory(st, round0); processLastRig(st); if (st.phase !== 'playing') return; worldRound(st); checkWin(st); if (st.phase !== 'playing') return; }
   st.turnCount++;
   st.current = p;
   // a player knocked out at the start of their own turn passes straight on

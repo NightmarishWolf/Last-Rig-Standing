@@ -15,8 +15,10 @@ import { refresh, setState } from '../ui/index.js';
 import { toast } from '../ui/status.js';
 import { isBot } from '../ai/index.js';
 import { humans, playBotTurns } from './bots.js';
-import { onlineHandoff } from './online.js';
+import { applyPause, mySeat, onlineHandoff, paused } from './online.js';
+import { activeProfile, awardGame, getProfile } from './profile.js';
 import { simulHandoff } from './simul.js';
+import { track } from './replay.js';
 
 export function startTutorial() {
   stopTimer(); A.sessionActive = false;
@@ -36,14 +38,15 @@ export function exitTutorial() {
 
 export function handoff(st, reason) {
   stopTimer();
+  track(st); // record the game for its replay (once per game)
   if (st.tutorial) {
     // the enemy does nothing in the tutorial: skip straight back to the player
     while (st.phase === 'playing' && st.current !== 0) E.applyAction(st, { type: 'endTurn' });
     refresh();
     return;
   }
-  if (st.simul) { simulHandoff(st); return; } // simultaneous rounds: everyone at once (simul.js)
-  if (onlineHandoff(st)) return; // online games decide whose screen does what
+  if (st.simul) { simulHandoff(st); if (paused()) applyPause(); return; } // simultaneous rounds: everyone at once (simul.js)
+  if (onlineHandoff(st)) { if (paused()) applyPause(); return; } // online games decide whose screen does what
   // a computer's turn: let the bots play, then come back here for the next human
   if (isBot(st, st.current)) { playBotTurns(s => (s.phase === 'over' ? gameOver(s) : handoff(s, reason))); return; }
   const p = st.current, pl = st.players[p];
@@ -87,5 +90,17 @@ export function gameOver(st) {
     return;
   }
   A.sessionActive = false;
+  A.xpResults = awardXp(st);
   showHome('over');
+}
+
+// Commander XP for the people who played on this computer: each human seat's profile in a local game
+// (guests earn nothing), or your own active profile for your seat online. Once per game.
+function awardXp(st) {
+  if (st.tutorial || st.replay) return [];
+  const out = [];
+  const give = (p, profId) => { const r = awardGame(profId, st, p); if (r) out.push({ p, profile: getProfile(profId), ...r }); };
+  if (st.online) { const p = mySeat(); if (p != null && st.players[p]?.seat === 'human') give(p, activeProfile().id); }
+  else st.players.forEach((pl, p) => { if (pl.seat === 'human' && !pl.takenOver && pl.profileId) give(p, pl.profileId); });
+  return out;
 }

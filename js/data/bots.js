@@ -38,6 +38,7 @@ export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard', 'admiral'];
 //   aggression: 0–1, how eagerly it attacks
 //   bases:    how many bases it wants before it switches from expanding to building up and fighting
 //   platforms: which platforms it builds first
+//   tide:     overrides (ships, research) when the bot plays the Free Tide
 export const PERSONALITIES = {
   admiral: {
     name: 'Admiral', icon: '⚓', text: 'Balanced: a bit of everything.',
@@ -46,6 +47,12 @@ export const PERSONALITIES = {
       'guided_missiles', 'cruise_missiles', 'gun_platforms', 'dry_docks', 'helipads', 'base_complex', 'refineries', 'battleship_program', 'mega_hub', 'fusion_engineering'],
     fleetShare: 0.45, aggression: 0.5, bases: 6,
     platforms: ['wellhead', 'lab', 'storage', 'quarters', 'pump', 'gun', 'helipad', 'cruise', 'drydock', 'refinery', 'radar', 'aa', 'airbase'],
+    // (as the Free Tide: the same style with the Tide's ships and research)
+    tide: {
+      ships: { skiff: 1, gunboat: 2, brig: 4, smuggler: 2, rocketjunk: 2, qship: 2, leviathan: 2, mothership: 1, fireship: 1, boarder: 1 },
+      research: ['research_labs', 'brig_yards', 'storage_tanks', 'raft_lashing', 'crew_quarters', 'pump_stations', 'deep_drilling', 'tide_healers', 'floating_docks',
+        'rocket_racks', 'scrap_guns', 'gun_platforms', 'dry_docks', 'long_rockets', 'helipads', 'base_complex', 'refineries', 'leviathans', 'mega_hub', 'fusion_engineering'],
+    },
   },
   tycoon: {
     name: 'Tycoon', icon: '💰', text: 'Builds a rich, well-defended economy and aims for Post-Oil or Last Rig.',
@@ -54,6 +61,11 @@ export const PERSONALITIES = {
       'destroyer_program', 'base_complex', 'refineries', 'deep_water', 'ultra_deep', 'aa_platforms', 'helipads', 'cruise_missiles', 'mega_hub', 'satellites', 'fusion_engineering'],
     fleetShare: 0.3, aggression: 0.2, bases: 9,
     platforms: ['wellhead', 'lab', 'storage', 'pump', 'quarters', 'gun', 'refinery', 'aa', 'helipad', 'cruise', 'radar', 'drydock', 'missile'],
+    tide: {
+      ships: { gunboat: 2, brig: 3, qship: 2, rocketjunk: 2, rigraft: 1, leviathan: 1 },
+      research: ['research_labs', 'seismic', 'storage_tanks', 'trading', 'raft_lashing', 'pump_stations', 'deep_drilling', 'crew_quarters', 'refining', 'scrap_guns', 'improved_pumps',
+        'gun_platforms', 'brig_yards', 'base_complex', 'refineries', 'tide_healers', 'flak_rafts', 'deep_water', 'ultra_deep', 'aa_platforms', 'helipads', 'long_rockets', 'mega_hub', 'satellites', 'fusion_engineering'],
+    },
   },
   raider: {
     name: 'Raider', icon: '🦈', text: 'Wolf packs of submarines and fast boats that hunt lightly defended rigs, then slip home to heal.',
@@ -62,6 +74,11 @@ export const PERSONALITIES = {
       'stealth_doc', 'dry_docks', 'wake_homing', 'silent_service', 'mine_warfare', 'nuclear_prop', 'ballistic_missiles', 'wolf_packs'],
     fleetShare: 0.45, aggression: 0.65, bases: 7,
     platforms: ['wellhead', 'lab', 'storage', 'quarters', 'pump', 'gun', 'drydock', 'radar', 'cruise'],
+    tide: {
+      ships: { lancer: 3, smuggler: 5, rocketjunk: 3, minejunk: 1, fireship: 2, boarder: 2, brig: 2 },
+      research: ['research_labs', 'smuggler_subs', 'storage_tanks', 'cutthroats', 'fireships', 'crew_quarters', 'deep_drilling', 'boarding_parties', 'rocket_racks', 'raft_lashing',
+        'hydrofoils', 'black_market', 'brig_yards', 'dry_docks', 'mine_junks', 'grappling_hooks', 'q_ships', 'stealth_doc', 'sea_wolves'],
+    },
   },
   conqueror: {
     name: 'Conqueror', icon: '⚔️', text: 'Big guns and big fleets: goes for Conquest and Domination.',
@@ -70,6 +87,11 @@ export const PERSONALITIES = {
       'dry_docks', 'helipads', 'battleship_program', 'battle_fleets', 'base_complex', 'naval_aviation', 'strategic_bombers', 'dreadnought_program'],
     fleetShare: 0.6, aggression: 0.9, bases: 5,
     platforms: ['wellhead', 'storage', 'lab', 'quarters', 'helipad', 'cruise', 'drydock', 'airbase', 'gun', 'pump', 'radar'],
+    tide: {
+      ships: { gunboat: 1, brig: 4, fireship: 2, qship: 3, leviathan: 5, mothership: 2, queen: 1, boarder: 1 },
+      research: ['research_labs', 'brig_yards', 'scrap_guns', 'deep_drilling', 'raft_lashing', 'tide_healers', 'rocket_racks', 'storage_tanks', 'tough_hulls', 'crew_quarters',
+        'fireships', 'dry_docks', 'leviathans', 'long_rockets', 'helipads', 'base_complex', 'tide_queen', 'drone_swarms', 'living_tide', 'war_rafts'],
+    },
   },
 };
 export const PERSONALITY_ORDER = ['admiral', 'tycoon', 'raider', 'conqueror'];

@@ -225,6 +225,10 @@ export function effectsForAction(st, a, p, shotsBefore, t0 = performance.now(), 
     if (!shots.length && PLATFORMS[o.kind]?.recon && a.x != null) { spawnPing(a.x + 0.5, a.y + 0.5, 3); end = t0 + DUR.ping; }
   } else if (a.type === 'satellite' && a.x != null) {
     spawnPing(a.x + 0.5, a.y + 0.5, 4); end = t0 + DUR.ping;
+  } else if (a.type === 'power' && a.x != null) {
+    // commander powers: strikes fall from the sky (the top edge), the rest just ping
+    shots.forEach((s, i) => { end = Math.max(end, spawnShot({ kind: 'missile', from: [s.x + 0.5, Math.max(0, s.y - 8)], to: [s.x + 0.5, s.y + 0.5], r: s.r, t0: t0 + i * 120 })); });
+    if (!shots.length) { spawnPing(a.x + 0.5, a.y + 0.5, 4); end = t0 + DUR.ping; }
   }
   return end;
 }

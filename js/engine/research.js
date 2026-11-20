@@ -1,8 +1,10 @@
 // Research: research points (RP) each turn, the current project and queue, doctrines and unlocks.
 import { PLATFORMS } from '../data/bases.js';
 import { ADMIRALTY } from '../data/bases.js';
-import { ERA_COST, FUNDING, STARTING_TECHS, TECH, TECHS } from '../data/research.js';
-import { SHIPS } from '../data/ships.js';
+import { ERA_COST, FUNDING, SAME, STARTING_TECHS, TECH, TECHS } from '../data/research.js';
+import { SHIPS, forFaction } from '../data/ships.js';
+import { factionOf } from '../data/factions.js';
+import { EXCLUSIVE_LEVEL } from '../data/commanders.js';
 import { pstat, shipStat } from './modifiers.js';
 import { fail, log, ok } from './util.js';
 
@@ -13,21 +15,31 @@ export const newResearch = () => ({
 const R = (st, p) => (st.players[p].research ||= newResearch());
 
 export const techCost = id => ERA_COST[TECH[id].era];
-export const hasTech = (st, p, id) => !!R(st, p).done[id];
+// (a Free Tide tech that stands in for a Navy one counts as having it: see `same` in research.js)
+export const hasTech = (st, p, id) => { const d = R(st, p).done; return !!d[id] || !!SAME[id]?.some(o => d[o]); };
+const doneOrSame = (r, id) => !!r.done[id] || !!SAME[id]?.some(o => r.done[o]);
+// Is this tech part of p's faction's research at all?
+export const techForFaction = (st, p, id) => !TECH[id].faction || TECH[id].faction === factionOf(st, p);
+// p's own version of a tech (the Tide's stand-in for a Navy tech), or the tech itself
+export const mine = (st, p, id) => techForFaction(st, p, id) ? id : SAME[id]?.find(o => techForFaction(st, p, o)) || id;
 
 // done | locked (the other side of a doctrine you picked) | available | blocked (needs earlier techs)
 export function techStatus(st, p, id) {
   const r = R(st, p), t = TECH[id];
   if (r.done[id]) return 'done';
+  if (t.polar && !st.ice) return 'locked'; // (Polar maps only)
+  if (!techForFaction(st, p, id)) return 'locked'; // (another faction's)
   if (t.doctrine && TECHS.some(o => o.doctrine === t.doctrine && o.id !== id && r.done[o.id])) return 'locked';
-  return t.req.every(q => r.done[q]) ? 'available' : 'blocked';
+  return t.req.every(q => doneOrSame(r, q)) ? 'available' : 'blocked';
 }
 
 // Which tech unlocks a ship / platform / ports / a base level (null = available from the start)
 const shipTech = {};
 for (const t of TECHS) for (const s of t.unlocks.ships || []) shipTech[s] = t.id;
-export const shipNeeds = type => shipTech[type] || null;
-export const shipUnlocked = (st, p, type) => !SHIPS[type].hidden && (!shipTech[type] || hasTech(st, p, shipTech[type]));
+export const shipNeeds = type => shipTech[type] || SHIPS[type]?.needs || null;
+// A commander's exclusive ship: only theirs, from level 3.
+export const commanderShipOk = (st, p, type) => { const c = SHIPS[type].commander, me = st.players[p]?.commander; return !c || (me?.id === c && me.level >= EXCLUSIVE_LEVEL); };
+export const shipUnlocked = (st, p, type) => !SHIPS[type].hidden && forFaction(type, factionOf(st, p)) && commanderShipOk(st, p, type) && (!shipNeeds(type) || hasTech(st, p, shipNeeds(type)));
 export const platformUnlocked = (st, p, kind) => !PLATFORMS[kind].tech || hasTech(st, p, PLATFORMS[kind].tech);
 export const portUnlocked = (st, p) => TECHS.some(t => t.unlocks.port && hasTech(st, p, t.id));
 export function maxBaseLevel(st, p) {
@@ -76,7 +88,7 @@ function nextFromQueue(st, p) {
   if (i >= 0) return r.queue.splice(i, 1)[0];
   const firstReady = id => {
     if (techStatus(st, p, id) === 'available') return id;
-    for (const q of TECH[id].req) if (!r.done[q]) { const f = firstReady(q); if (f) return f; }
+    for (const q of TECH[id].req) if (!doneOrSame(r, q)) { const f = firstReady(mine(st, p, q)); if (f) return f; }
     return null;
   };
   for (const id of r.queue) { const f = firstReady(id); if (f) return f; }
@@ -129,12 +141,14 @@ export function doQueue(st, a) {
   if (status === 'done' || status === 'locked') return fail(status === 'done' ? 'Already researched.' : 'You chose the other doctrine.');
   const order = [];
   const visit = id => {
-    if (r.done[id] || order.includes(id)) return;
+    if (doneOrSame(r, id) || order.includes(id)) return;
+    // another faction's tech: the queue takes this faction's stand-in for it instead
+    if (!techForFaction(st, p, id)) { const alt = mine(st, p, id); if (alt === id) throw new Error(TECH[id].name); return visit(alt); }
     if (techStatus(st, p, id) === 'locked') throw new Error(TECH[id].name);
     TECH[id].req.forEach(visit);
     order.push(id);
   };
-  try { visit(a.tech); } catch (e) { return fail(`It needs ${e.message}, which your doctrine choice closed off.`); }
+  try { visit(a.tech); } catch (e) { return fail(`It needs ${e.message}, which is closed to you.`); }
   for (const id of order) if (id !== r.current && !r.queue.includes(id)) r.queue.push(id);
   if (!r.current) { r.current = nextFromQueue(st, p); processBank(st, p); }
   return ok();

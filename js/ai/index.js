@@ -19,30 +19,39 @@
 import { makeContext } from './context.js';
 import { buildBases, research, saveAdmiralty, sellOil } from './economy.js';
 import { expansion } from './expansion.js';
-import { guardBases, openFire } from './defense.js';
-import { defend, longRange, raid, spy, strike } from './military.js';
+import { boarding, guardBases, openFire } from './defense.js';
+import { commanderShips, powersAfter, powersBefore } from './commanders.js';
+import { defend, longRange, missileHunt, raid, spy, strike } from './military.js';
 import { shipbuilding } from './build.js';
 import { updateMemory } from './memory.js';
 import { reviewFleet } from './review.js';
+import { worldChores } from './world.js';
 
 // (in the 'war' phase the shipyard gets first call on money, so 'build' moves ahead of 'bases')
 const STEPS = [
   ['memory', async ctx => updateMemory(ctx)],
+  ['powers', powersBefore], // commander powers that help this turn's moves
   ['admiralty', saveAdmiralty],
   ['long range', longRange],
   ['fire', openFire],
+  ['powers after', async ctx => { if (await powersAfter(ctx)) await openFire(ctx); }], // strikes; a Full Broadside fires again
   ['sell', sellOil],
+  ['world', worldChores],
   ['review', reviewFleet],
   ['research', research],
   ['defend', defend],
   ['expansion', expansion],
   ['guards', guardBases],
   ['spy', spy],
+  ['missiles', missileHunt],
   ['strike', strike],
   ['raid', raid],
+  ['boarding', boarding], // (Free Tide: Boarding Skiffs)
+  ['commander', commanderShips], // (commanders' exclusive ships: marines, Ghost Boats)
   ['bases', buildBases],
   ['build', shipbuilding],
   ['fire again', openFire],
+  ['powers last', async ctx => { if (await powersAfter(ctx)) await openFire(ctx); }],
 ];
 
 export const isBot = (st, p) => st.players[p]?.seat === 'ai';

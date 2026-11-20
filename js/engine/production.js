@@ -11,11 +11,13 @@ import { SHIPS } from '../data/ships.js';
 import { activePlatforms } from './bases.js';
 import { cellsOf, coord, inBounds, inSpawn, isLand } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
-import { shipNeeds, shipUnlocked } from './research.js';
+import { commanderShipOk, shipNeeds, shipUnlocked } from './research.js';
+import { COMMANDERS, EXCLUSIVE_LEVEL } from '../data/commanders.js';
 import { addShip } from './setup.js';
 import { forwardPorts } from './stats.js';
-import { fail, log, ok, rigAt, shipAt, tally } from './util.js';
+import { fail, log, ok, rigAt, shipAt, tally, tallyUnit } from './util.js';
 import { platformAt } from './bases.js';
+import { inTideOf, packSize, raftDocks } from './factions.js';
 
 export const shipCost = (st, p, type) => shipStat(st, p, type, 'cost');
 
@@ -27,6 +29,8 @@ export function yardsOf(st, p) {
     list.push({ id: o.id, kind: 'port', ...YARDS.port, name: `Port ${coord(o.x, o.y)}`, x: o.x, y: o.y, r: pstat(st, p, 'portRange') });
   for (const d of activePlatforms(st, p, 'drydock'))
     list.push({ id: d.id, kind: 'drydock', ...YARDS.drydock, name: `Dry Dock ${coord(d.x, d.y)}`, x: d.x, y: d.y, r: PLATFORMS.drydock.launch });
+  // Free Tide: every base with a big enough Tide is a Raft Dock (boats launch anywhere on its Tide)
+  for (const y of raftDocks(st, p)) list.push({ ...YARDS.tide, ...y });
   return list;
 }
 export const yardById = (st, p, id) => yardsOf(st, p).find(y => y.id === id);
@@ -43,7 +47,9 @@ const ownedOrBuilding = (st, p, type) =>
 
 export function buildProblem(st, p, type, yardId) {
   const def = SHIPS[type];
-  if (!def || def.hidden) return 'Unknown ship.';
+  if (!def || def.hidden || (def.polar && !st.ice)) return 'Unknown ship.';
+  if (def.faction && def.faction !== (st.players[p].faction || 'navy')) return "That's another faction's ship.";
+  if (!commanderShipOk(st, p, type)) return `Only ${COMMANDERS[def.commander].name} (level ${EXCLUSIVE_LEVEL}+) can build the ${def.name}.`;
   if (!shipUnlocked(st, p, type)) return `Research ${TECH[shipNeeds(type)]?.name || '?'} first.`;
   const yard = yardById(st, p, yardId || 'home');
   if (!yard) return 'That shipyard is gone.';
@@ -62,8 +68,14 @@ export function doBuyShip(st, a) {
   const yard = yardById(st, p, a.yard || 'home');
   const cost = shipCost(st, p, a.ship), turns = buildTurns(st, p, a.ship, yard);
   st.players[p].money -= cost;
-  buildsOf(st, p).push({ id: 'b' + st.nextId++, ship: a.ship, yard: yard.id, left: turns, total: turns, paid: cost });
+  const b = { id: 'b' + st.nextId++, ship: a.ship, yard: yard.id, left: turns, total: turns, paid: cost };
+  buildsOf(st, p).push(b);
   const ahead = yardQueue(st, p, yard.id).length - 1;
+  // (Ruiz's Born Ready: a Skiff Pack launches right away if the yard has a free slot)
+  if (SHIPS[a.ship].pack && pstat(st, p, 'packInstant') > 0 && ahead < yard.slots && launchBuild(st, p, b, yard)) {
+    st.players[p].builds = buildsOf(st, p).filter(x => x !== b);
+    return ok();
+  }
   log(st, p, `${yard.name} started a ${SHIPS[a.ship].name}: ready in ${turns} turn${turns > 1 ? 's' : ''}${ahead >= yard.slots ? ` once the ${ahead - yard.slots + 1} ahead of it are done` : ''}.`);
   return ok();
 }
@@ -103,7 +115,8 @@ export function launchSpot(st, p, type, yard) {
     for (let dy = -yard.r; dy <= yard.r; dy++) for (let dx = -yard.r; dx <= yard.r; dx++) cands.push([yard.x + dx, yard.y + dy]);
   }
   cands.sort((a, b) => (Math.abs(a[0] - yard.x) + Math.abs(a[1] - yard.y)) - (Math.abs(b[0] - yard.x) + Math.abs(b[1] - yard.y)));
-  const inside = (x, y) => yard.kind === 'home' ? inSpawn(st, p, x, y) : Math.max(Math.abs(x - yard.x), Math.abs(y - yard.y)) <= yard.r;
+  const tide = yard.kind === 'tide' ? [{ x: yard.x, y: yard.y, r: yard.r }] : null;
+  const inside = (x, y) => yard.kind === 'home' ? inSpawn(st, p, x, y) : tide ? inTideOf(tide, x, y) : Math.max(Math.abs(x - yard.x), Math.abs(y - yard.y)) <= yard.r;
   // first try to leave a square of open water around the new ship (so nobody gets boxed in), then take any gap
   const roomy = cells => cells.every(([cx, cy]) => [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
     .every(([dx, dy]) => !shipAt(st, cx + dx, cy + dy)));
@@ -117,6 +130,25 @@ export function launchSpot(st, p, type, yard) {
 }
 
 // Start of your turn: yards work on their ships, and finished ones are launched.
+// Launch a finished build from its yard (a pack launches all its boats, if there's room). True when done.
+function launchBuild(st, p, b, yard) {
+  // (b.boats: how many are still to go, if there wasn't room for all at once)
+  b.boats ??= packSize(st, p, b.ship);
+  const each = (b.paid ?? shipStat(st, p, b.ship, 'cost')) / packSize(st, p, b.ship);
+  let first = null;
+  while (b.boats > 0) {
+    const spot = launchSpot(st, p, b.ship, yard);
+    if (!spot) break;
+    addShip(st, p, b.ship, spot.x, spot.y, spot.rot, true);
+    b.boats--; first ||= spot;
+    tally(st, p, 'shipsBuilt');
+    tallyUnit(st, p, b.ship, 'built'); tallyUnit(st, p, b.ship, 'value', each);
+  }
+  if (first) log(st, p, `${yard.name} launched a ${SHIPS[b.ship].name} at ${coord(first.x, first.y)}.`, { k: 'done', x: first.x, y: first.y });
+  if (b.boats > 0) { if (!b.waiting) log(st, p, `${yard.name}: a finished ${SHIPS[b.ship].name} is waiting for room to launch.`, { k: 'fleet' }); b.waiting = true; return false; }
+  return true;
+}
+
 export function processYards(st, p) {
   const list = buildsOf(st, p);
   if (!list.length) return;
@@ -132,12 +164,7 @@ export function processYards(st, p) {
     for (const b of q) {
       if (b.left > 0) b.left--;
       if (b.left > 0) continue;
-      const spot = launchSpot(st, p, b.ship, yard);
-      if (!spot) { if (!b.waiting) log(st, p, `${yard.name}: a finished ${SHIPS[b.ship].name} is waiting for room to launch.`, { k: 'fleet' }); b.waiting = true; continue; }
-      addShip(st, p, b.ship, spot.x, spot.y, spot.rot, true);
-      tally(st, p, 'shipsBuilt');
-      log(st, p, `${yard.name} launched a ${SHIPS[b.ship].name} at ${coord(spot.x, spot.y)}.`, { k: 'done', x: spot.x, y: spot.y });
-      done.push(b);
+      if (launchBuild(st, p, b, yard)) done.push(b);
     }
   }
   if (done.length) st.players[p].builds = list.filter(b => !done.includes(b));

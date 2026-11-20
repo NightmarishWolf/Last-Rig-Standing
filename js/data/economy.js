@@ -29,6 +29,8 @@ export const DEPOSITS = {
   small:  { rate: 2, label: 'S', name: 'Small',  home: [64, 104], middle: [80, 140] },
   medium: { rate: 3, label: 'M', name: 'Medium', home: [96, 160], middle: [120, 200] },
   rich:   { rate: 5, label: 'R', name: 'Rich',   home: [160, 240], middle: [200, 320] },
+  // only from the Super-rich field event (js/data/events.js)
+  super:  { rate: 8, label: '★', name: 'Super-rich', home: [700, 900], middle: [700, 900] },
 };
 
 // Deeper drilling (Drilling research): when one of your rigs runs dry it can strike deeper layers,

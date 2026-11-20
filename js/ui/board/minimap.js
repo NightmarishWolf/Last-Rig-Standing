@@ -25,7 +25,7 @@ export function drawMinimap(v) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.imageSmoothingEnabled = true;
   g.drawImage(terrainImage(me()), 0, 0, w, h);
-  if (S.fogCanvas && !S.spectate) g.drawImage(S.fogCanvas, 0, 0, w, h);
+  if (S.fogCanvas && !S.spectate && !S.st.noFog) g.drawImage(S.fogCanvas, 0, 0, w, h);
   const dot = (x, y, col, r = 1.6) => { g.fillStyle = col; g.fillRect(x * k - r / 2, y * k - r / 2, Math.max(r, k), Math.max(r, k)); };
   for (const d of v.deposits) if (d.reserves > 0) dot(d.x, d.y, '#f0a531', 1.4);
   for (const r of v.myRigs) dot(r.x, r.y, pcol(me()), 3);

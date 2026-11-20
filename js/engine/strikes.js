@@ -1,3 +1,4 @@
+import { inStorm } from './world.js';
 // Long-range warfare: recon drones, cruise missiles, bombers, satellite passes.
 // The idea: striking far away costs oil (and money) per shot instead of per square sailed,
 // so a player who turtles at home can still be hit, and has to spend on air defence.
@@ -46,8 +47,10 @@ export function strikeProblem(st, p, o, x, y) {
   const def = PLATFORMS[o.kind], s = def.strike || def.recon;
   if (!s) return 'That platform has no long-range action.';
   if (o.cd > 0) return `Reloading (${o.cd} turn${o.cd > 1 ? 's' : ''}).`;
+  if ((o.kind === 'airbase' || def.recon) && inStorm(st, o.x, o.y)) return 'Grounded: no aircraft fly in the storm.';
   if (x == null) return null;
   if (!inBounds(st, x, y)) return 'Out of bounds.';
+  if ((o.kind === 'airbase' || def.recon) && inStorm(st, x, y)) return 'No aircraft fly into the storm.';
   if (Math.max(Math.abs(x - o.x), Math.abs(y - o.y)) > s.range) return `Out of range (${s.range} squares).`;
   if (st.players[p].oil < (s.oil || 0)) return `Needs ${s.oil} oil.`;
   if (st.players[p].money < (s.money || 0)) return `Needs $${s.money}.`;
@@ -81,7 +84,7 @@ export function doBaseStrike(st, a) {
     return ok();
   }
   log(st, p, `${s.name} launched at ${coord(a.x, a.y)}.`);
-  resolveShot(st, { owner: p, x: o.x, y: o.y, type: null }, { kind: 'attack', tag: 'missile', name: s.name, dmg: s.dmg, area: s.area, air: true, longRange: true, rigMult: 1 }, a.x, a.y);
+  resolveShot(st, { owner: p, x: o.x, y: o.y, type: null, unit: 'strike:' + o.kind }, { kind: 'attack', tag: 'missile', name: s.name, dmg: s.dmg, area: s.area, air: true, longRange: true, rigMult: 1 }, a.x, a.y);
   checkWin(st);
   return ok();
 }

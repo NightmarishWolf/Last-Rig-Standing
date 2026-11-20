@@ -8,7 +8,7 @@
 // A ship it wants to sell that's out at sea first sails back into its own waters (it can only be sold there).
 // Never while enemies are close: a ship that might be needed in a fight stays.
 import * as E from '../engine/index.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, isRole } from '../data/ships.js';
 import { canSurvey, chance, cheb, income, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear } from './memory.js';
 
@@ -33,6 +33,7 @@ function usefulness(ctx, s) {
   if (t?.kind === 'guard' || t?.kind === 'expand') v += 4;
   if (t?.kind === 'strike' || E.fleetOf(ctx.st, s.id)) v += 3;
   if (t?.kind === 'survey' || t?.kind === 'scout') v += 1;
+  if (t?.kind === 'board') v += 2; // (Free Tide Boarding Skiffs: unarmed, but there to capture ships)
   v *= Math.max(0.3, s.hp / E.shipStat(ctx.st, ctx.p, s.type, 'hp')); // badly damaged ships are worth less
   return v / Math.max(1, E.upkeepOf(ctx.st, ctx.p, s.type));
 }
@@ -56,7 +57,7 @@ export async function reviewFleet(ctx) {
 
   // 2) more survey ships than the water left to survey needs (always keeping one for founding bases
   //    from 5 squares away): every one costs upkeep that could pay for a warship
-  const surveyShips = ships.filter(s => s.type === 'survey');
+  const surveyShips = ships.filter(s => isRole(s.type, 'scout'));
   const open = unsurveyedShare(ctx);
   const keep = open > 0.5 ? 4 : open > 0.3 ? 3 : open > (sharp(ctx) ? 0.15 : 0.08) ? 2 : 1;
   if (surveyShips.length > keep) {

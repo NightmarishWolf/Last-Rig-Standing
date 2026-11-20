@@ -18,19 +18,16 @@ const writeIndex = list => { try { localStorage.setItem(INDEX_KEY, JSON.stringif
 
 // ---------- compact encoding ----------
 // The land map is a long array of 0s and 1s: store it as runs ("12a5b..." style: counts, alternating 0/1).
+// The land (and Polar maps' pack ice) is stored as run lengths: "12.3.40..." = 12 water, 3 land, 40 water...
+const runsOf = arr => { const runs = []; let cur = 0, n = 0; for (const v of arr) { if (v === cur) n++; else { runs.push(n); cur = v; n = 1; } } runs.push(n); return runs.join('.'); };
+const fromRuns = str => { const out = []; let v = 0; for (const n of str.split('.')) { for (let i = 0; i < +n; i++) out.push(v); v = 1 - v; } return out; };
 export function pack(st) {
-  const runs = []; let cur = 0, n = 0;
-  for (const v of st.land) { if (v === cur) n++; else { runs.push(n); cur = v; n = 1; } }
-  runs.push(n);
-  return JSON.stringify({ ...st, land: undefined, landRuns: runs.join('.') });
+  return JSON.stringify({ ...st, land: undefined, landRuns: runsOf(st.land), ice: undefined, iceRuns: st.ice ? runsOf(st.ice) : undefined });
 }
 export function unpack(raw) {
   const st = JSON.parse(raw);
-  if (st.landRuns != null) {
-    const land = []; let v = 0;
-    for (const n of st.landRuns.split('.')) { for (let i = 0; i < +n; i++) land.push(v); v = 1 - v; }
-    st.land = land; delete st.landRuns;
-  }
+  if (st.landRuns != null) { st.land = fromRuns(st.landRuns); delete st.landRuns; }
+  if (st.iceRuns != null) { st.ice = fromRuns(st.iceRuns); delete st.iceRuns; }
   return st;
 }
 
@@ -58,7 +55,7 @@ function put(st, entry) {
 
 // Autosave (called after every action). The tutorial never saves.
 export function save(st) {
-  if (st.tutorial) return;
+  if (st.tutorial || st.replay) return; // (a replay being watched is a copy: never saved over the game)
   st.gameId ||= newGameId();
   const id = 'auto-' + st.gameId;
   put(st, summaryOf(st, id, 'Autosave', 'auto'));
@@ -118,9 +115,8 @@ export function exportSave(id) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 // Reads a file picked by the player; resolves to the new slot's id, or rejects with a message.
-export function importSave(file) {
-  return file.text().then(text => {
-    let data;
+export function importSave(file, data) {
+  return (data ? Promise.resolve(JSON.stringify(data)) : file.text()).then(text => {
     try { data = JSON.parse(text); } catch { throw new Error('That file isn\'t a Last Rig Standing save.'); }
     const st = data?.state || data;
     if (!st || !Array.isArray(st.players) || !st.W || !(st.land || st.landRuns)) throw new Error('That file isn\'t a Last Rig Standing save.');

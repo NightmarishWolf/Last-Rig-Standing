@@ -4,7 +4,10 @@ export const CODES = {
   patrol: 'PB', survey: 'SV', corvette: 'CO', hydrofoil: 'HF', decoy: 'DB', minelayer: 'ML',
   submarine: 'SS', tanker: 'TK', destroyer: 'DD', missileboat: 'MB', frigate: 'FF', jammer: 'JM',
   cruiser: 'CR', salvage: 'SL', repair: 'RP', drillship: 'DS', carrier: 'CV', battleship: 'BB',
-  command: 'CM', nuclearsub: 'SN', dreadnought: 'DN',
+  command: 'CM', nuclearsub: 'SN', dreadnought: 'DN', icebreaker: 'IB', supply: 'SU', assault: 'AS',
+  // Free Tide
+  skiff: 'SK', prospector: 'PS', barge: 'OB', rigraft: 'RR', gunboat: 'GB', lancer: 'LN', minejunk: 'MJ', smuggler: 'SM',
+  brig: 'BR', fireship: 'FS', rocketjunk: 'RJ', boarder: 'BD', qship: 'QS', mothership: 'DM', leviathan: 'LV', queen: 'TQ',
 };
 
 export const COL = {

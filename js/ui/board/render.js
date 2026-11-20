@@ -16,6 +16,7 @@ import { drawMinimap } from './minimap.js';
 import { drawModeOverlay } from './modes.js';
 import { drawOilTooltip } from './tooltip.js';
 import { drawHull, drawPort, drawRig } from './units.js';
+import { drawWorldAbove, drawWorldBelow } from './world.js';
 import { visibleRange } from '../camera.js';
 import { CODES, COL, MARGIN } from '../constants.js';
 import { me, pcol, px, py } from '../helpers.js';
@@ -31,6 +32,7 @@ export function spectatorView(st) {
     enemyShips: st.ships.map(s => ({ id: s.id, owner: s.owner, cells: E.shipCells(s), type: s.type, hp: s.hp })),
     enemyRigs: st.rigs, enemyPorts: st.ports || [], enemyPlatforms: st.platforms || [], enemyBases: st.bases || [],
     deposits: st.deposits,
+    tides: st.players.flatMap((pl, o) => (pl.out ? [] : E.tideSources(st, o).map(t => ({ owner: o, x: t.x, y: t.y, r: t.r })))),
   };
 }
 
@@ -44,23 +46,23 @@ export function requestDraw() {
 // One pixel per square: water, home tints and land, as seen by player p. Cached per game.
 export function terrainImage(p) {
   const c = S.terrainCache;
-  if (c && c.st === S.st && c.p === p) return c.canvas;
+  if (c && c.st === S.st && c.p === p && c.ice === (S.st.iceVer || 0)) return c.canvas; // (redrawn when the pack ice changes)
   const { W, H } = S.st;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const g = canvas.getContext('2d');
   const img = g.createImageData(W, H);
   const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-  const water = hex(COL.middle), mine = hex(COL.homeMine), theirs = hex(COL.homeEnemy), land = hex(COL.land);
+  const water = hex(COL.middle), mine = hex(COL.homeMine), theirs = hex(COL.homeEnemy), land = hex(COL.land), ice = [214, 236, 248];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const z = E.zoneOf(S.st, x, y);
-      const col = E.isLand(S.st, x, y) ? land : z === 'middle' ? water : z === p ? mine : theirs;
+      const col = E.isLand(S.st, x, y) ? land : S.st.ice?.[y * W + x] ? ice : z === 'middle' ? water : z === p ? mine : theirs;
       const i = (y * W + x) * 4;
       img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
     }
   g.putImageData(img, 0, 0);
-  S.terrainCache = { st: S.st, p, canvas };
+  S.terrainCache = { st: S.st, p, canvas, ice: S.st.iceVer || 0 };
   return canvas;
 }
 
@@ -160,6 +162,8 @@ function drawBoard() {
       cell * (Math.min(S.st.W, f.x + f.w) - Math.max(0, f.x)) - 2, cell * (Math.min(S.st.H, f.y + f.h) - Math.max(0, f.y)) - 2);
     ctx.setLineDash([]); ctx.lineWidth = 1;
   }
+  drawWorldBelow(R, detail); // pack ice, oil slicks, the super-rich field's area
+  drawTides(v, R, detail); // the Free Tide's raft network
   // deposits
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const d of v.deposits) {
@@ -185,7 +189,7 @@ function drawBoard() {
     ctx.strokeStyle = 'rgba(255,140,60,0.9)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(px(s.x) + cell / 2, py(s.y) + cell / 2, Math.max(2, cell * 0.3), 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
   }
-  if (!S.spectate) drawFog(v);
+  if (!S.spectate && !S.st.noFog) drawFog(v);
   drawClaims(v);
 
   // ---- units ----
@@ -214,15 +218,21 @@ function drawBoard() {
   drawUnitBadges(v);
   drawYardBadges();
   for (const s of v.enemyShips) {
+    if (s.owner < 0) { // pirates and the rogue sub: shown for what they are
+      const cells = tweenCells(s.id, s.cells);
+      drawHull(cells, pcol(s.owner), false, 1, s.neutral === 'rogue' ? '🦈' : '☠', Math.min(1, s.hp / SHIPS[s.type].hp));
+      continue;
+    }
     if (S.spectate) {
       const cells = tweenCells(s.id, s.cells);
       drawHull(cells, pcol(s.owner), false, 1, CODES[s.type], s.hp / SHIPS[s.type].hp);
       drawTurrets(s, cells, v.enemyShips.filter(e => e.owner !== s.owner).map(e => e.cells).concat(v.myShips.map(m => E.shipCells(m))));
     }
-    else drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, '?', undefined, true);
+    else drawHull(tweenCells(s.id, s.cells), pcol(s.owner), false, 1, s.burning ? '🔥' : '?', undefined, true); // (burning: badly damaged, can be boarded)
   }
   drawFx();
   endFrame();
+  drawWorldAbove(); // storms, fog banks, next round's event, blowouts
   for (const sp of v.me.spoofs) drawHull([[sp.x, sp.y]], pcol(sp.owner), false, 1, '?', undefined, true);
   // my shot markers
   const m = Math.max(1, Math.min(6, cell * 0.2));
@@ -262,4 +272,41 @@ function drawBoard() {
     const ly = py(y) + cell / 2; if (ly > MARGIN) ctx.fillText(E.rowName(y), MARGIN / 2, ly);
   }
   drawMinimap(v);
+}
+
+// The Free Tide's raft network: a woven tint in the owner's colour over the water it covers
+// (with little raft marks when zoomed in), and a dashed edge.
+function drawTides(v, R, detail) {
+  if (!v.tides?.length) return;
+  const ctx = S.ctx, cell = S.cell, W = S.st.W, H = S.st.H;
+  const owners = [...new Set(v.tides.map(t => t.owner))];
+  for (const o of owners) {
+    const src = v.tides.filter(t => t.owner === o);
+    const on = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !E.isLand(S.st, x, y) && E.inTideOf(src, x, y);
+    const x0 = Math.max(R.x0, Math.min(...src.map(t => t.x - t.r))), x1 = Math.min(R.x1, Math.max(...src.map(t => t.x + t.r)));
+    const y0 = Math.max(R.y0, Math.min(...src.map(t => t.y - t.r))), y1 = Math.min(R.y1, Math.max(...src.map(t => t.y + t.r)));
+    const col = pcol(o);
+    ctx.globalAlpha = detail ? 0.13 : 0.22; ctx.fillStyle = col;
+    const cells = [];
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (on(x, y)) { cells.push([x, y]); ctx.fillRect(px(x), py(y), cell, cell); }
+    if (detail) {
+      ctx.globalAlpha = 0.35; ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const [x, y] of cells) if ((x + y) % 2 === 0) { // little lashed planks
+        const cx = px(x) + cell / 2, cy = py(y) + cell / 2, h = cell * 0.18;
+        ctx.moveTo(cx - h, cy - h * 0.6); ctx.lineTo(cx + h, cy - h * 0.6);
+        ctx.moveTo(cx - h, cy + h * 0.6); ctx.lineTo(cx + h, cy + h * 0.6);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.6; ctx.setLineDash([3, 4]); ctx.lineWidth = 1.5; ctx.beginPath();
+    for (const [x, y] of cells) {
+      if (!on(x, y - 1)) { ctx.moveTo(px(x), py(y) + .5); ctx.lineTo(px(x + 1), py(y) + .5); }
+      if (!on(x, y + 1)) { ctx.moveTo(px(x), py(y + 1) - .5); ctx.lineTo(px(x + 1), py(y + 1) - .5); }
+      if (!on(x - 1, y)) { ctx.moveTo(px(x) + .5, py(y)); ctx.lineTo(px(x) + .5, py(y + 1)); }
+      if (!on(x + 1, y)) { ctx.moveTo(px(x + 1) - .5, py(y)); ctx.lineTo(px(x + 1) - .5, py(y + 1)); }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]); ctx.lineWidth = 1; ctx.globalAlpha = 1;
+  }
 }

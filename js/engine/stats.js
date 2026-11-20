@@ -5,15 +5,17 @@ import { baseFoundCost, platformUpkeep } from './bases.js';
 import { dist, shipCells, zoneOf } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { passives, r2 } from './util.js';
+import { tideOilMult } from './factions.js';
 
 export const rigsOwned = (st, p) => st.rigs.filter(r => r.owner === p).length;
 
 // Founding a new rig base (kept as "rigCost" for older code).
 export const rigCost = (st, p) => baseFoundCost(st, p);
 
-// Ship upkeep: a share of the ship's price each turn (the Nuclear Submarine has its own fixed upkeep).
+// Ship upkeep: a share of the ship's price each turn (the Nuclear Submarine has its own fixed upkeep; a boat
+// from a pack pays its share of the pack's price).
 export const upkeepOf = (st, p, type) =>
-  Math.round((SHIPS[type].passives?.upkeep ?? shipStat(st, p, type, 'cost') * ECONOMY.upkeepRate) * pstat(st, p, 'upkeepMult'));
+  Math.round((SHIPS[type].passives?.upkeep ?? shipStat(st, p, type, 'cost') / (SHIPS[type].pack || 1) * ECONOMY.upkeepRate) * pstat(st, p, 'upkeepMult') * shipStat(st, p, type, 'upkeepMult'));
 
 export const upkeepTotal = (st, p) =>
   st.ships.filter(s => s.owner === p).reduce((t, s) => t + upkeepOf(st, p, s.type), 0) + platformUpkeep(st, p);
@@ -42,7 +44,9 @@ function fuelLineActive(st, ship) {
 export function moveCost(st, ship, steps) {
   if (steps <= 0) return 0;
   const rate = shipStat(st, ship.owner, ship.type, 'oil');
-  return r2(fuelLineActive(st, ship) ? steps * rate / 2 : steps * rate);
+  if (st.players[ship.owner]?.freeMoves === st.round) return 0; // (Nyx's Smuggling Run)
+  // a fuel line (a tanker nearby) halves it; so does the Free Tide's raft network (they don't add up)
+  return r2(steps * rate * Math.min(fuelLineActive(st, ship) ? 0.5 : 1, ship.owner >= 0 ? tideOilMult(st, ship) : 1));
 }
 // Actually pay for `steps` squares.
 export function chargeMove(st, ship, steps) {

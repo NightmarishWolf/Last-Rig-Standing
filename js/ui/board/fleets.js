@@ -18,11 +18,12 @@ export function drawUnitBadges(v) {
   for (const s of v.myShips) {
     const f = E.fleetOf(S.st, s.id);
     const o = (f || s).standing;
-    if (!f && !o) continue;
+    const low = E.lowOnSupplies(s) && v.me.faction !== 'tide'; // (Navy: −1 damage until it's back in supply)
+    if (!f && !o && !low) continue;
     const cells = E.shipCells(s);
     const x0 = Math.min(...cells.map(c => c[0])), y0 = Math.min(...cells.map(c => c[1]));
     const bx = px(x0) + 1, by = py(y0) - 1;
-    const label = (f ? (f.leader === s.id ? '★' : '⚑') : '') + (o ? STANDING[o.kind].icon : '');
+    const label = (f ? (f.leader === s.id ? '★' : '⚑') : '') + (o ? STANDING[o.kind].icon : '') + (low ? '📦' : '');
     const w = ctx.measureText(label).width + 4;
     ctx.fillStyle = 'rgba(8,18,28,0.85)'; roundRect(bx - 1, by, w, sz + 2, 3); ctx.fill();
     ctx.fillStyle = GOLD; ctx.fillText(label, bx + 1, by + 1);

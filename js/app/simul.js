@@ -61,19 +61,39 @@ async function runBots(st) {
   const key = st.round;
   if (botsFor?.st === st && botsFor.round === key) return;
   botsFor = { st, round: key };
-  for (const p of st.players.map((_, i) => i)) {
+  // the bots take turns going first each round (whoever acts first in a round has an edge)
+  const n = st.players.length;
+  for (const p of st.players.map((_, i) => (i + st.round) % n)) {
     if (st !== A.state || st.round !== key || st.phase !== 'playing') return;
-    if (!isBot(st, p) || st.players[p].out || st.ready[p]) continue;
+    await runOneBot(st, p, key);
+    if (!speedMs()) await sleep(0); // (Instant: a breath between bots)
+  }
+}
+const busy = new Set(); // bots playing right now ("game|round|seat")
+let instantSteps = 0;
+async function runOneBot(st, p, key = st.round) {
+  const id = `${st.gameId}|${key}|${p}`;
+  if (!isBot(st, p) || st.players[p].out || st.ready[p] || busy.has(id)) return;
+  busy.add(id);
+  try {
     await runBotTurn(st, p, async a => {
-      while ((!document.getElementById('overlay').classList.contains('hidden') || document.body.classList.contains('at-home')) && st === A.state && !app.online?.()) await sleep(200);
+      // wait while the menu is open (offline) or the online game is paused
+      while (((!app.online?.() && (!document.getElementById('overlay').classList.contains('hidden') || document.body.classList.contains('at-home'))) || app.paused?.()) && st === A.state) await sleep(200);
       if (st !== A.state || st.round !== key || st.phase !== 'playing') return { ok: false };
       const ms = S.spectate ? speedMs() : Math.min(speedMs(), 260);
+      // at Instant speed, let the page breathe now and then (or a bots-only game would run to the end in one go)
+      if (!ms && ++instantSteps % 25 === 0) { await sleep(0); refresh(); }
+      if (st !== A.state || st.round !== key || st.phase !== 'playing') return { ok: false };
       const r = ms ? await animateStep(st, a, ms, res => app.broadcast?.(a, res), !S.spectate) : (() => { const res = E.applyAction(st, a); app.broadcast?.(a, res); return res; })();
       return r;
     });
     if (st !== A.state || st.round !== key || st.phase !== 'playing') return;
     act(st, { type: 'ready', by: p, ready: true });
-  }
+  } finally { busy.delete(id); }
+}
+// a bot has just taken over a seat mid-round (online): let it play this round now
+export function botsNow(st) {
+  for (const p of st.players.map((_, i) => i)) runOneBot(st, p);
 }
 
 // Apply an action this screen is responsible for (a bot's, or the host's), pass it on, and deal with

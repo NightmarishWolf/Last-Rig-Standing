@@ -11,14 +11,16 @@
 // ============================================================
 import { ADMIRALTY, BASE_FOUNDING, BASE_LEVELS, PLATFORMS, QUARTERS_NEEDED_FROM } from '../data/bases.js';
 import { DEEP_LAYERS, DEPOSITS, RIG } from '../data/economy.js';
+import { chokeMult } from './factions.js';
 import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { maxBaseLevel, platformUnlocked } from './research.js';
-import { fail, log, ok, others, pname, shipAt, tally } from './util.js';
+import { fail, log, ok, others, pname, shipAt, tally, tallyUnit } from './util.js';
 import { fusionFinished, victoryOn } from './victory.js';
 import { hiddenBlocker, revealBlocker } from './visibility.js';
 import { sink } from './combat.js';
+import { iceAt, payBounty, spillAt } from './world.js';
 
 const MAX_RADIUS = 6; // 13×13
 
@@ -58,9 +60,10 @@ export const platformUpkeep = (st, p) =>
 export function rigRate(st, r) {
   const d = st.deposits.find(d => d.id === r.depId);
   const b = r.baseId ? baseById(st, r.baseId) : null;
-  if (!d || (b && b.wrecked)) return 0;
+  if (!d || (b && b.wrecked) || r.blowout) return 0; // (a blowout: nothing until it's fixed or settles)
   const pumps = b ? platformsOf(st, b).filter(o => o.kind === 'pump' && !o.buildLeft).length * (PLATFORMS.pump.pump + pstat(st, r.owner, 'pumpBonus')) : 0;
-  return Math.min(d.reserves, DEPOSITS[d.type].rate + pstat(st, r.owner, 'rigRate') + pumps);
+  // (Kade's Choking Smoke: less from rigs inside an oil slick)
+  return Math.min(d.reserves, (DEPOSITS[d.type].rate + pstat(st, r.owner, 'rigRate') + pumps) * chokeMult(st, r));
 }
 
 // Deeper drilling: a dry deposit under one of p's rigs strikes the next layer, if p has the research.
@@ -84,6 +87,10 @@ export const rigReachOf = s => SHIPS[s.type].passives?.rigReach || 1;
 export function rigBuildProblem(st, p, x, y) {
   const dep = st.deposits.find(d => d.x === x && d.y === y);
   if (!dep || !st.players[p].known[dep.id]) return 'Rigs go on oil deposits you have discovered.';
+  // (the one exception: you can always rebuild your own wrecked Admiralty, so Conquest's short clock stays fair)
+  const ownAdmiralty = (st.bases || []).some(b => b.depId === dep.id && b.wrecked && b.owner === p && b.capital);
+  if (spillAt(st, x, y) && !ownAdmiralty) return `This deposit is in an oil slick: nothing can be built here until it clears (${spillAt(st, x, y).left} round${spillAt(st, x, y).left > 1 ? 's' : ''}), or a Drillship or Fleet Tender cleans it up.`;
+  if (iceAt(st, x, y)) return 'This deposit is under the pack ice: an Icebreaker has to break it open first.';
   const r = st.rigs.find(r => r.x === x && r.y === y);
   if (r && r.owner === p) return 'You already have a rig here.';
   if (platformAt(st, x, y)?.owner === p) return 'A platform is already being built here.';
@@ -95,7 +102,7 @@ export function rigBuildProblem(st, p, x, y) {
     if (shipAt(st, x, y, s => s.owner === p)) return 'Move your ship off the deposit first.';
     return null;
   }
-  if (!st.ships.some(s => s.owner === p && dist(shipCells(s), [[x, y]]) <= rigReachOf(s))) return 'You need a ship right next to the deposit, or a Survey, Command, Repair Ship or Carrier within 5 squares, to found a base.';
+  if (!st.ships.some(s => s.owner === p && dist(shipCells(s), [[x, y]]) <= rigReachOf(s))) return 'You need a ship right next to the deposit, or a ship with Rig Crews (Survey Ship, Flagship, Fleet Tender, Carrier; Prospector Skiff, Drone Mothership, Tide Queen) within 5 squares, to found a base.';
   if (st.players[p].money < baseFoundCost(st, p)) return 'Not enough money.';
   if (shipAt(st, x, y, s => s.owner === p)) return 'Move your ship off the deposit first.';
   return null;
@@ -275,8 +282,9 @@ export function processBases(st, p, visibleShips) {
     const dmg = Math.max(0, def.dmg - shipStat(st, best.owner, best.type, 'armor'));
     best.hp -= dmg;
     best.combatRound = st.round;
+    tallyUnit(st, p, 'defense:' + o.kind, 'dmg', dmg);
     log(st, p, `Your ${def.name} at ${coord(o.x, o.y)} hit an enemy ship for ${dmg}.`);
     log(st, best.owner, `Your ship was hit for ${dmg} by ${pname(st, p)}'s ${def.name} at ${coord(o.x, o.y)}!`, { k: 'hit', x: best.x, y: best.y });
-    if (best.hp <= 0) { sink(st, best); tally(st, p, 'kills'); log(st, p, `Your ${def.name} sank an enemy ship!`, { k: 'win', x: o.x, y: o.y }); }
+    if (best.hp <= 0) { payBounty(st, p, best); tallyUnit(st, p, 'defense:' + o.kind, 'kills'); tallyUnit(st, p, 'defense:' + o.kind, 'killValue', shipStat(st, best.owner, best.type, 'cost') / (SHIPS[best.type].pack || 1)); sink(st, best); tally(st, p, 'kills'); log(st, p, `Your ${def.name} sank an enemy ship!`, { k: 'win', x: o.x, y: o.y }); }
   }
 }

@@ -1,4 +1,5 @@
 // Overlays for the current mode: move range, targeting, placing ships, rigs and ports.
+import { POWERS } from '../../data/commanders.js';
 import * as E from '../../engine/index.js';
 import { PORT, RIG, STRIKES } from '../../data/economy.js';
 import { PLATFORMS } from '../../data/bases.js';
@@ -181,6 +182,13 @@ export function drawModeOverlay() {
         S.ctx.strokeRect(px(S.hover.x + lo) + 1, py(S.hover.y + lo) + 1, S.cell * n - 2, S.cell * n - 2); S.ctx.lineWidth = 1;
       }
     }
+  }
+  if (S.mode.kind === 'power' && S.hover) {
+    // a commander power: the area it covers, green-ish where it can go
+    const w = POWERS[S.mode.power], n = w.size || w.area || 1, lo = -Math.floor((n - 1) / 2);
+    const okSpot = !E.powerProblem(S.st, me(), w.id, S.hover.x, S.hover.y);
+    S.ctx.strokeStyle = okSpot ? '#f2c14e' : 'rgba(255,255,255,0.35)'; S.ctx.lineWidth = 2;
+    S.ctx.strokeRect(px(S.hover.x + lo) + 1, py(S.hover.y + lo) + 1, S.cell * n - 2, S.cell * n - 2); S.ctx.lineWidth = 1;
   }
   if (S.mode.kind === 'placePort') {
     // every coast square you can build on right now

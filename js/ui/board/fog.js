@@ -10,6 +10,11 @@ import { S } from '../state.js';
 // Squares one of my ships or rigs can see right now.
 function visionSet(v) {
   const seen = new Set();
+  if (S.st.exploreFog) { // reveal fog: everything ever seen stays clear
+    const { W, H } = S.st;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (E.isExplored(S.st, me(), x, y)) seen.add(x + ',' + y);
+    return seen;
+  }
   for (const [cells, r] of E.sightSources(S.st, me()))
     for (const [cx, cy] of cells)
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {

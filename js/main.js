@@ -5,14 +5,16 @@
 import * as E from './engine/index.js';
 import { gameOver, handoff } from './app/flow.js';
 import { hideHome, showHome, showMenu } from './app/menu.js';
-import { initOnline, localAction, mySeat, notifyTurn, online, onlineRole, roundEnded, sendInstead, simulBroadcast } from './app/online.js';
-import { afterAction, initSimul, simulReady } from './app/simul.js';
+import { initOnline, leaveOnline, localAction, mySeat, notifyTurn, online, onlineRole, paused, roundEnded, sendInstead, simulBroadcast } from './app/online.js';
+import { afterAction, botsNow, initSimul, simulReady } from './app/simul.js';
 import { playBotTurns } from './app/bots.js';
-import { startTimer, stopTimer } from './app/timer.js';
+import { initTimer, startTimer, stopTimer } from './app/timer.js';
 import { setup } from './app/settings.js';
 import { A } from './app/state.js';
 import { load, save } from './app/storage.js';
 import { tutorial } from './app/tutorialHost.js';
+import { initReplayer } from './app/replayer.js';
+import './app/replay.js'; // starts listening for moves to record
 import { initUI, redraw, setState } from './ui/index.js';
 import { S } from './ui/state.js';
 
@@ -36,10 +38,12 @@ setState(A.state);
 
 initSimul({
   handoff, gameOver, startTimer, stopTimer, online, mySeat, role: onlineRole,
-  broadcast: simulBroadcast, notify: notifyTurn, roundEnded,
+  broadcast: simulBroadcast, notify: notifyTurn, roundEnded, paused,
 });
+initTimer({ online, paused });
+initReplayer({ hideHome, showHome, stopTimer, leaveOnline, load, newGame: () => E.newGame(setup) });
 initOnline({
-  handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns, afterSimul: afterAction,
+  handoff, gameOver, showHome, hideHome, startTimer, stopTimer, playBotTurns, afterSimul: afterAction, botsNow,
   lobbyChanged: () => { if (document.getElementById('home').dataset.view === 'lobby' && document.body.classList.contains('at-home')) showHome('lobby'); },
 });
 

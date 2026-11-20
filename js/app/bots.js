@@ -15,7 +15,7 @@ import { animateStep } from '../ui/board/fx.js';
 import { showOverlay } from '../ui/dialogs.js';
 import { refresh } from '../ui/index.js';
 import { S } from '../ui/state.js';
-import { botAction, mySeat, online } from './online.js';
+import { botAction, mySeat, online, paused as netPaused } from './online.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const humans = st => st.players.map((_, i) => i).filter(i => st.players[i].seat !== 'ai' && !st.players[i].out);
@@ -44,7 +44,7 @@ export async function playBotTurns(after) {
       if (curtain) showCurtain(st, p); else showBar(st, p);
       refresh();
       const step = async a => {
-        while ((paused || overlayOpen()) && st === A.state) await sleep(150); // menu open or paused: wait
+        while ((paused || netPaused() || (!net && overlayOpen())) && st === A.state) await sleep(150); // menu open or paused: wait
         if (st !== A.state || st.phase !== 'playing') return { ok: false };
         const ms = curtain || skipTurn ? 0 : speedMs();
         const r = ms ? await animateStep(st, a, ms) : E.applyAction(st, a);

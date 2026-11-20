@@ -2,7 +2,7 @@
 // (Attacking and fleet warfare come in the military step.)
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
-import { canSpend, isArmed, myShips, sharp, spotNextTo, taskOf } from './context.js';
+import { canSpend, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear } from './memory.js';
 
 const free = (ctx, s) => !taskOf(ctx, s) && !s.order && !E.fleetOf(ctx.st, s.id);
@@ -40,7 +40,8 @@ export async function openFire(ctx) {
         // every shot costs money: enemy ships are always worth it while upkeep is covered...
         if (!canSpend(ctx, act.money, 1)) break;
         const range = E.actionRange(st, s, act), cells = E.shipCells(s);
-        const targets = ctx.view.enemyShips.filter(e => E.dist(cells, e.cells) <= range);
+        // a Fireship blows itself up: only on something worth it (a big ship, or a base)
+        const targets = ctx.view.enemyShips.filter(e => E.dist(cells, e.cells) <= range && (!act.selfDestruct || e.cells.length >= 3));
         if (!targets.length) {
           // no ships in range: enemy structures (a base's central rig first, then platforms, ports, wellheads)
           if (act.subsOnly) break;
@@ -55,7 +56,7 @@ export async function openFire(ctx) {
             ...v.enemyPlatforms.map(o => [o.x, o.y, 4]),
             ...v.enemyRigs.map(r => [r.x, r.y, 5]),
           ].filter(([x, y]) => E.dist(cells, [[x, y]]) <= range).sort((a, b) => a[2] - b[2]);
-          if (!structs.length) break;
+          if (!structs.length || (act.selfDestruct && structs[0][2] > 2)) break;
           if (!(await ctx.do({ type: 'act', shipId: s.id, actionId: act.id, x: structs[0][0], y: structs[0][1] })).ok) break;
           continue;
         }
@@ -68,5 +69,61 @@ export async function openFire(ctx) {
         if (!(await ctx.do({ type: 'act', shipId: s.id, actionId: act.id, x: cell[0], y: cell[1] })).ok) break;
       }
     }
+  }
+}
+
+// Free Tide: Boarding Skiffs go after burning enemy ships (🔥: badly damaged, everyone can see it) and
+// board them; with nothing burning they tag along behind the nearest warship that's near the enemy.
+export async function boarding(ctx) {
+  const { st, p } = ctx;
+  const skiffs = myShips(ctx).filter(s => SHIPS[s.type].actions.some(a => a.kind === 'board') && !E.fleetOf(st, s.id) && !s.standing);
+  if (!skiffs.length) return;
+  for (const s of skiffs) {
+    if (!st.ships.includes(s)) continue;
+    const act = SHIPS[s.type].actions.find(a => a.kind === 'board');
+    const burning = () => ctx.view.enemyShips.filter(e => e.burning);
+    let t = burning().map(e => ({ e, d: E.dist(E.shipCells(s), e.cells) })).filter(o => o.d <= s.movesLeft + 4).sort((a, b) => a.d - b.d)[0]?.e;
+    if (t) {
+      if (E.dist(E.shipCells(s), t.cells) > 1) {
+        const c = t.cells[0], spot = spotNextTo(ctx, s, c[0], c[1], 1);
+        if (spot) await sailSome(ctx, s, spot.x, spot.y, spot.rot);
+      }
+      t = ctx.view.enemyShips.find(e => e.id === t.id);
+      const cell = t && t.cells.find(c => E.dist(E.shipCells(s), [c]) <= 1);
+      if (cell && !E.canUseAction(st, s, act) && canSpend(ctx, act.money, 1)) await ctx.do({ type: 'act', shipId: s.id, actionId: act.id, x: cell[0], y: cell[1] });
+      continue;
+    }
+    ctx.mem.tasks[s.id] = { kind: 'board' };
+    // follow the warship closest to a known enemy (2 squares behind it), or wait at home
+    const recent = Object.values(ctx.mem.enemies || {}).filter(e => st.turnCount - e.turn <= st.players.length * 2);
+    const lead = myShips(ctx).filter(o => o !== s && isArmed(o.type) && SHIPS[o.type].cost >= 250)
+      .map(o => ({ o, d: Math.min(99, ...recent.map(e => E.dist(E.shipCells(o), e.cells))) })).filter(x => x.d <= 10).sort((a, b) => a.d - b.d)[0]?.o;
+    if (lead && cheb(lead, s) > 2) { const spot = spotNextTo(ctx, s, lead.x, lead.y, 2); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
+  }
+  await fireRuns(ctx);
+}
+
+// Free Tide: Fireships within a turn's sail of a big enemy ship (3+ squares) or an enemy base's central rig
+// sail up next to it and ram it. Otherwise they stay with whatever job they have (the strike force).
+async function fireRuns(ctx) {
+  const { st, p } = ctx;
+  for (const s of myShips(ctx).filter(s => SHIPS[s.type].actions.some(a => a.selfDestruct))) {
+    if (!st.ships.includes(s) || s.acted) continue;
+    const act = SHIPS[s.type].actions.find(a => a.selfDestruct);
+    const v = ctx.view, cells = E.shipCells(s);
+    const targets = [
+      ...v.enemyShips.filter(e => e.cells.length >= 3).map(e => ({ cells: e.cells, w: e.cells.length })),
+      ...v.enemyRigs.filter(r => r.center).map(r => ({ cells: [[r.x, r.y]], w: 6 })),
+    ].map(t => ({ ...t, d: E.dist(cells, t.cells) })).filter(t => t.d <= s.movesLeft + 1).sort((a, b) => b.w - a.w || a.d - b.d);
+    const t = targets[0];
+    if (!t) continue;
+    if (t.d > 1) {
+      const c = t.cells[Math.floor(t.cells.length / 2)], spot = spotNextTo(ctx, s, c[0], c[1], 1);
+      if (!spot) continue;
+      await sailSome(ctx, s, spot.x, spot.y, spot.rot);
+    }
+    if (!st.ships.includes(s)) continue;
+    const cell = t.cells.find(c => E.dist(E.shipCells(s), [c]) <= 1);
+    if (cell && !E.canUseAction(st, s, act)) await ctx.do({ type: 'act', shipId: s.id, actionId: act.id, x: cell[0], y: cell[1] });
   }
 }

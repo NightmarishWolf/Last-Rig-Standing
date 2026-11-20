@@ -10,18 +10,22 @@
 // Everything a bot attacks comes from its own view or memory: enemy home waters are public
 // (they're drawn on everyone's map), but the Admiralty inside them has to be found by scouting.
 import * as E from '../engine/index.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, isRole } from '../data/ships.js';
 import { PLATFORMS } from '../data/bases.js';
 import { canSpend, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { STRIKES } from '../data/economy.js';
 import { enemiesNear } from './memory.js';
 
 // ---------- strength ----------
-// A rough fighting value for a ship type: health plus firepower (damage × shots, longer range counts more).
+// A rough fighting value for a ship type: health plus firepower (damage × shots per turn, longer range
+// counts more). A weapon that has to reload for N turns only fires every N turns, so it counts 1/N.
 export function power(st, p, type) {
   const def = SHIPS[type];
   let fire = 0;
-  for (const a of def.actions) if (a.kind === 'attack' && !a.subsOnly) fire = Math.max(fire, E.weaponStat(st, p, a, 'dmg') * E.weaponStat(st, p, a, 'shots') * (1 + E.weaponStat(st, p, a, 'range') / 6));
+  for (const a of def.actions) if (a.kind === 'attack' && !a.subsOnly) {
+    const perTurn = E.weaponStat(st, p, a, 'dmg') * E.weaponStat(st, p, a, 'shots') / Math.max(1, a.cooldown || 1);
+    fire = Math.max(fire, perTurn * (1 + E.weaponStat(st, p, a, 'range') / 6));
+  }
   return E.shipStat(st, p, type, 'hp') + E.shipStat(st, p, type, 'armor') * 2 + fire * 2;
 }
 // Enemy ships seen recently: we don't know their type, so size stands in for it.
@@ -98,7 +102,10 @@ function pickTarget(ctx, taken = []) {
   const outlying = ctx.ai.personality === 'raider' || ctx.ai.personality === 'tycoon';
   const b = nearest(knownBases.filter(x => free(x) && (!outlying || !x.capital))) || nearest(knownBases.filter(free)) || c;
   if (b) return { x: b.x, y: b.y, what: b.capital ? 'capital' : 'base', id: b.id, owner: b.owner };
-  // 4) nothing found yet: search the nearest rival's home waters (they're on everyone's map), point by point
+  // 4) no base known, but rigs: the nearest enemy rig we know of (raiding it hurts, and its base is usually close)
+  const rig = nearest(Object.entries(mem.enemyRigs || {}).map(([id, r]) => ({ id, ...r })).filter(r => rivals.includes(r.owner) && free(r)));
+  if (rig && cheb(rig, from) < 70) return { x: rig.x, y: rig.y, what: 'rig', id: rig.id, owner: rig.owner };
+  // 5) nothing found yet: search the nearest rival's home waters (they're on everyone's map), point by point
   const r = rivals.sort((a, c2) => cheb(homeCentre(st, a), from) - cheb(homeCentre(st, c2), from))[0];
   const pt = nextSearchPoint(ctx, r, from, taken);
   return pt && { ...pt, what: 'search', owner: r, id: 'search:' + pt.x + ',' + pt.y };
@@ -133,6 +140,8 @@ function navyRatio(ctx) {
 }
 // Our base closest to the nearest rival's home: where the strike force gathers (sailing costs oil,
 // so wars are fought at the frontier, not across the whole map).
+// It stays put once picked unless another base is a good deal closer to the enemy (10+ squares): a
+// rally point that jumped to every new forward base meant ships trickling in from home never caught up.
 export function frontier(ctx) {
   const { st, p } = ctx;
   const bases = E.basesOf(st, p).filter(b => !b.wrecked);
@@ -140,7 +149,11 @@ export function frontier(ctx) {
   const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
   if (!rivals.length) return bases[0];
   const score = b => Math.min(...rivals.map(r => cheb(b, homeCentre(st, r))));
-  return [...bases].sort((a, b) => score(a) - score(b))[0];
+  const best = [...bases].sort((a, b) => score(a) - score(b))[0];
+  const cur = ctx.mem.rallyId && bases.find(b => b.id === ctx.mem.rallyId);
+  if (cur && score(cur) - score(best) < 10) return cur;
+  ctx.mem.rallyId = best.id;
+  return best;
 }
 const homeCentre = (st, i) => { const h = st.players[i].home; return { x: Math.round((h.x0 + h.x1) / 2), y: Math.round((h.y0 + h.y1) / 2) }; };
 
@@ -168,6 +181,16 @@ export async function strike(ctx) {
   if (mem.strike) { mem.strikes = [mem.strike]; delete mem.strike; } // (older saves)
   markSearched(ctx);
   mem.strikes = (mem.strikes || []).filter(g => E.fleetById(st, g.fleetId));
+  // ships sent home to be repaired: to the nearest Dry Dock (or base) until they're whole, then back to the force
+  // (raiders do their own: raid())
+  if (ctx.ai.personality !== 'raider') {
+    const docks = (st.platforms || []).filter(o => o.owner === p && o.kind === 'drydock' && !o.buildLeft);
+    for (const s of ships.filter(s => taskOf(ctx, s)?.kind === 'mend' && !E.fleetOf(st, s.id))) {
+      if (s.hp >= E.shipStat(st, p, s.type, 'hp')) { ctx.mem.tasks[s.id] = { kind: 'strike' }; continue; }
+      const haven = [...(docks.length ? docks : E.basesOf(st, p).filter(b => !b.wrecked))].sort((a, b) => cheb(a, s) - cheb(b, s))[0];
+      if (haven && cheb(haven, s) > 2) { const spot = spotNextTo(ctx, s, haven.x, haven.y, 1) || spotNextTo(ctx, s, haven.x, haven.y, 3); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
+    }
+  }
   // new warships join the strike force (some stay home as guards, see defense.js)
   for (const s of ships) if (warship(ctx, s) && !taskOf(ctx, s) && !s.standing) ctx.mem.tasks[s.id] = { kind: 'strike' };
   const force = ships.filter(s => taskOf(ctx, s)?.kind === 'strike' && !E.fleetOf(st, s.id));
@@ -178,8 +201,15 @@ export async function strike(ctx) {
   for (const s of force) {
     if (cheb(s, rally) > 4) { const spot = spotNextTo(ctx, s, rally.x, rally.y, 3); if (spot) await sailSome(ctx, s, spot.x, spot.y); }
   }
-  const gathered = force.filter(s => cheb(s, rally) <= 6 && st.ships.includes(s));
-  const ready = gathered.reduce((t, s) => t + power(st, p, s.type), 0);
+  // a group forms wherever enough of the force has bunched up (at the rally point, or on the way there):
+  // the strongest bunch of ships within 8 squares of one another
+  let gathered = [], ready = 0;
+  for (const s of force) {
+    if (!st.ships.includes(s)) continue;
+    const bunch = force.filter(o => st.ships.includes(o) && cheb(o, s) <= 8);
+    const pw = bunch.reduce((t, o) => t + power(st, p, o.type), 0) + (cheb(s, rally) <= 6 ? 0.5 : 0);
+    if (pw > ready) { ready = pw; gathered = bunch; }
+  }
   const total = force.reduce((t, s) => t + power(st, p, s.type), 0);
   if (mem.strikes.length < maxGroups && gathered.length >= 2 && ready >= lp && (sharp(ctx) || total > lp * 1.3)) {
     const oilIn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
@@ -212,12 +242,22 @@ async function runGroup(ctx, g) {
     for (const s of fleetShips) ctx.mem.tasks[s.id] = { kind: 'strike' }; // they'll regroup at the rally point
     return;
   }
+  // badly damaged ships leave the group to get repaired, if we can repair them (the rest carry on)
+  const canHeal = true; // (every faction heals at home: Navy ships in supply, the Free Tide on its rafts)
+  if (canHeal && fleetShips.length > 2) {
+    for (const s of fleetShips.filter(s => s.hp <= E.shipStat(st, p, s.type, 'hp') / 3)) {
+      const r = await ctx.do({ type: 'leaveFleet', shipId: s.id });
+      if (r.ok) ctx.mem.tasks[s.id] = { kind: 'mend' };
+    }
+    if (!E.fleetById(st, g.fleetId)) { mem.strikes = mem.strikes.filter(x => x !== g); return; }
+  }
   // re-pick the target if it's gone, or something more urgent appeared (a Fusion Plant, the Admiralty)
   const taken = mem.strikes.filter(x => x !== g).map(x => x.target?.id).filter(Boolean);
   const urgent = pickTarget(ctx, taken);
   const t = g.target;
   const gone = !t || (t.what === 'fusion' ? !ctx.view.enemyPlatforms.some(o => o.id === t.id)
-    : t.id && !ctx.mem.enemyBases?.[t.id]);
+    : t.what === 'rig' ? !ctx.mem.enemyRigs?.[t.id]
+    : t.what !== 'search' && t.id && !ctx.mem.enemyBases?.[t.id]);
   const searched = t?.what === 'search' && (mem.searched?.[t.x + ',' + t.y] || cheb(E.flagship(st, f), t) <= 4);
   if (gone || searched || (urgent && urgent.what === 'fusion' && t.what !== 'fusion') || (urgent?.what === 'capital' && t.what !== 'capital' && t.what !== 'fusion')) g.target = urgent;
   const tg = g.target;
@@ -230,11 +270,15 @@ async function runGroup(ctx, g) {
   if (cheb(L, dest) > 1) {
     const speed = E.fleetSpeed(st, f);
     const cost = fleetShips.reduce((t2, s) => t2 + E.moveCost(st, s, speed), 0);
-    if ((ctx.oilBudget ?? ctx.me.oil) >= Math.min(cost, ctx.me.oil) && ctx.me.oil >= cost * 0.5) {
+    // (the fleet's fuel was set aside when oil was sold: ctx.fleetOil; short of a full move, it sails part way)
+    const avail = Math.min(ctx.me.oil, (ctx.oilBudget ?? ctx.me.oil) + (ctx.fleetOil || 0));
+    if (avail >= cost * 0.25) {
       const before = ctx.me.oil;
       const r = await ctx.do({ type: 'setFleetOrder', fleetId: f.id, points: [{ x: dest.x, y: dest.y }] });
       if (st.fleets.includes(f) && f.order) await ctx.do({ type: 'cancelFleetOrder', fleetId: f.id });
-      ctx.oilBudget = Math.max(0, (ctx.oilBudget ?? before) - (before - ctx.me.oil));
+      const spent = before - ctx.me.oil, fromFleet = Math.min(ctx.fleetOil || 0, spent);
+      ctx.fleetOil = (ctx.fleetOil || 0) - fromFleet;
+      ctx.oilBudget = Math.max(0, (ctx.oilBudget ?? before) - (spent - fromFleet));
       if (!r.ok) { if (tg.what === 'search') (mem.searched ||= {})[tg.x + ',' + tg.y] = 1; g.target = null; } // can't get there: pick something else next turn
     }
   }
@@ -245,7 +289,7 @@ async function runGroup(ctx, g) {
 export async function raid(ctx) {
   const { st, p } = ctx;
   if (ctx.ai.personality !== 'raider') return;
-  const isRaider = s => SHIPS[s.type].passives?.submerged || ['hydrofoil', 'missileboat', 'corvette'].includes(s.type);
+  const isRaider = s => SHIPS[s.type].passives?.submerged || isRole(s.type, 'raider', 'missile', 'screen');
   const raiders = myShips(ctx).filter(s => isRaider(s) && !E.fleetOf(st, s.id) && (!taskOf(ctx, s) || ['raid', 'strike', 'mend'].includes(taskOf(ctx, s).kind)));
   const maxHp = s => E.shipStat(st, p, s.type, 'hp');
   const bases = E.basesOf(st, p).filter(b => !b.wrecked);
@@ -255,7 +299,7 @@ export async function raid(ctx) {
   for (const s of raiders) {
     const t = taskOf(ctx, s);
     if (t?.kind === 'mend' && s.hp >= maxHp(s)) delete ctx.mem.tasks[s.id];
-    const canHeal = docks.length || E.pstat(st, p, 'heal') > 0; // (nothing heals without a Dry Dock or the research)
+    const canHeal = true; // (Navy ships heal in supply, the Tide on its rafts)
     if (canHeal && (s.hp <= maxHp(s) / 2 || taskOf(ctx, s)?.kind === 'mend')) {
       ctx.mem.tasks[s.id] = { kind: 'mend' };
       const haven = (docks.length ? docks : bases).sort((a, b) => cheb(a, s) - cheb(b, s))[0];
@@ -304,7 +348,7 @@ export async function spy(ctx) {
   if (!unknown.length) return;
   let spyShip = ships.find(s => taskOf(ctx, s)?.kind === 'spy');
   if (!spyShip) {
-    spyShip = ships.filter(s => !E.fleetOf(st, s.id) && s.type !== 'survey' && (!taskOf(ctx, s) || ['survey', 'strike'].includes(taskOf(ctx, s).kind)) && SHIPS[s.type].cost <= 250 && s.movesLeft > 0)
+    spyShip = ships.filter(s => !E.fleetOf(st, s.id) && !isRole(s.type, 'scout') && (!taskOf(ctx, s) || ['survey', 'strike'].includes(taskOf(ctx, s).kind)) && SHIPS[s.type].cost <= 250 && s.movesLeft > 0)
       .sort((a, b) => SHIPS[b.type].move - SHIPS[a.type].move)[0];
     if (!spyShip) return;
     const r = unknown.sort((a, b) => cheb(homeCentre(st, a), spyShip) - cheb(homeCentre(st, b), spyShip))[0];
@@ -386,4 +430,76 @@ export async function longRange(ctx) {
     ].filter(([x, y]) => !E.strikeProblem(st, p, o, x, y)).sort((a, b) => a[2] - b[2]);
     if (targets.length) await ctx.do({ type: 'baseStrike', platformId: o.id, x: targets[0][0], y: targets[0][1] });
   }
+}
+
+// ---------- missile boats ----------
+// Glass cannons with a long reach. Rather than wait at the rally point for the strike force, free
+// missile boats (not in a fleet, no standing order) hunt: enemy ships within a turn's sail plus missile
+// range, and (in the war phase) enemy rigs and platforms further out, if they aren't heavily guarded. They stop 4-7 squares away (outside most guns), and the
+// 'fire again' step takes the shot (they stop where they can see the target themselves: 3 squares out
+// up to their sight). While reloading they back away from enemy ships that get close.
+const HUNT_RANGE = 12, RAID_RANGE = 999; // (in the war phase they'll cross the map for a lightly guarded rig)
+export async function missileHunt(ctx) {
+  const { st, p, mem } = ctx;
+  const boats = myShips(ctx).filter(s => isRole(s.type, 'missile') && !E.fleetOf(st, s.id) && !s.standing && !s.order
+    && [undefined, 'strike', 'hunt'].includes(taskOf(ctx, s)?.kind));
+  if (!boats.length) return;
+  const act = SHIPS[boats[0].type].actions.find(a => a.kind === 'attack' && !a.longRange);
+  const recent = Object.values(mem.enemies || {}).filter(e => st.turnCount - e.turn <= st.players.length);
+  const targets = [
+    ...recent.map(e => ({ cells: e.cells, ship: true })),
+    ...Object.values(mem.enemyRigs || {}).map(r => ({ cells: [[r.x, r.y]] })),
+    ...ctx.view.enemyPlatforms.map(o => ({ cells: [[o.x, o.y]] })),
+  ];
+  const reach = t => (t.ship ? HUNT_RANGE : ctx.phase === 'war' ? RAID_RANGE : HUNT_RANGE);
+  for (const s of boats) {
+    if (!st.ships.includes(s) || s.acted || s.movesLeft <= 0) continue;
+    const cells = E.shipCells(s);
+    const close = recent.filter(e => E.dist(cells, e.cells) <= 3);
+    const ready = !E.canUseAction(st, s, act) && canSpend(ctx, act.money, 1);
+    if (!ready) {
+      // reloading (or can't afford a shot): don't sit next to enemy guns
+      if (close.length) await backOff(ctx, s, close);
+      continue;
+    }
+    const near = targets.filter(t => E.dist(cells, t.cells) <= reach(t) && enemiesNear(ctx, t.cells[0][0], t.cells[0][1], 4).length < 3)
+      .sort((a, b) => (b.ship ? 1 : 0) - (a.ship ? 1 : 0) || E.dist(cells, a.cells) - E.dist(cells, b.cells));
+    const t = near[0];
+    if (!t) {
+      // nothing known to shoot at: in the war phase, scout the nearest rival's waters for targets
+      // (with their long sight, missile boats make decent scouts); otherwise back to the strike force
+      const r = ctx.phase === 'war' && st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out)
+        .sort((a, b) => cheb(homeCentre(st, a), s) - cheb(homeCentre(st, b), s))[0];
+      const pt = r != null && r !== false ? nextSearchPoint(ctx, r, s) : null;
+      if (pt) { ctx.mem.tasks[s.id] = { kind: 'hunt' }; await sailSome(ctx, s, pt.x, pt.y); continue; }
+      if (taskOf(ctx, s)?.kind === 'hunt') ctx.mem.tasks[s.id] = { kind: 'strike' };
+      continue;
+    }
+    ctx.mem.tasks[s.id] = { kind: 'hunt' };
+    // stand off as far out as the boat can still see the target itself (it can't shoot what nobody sees)
+    const sight = Math.min(7, E.shipStat(st, p, s.type, 'sight'), E.actionRange(st, s, act)), far = Math.max(3, sight);
+    const d0 = E.dist(cells, t.cells);
+    if (d0 <= far && d0 >= 3) continue; // already in a good spot
+    let best = null;
+    for (const n of E.reachable(st, s).values()) {
+      const d = E.dist(E.cellsOf(s.type, n.x, n.y, n.r), t.cells);
+      if (d < 3 || d > far) continue;
+      const score = n.d * 2 + Math.abs(far - d);
+      if (!best || score < best.score) best = { ...n, score };
+    }
+    if (best) await sailSome(ctx, s, best.x, best.y, best.r);
+    else { const c = t.cells[0]; await sailSome(ctx, s, c[0], c[1]); } // too far for one turn: close in (sailSome stops short)
+  }
+}
+async function backOff(ctx, s, threats) {
+  const { st } = ctx;
+  let best = null;
+  for (const n of E.reachable(ctx.st, s).values()) {
+    const c = E.cellsOf(s.type, n.x, n.y, n.r);
+    const d = Math.min(...threats.map(e => E.dist(c, e.cells)));
+    if (!best || d > best.dd || (d === best.dd && n.d < best.d)) best = { ...n, dd: d };
+  }
+  if (best && best.dd > 3) await sailSome(ctx, s, best.x, best.y, best.r);
+  else if (frontier(ctx)) { const f = frontier(ctx); await sailSome(ctx, s, f.x, f.y); }
+  void st;
 }

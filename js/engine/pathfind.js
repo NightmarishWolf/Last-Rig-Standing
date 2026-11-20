@@ -8,7 +8,9 @@ import { visibility } from './visibility.js';
 export function blockedGrid(st, owner, ignoreId) {
   const { W, H } = st;
   const g = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) g[i] = st.land[i] ? 1 : 0;
+  // pack ice blocks every ship except an Icebreaker
+  const breaker = st.ice && ignoreId && SHIPS[st.ships.find(s => s.id === ignoreId)?.type]?.passives?.iceBreaker;
+  for (let i = 0; i < W * H; i++) g[i] = st.land[i] || (st.ice && !breaker && st.ice[i]) ? 1 : 0;
   const vis = visibility(st, owner);
   for (const s of st.ships) {
     if (s.id === ignoreId || (s.owner !== owner && !vis.ships.has(s.id))) continue;

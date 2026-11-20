@@ -45,6 +45,29 @@ export function doSell(st, a) {
   return ok();
 }
 
+// ---------- auto-sell (research Automated Trading) ----------
+// pl.autoSell = { on, keep }: at the end of the player's turn, oil above `keep` is sold at the market price
+// (after voyages and standing orders have used theirs).
+export const canAutoSell = (st, p) => !!st.players[p].research?.done?.auto_trading;
+export function doSetAutoSell(st, a) {
+  const p = st.current, me = st.players[p];
+  if (!canAutoSell(st, p)) return fail('Research Automated Trading first.');
+  const cur = me.autoSell || { on: false, keep: 0 };
+  const keep = a.keep == null ? cur.keep : Math.max(0, Math.min(Math.round(pstat(st, p, 'oilCap')), Math.round(+a.keep || 0)));
+  me.autoSell = { on: a.on == null ? cur.on : !!a.on, keep };
+  return ok();
+}
+export function autoSell(st, p) {
+  const me = st.players[p], a = me.autoSell;
+  if (!a?.on || !canAutoSell(st, p)) return;
+  const n = r2(me.oil - a.keep);
+  if (n < 0.01) return;
+  const { total, price } = sellValue(st, n, p);
+  me.oil = r2(me.oil - n); me.money = r2(me.money + total); st.market.price = price;
+  tally(st, p, 'oilSold', n); tally(st, p, 'oilMoney', total);
+  log(st, p, `🤖 Auto-sold ${fmt2(n)} oil for $${fmt2(total)} (keeping ${a.keep}).`, { k: 'oil' });
+}
+
 // ---------- selling ships ----------
 // Half the price back (less for damaged ships), if the ship has been out of combat for a few rounds
 // and is in your home waters or inside one of your base claims.

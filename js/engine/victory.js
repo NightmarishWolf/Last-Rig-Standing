@@ -1,3 +1,4 @@
+import { SHAPES } from './maptypes.js';
 // ============================================================
 // VICTORY
 //   ⚔️ Conquest: every rival Admiralty wrecked or captured (always on).
@@ -59,8 +60,15 @@ export function doMoveCapital(st, a) {
 
 // ---------- 🗺️ Domination ----------
 // Open water on the map (cached).
+// Domination's "enough of the map" bar counts open water (not land, not pack ice), but never more than a
+// Classic map of that size has (about 70% water): on Open Ocean, or with pack ice, it would otherwise take
+// far more bases to dominate than anywhere else.
 function waterCount(st) {
-  if (!st.waterCount) { let n = 0; for (let i = 0; i < st.W * st.H; i++) if (!st.land[i]) n++; st.waterCount = n; }
+  if (!st.waterCount) {
+    let n = 0;
+    for (let i = 0; i < st.W * st.H; i++) if (!st.land[i] && !st.ice?.[i]) n++;
+    st.waterCount = Math.round(Math.min(n, st.W * st.H * 0.7) * (SHAPES[st.mapType]?.domination ?? 1));
+  }
   return st.waterCount;
 }
 // How much sea each player's live bases claim (overlaps go to the older base).

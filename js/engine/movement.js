@@ -1,11 +1,13 @@
 // Moving and turning ships, including running into hidden enemies and mines.
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
+import { breakIce, inSpill } from './world.js';
+import { r2 } from './util.js';
 import { cellsOf, coord, shipCells, turnAnchor } from './geometry.js';
 import { chargeMove, moveCost } from './stats.js';
 import { shipStat } from './modifiers.js';
 import { checkWin } from './turns.js';
-import { fail, log, ok, passives } from './util.js';
+import { fail, log, ok, passives, tallyUnit } from './util.js';
 import { hiddenBlocker, placementOk, revealBlocker, visibility } from './visibility.js';
 import { blockedGrid } from './pathfind.js';
 
@@ -104,13 +106,19 @@ export function stepShip(st, ship, x, y, r) {
     log(st, p, `${SHIPS[ship.type].name} ran into an unseen enemy ${blk.kind === 'ship' ? 'contact' : 'rig'} and stopped.`);
     return 'blocked';
   }
+  const turning = r !== ship.rot;
   ship.x = x; ship.y = y; ship.rot = r;
+  breakIce(st, ship); // an Icebreaker clears the ice it sails over
+  // an oil slick: each square sailed in one costs double (the extra is paid here)
+  if (!turning && p >= 0 && inSpill(st, cells)) { const pl = st.players[p]; pl.oil = r2(Math.max(0, pl.oil - moveCost(st, ship, 1))); }
   const mine = st.mines.find(m => m.owner !== p && cells.some(([cx, cy]) => cx === m.x && cy === m.y));
   if (mine) {
     st.mines = st.mines.filter(m => m !== mine);
     const dmg = Math.max(0, mine.dmg - shipStat(st, p, ship.type, 'armor'));
     ship.hp -= dmg;
     ship.combatRound = st.round;
+    tallyUnit(st, mine.owner, 'mine', 'dmg', dmg);
+    if (ship.hp <= 0) { tallyUnit(st, mine.owner, 'mine', 'kills'); tallyUnit(st, mine.owner, 'mine', 'killValue', shipStat(st, p, ship.type, 'cost')); }
     log(st, p, `${SHIPS[ship.type].name} hit a mine! (−${dmg} HP)`, { k: 'hit', x: ship.x, y: ship.y });
     if (!st.players[mine.owner].out) log(st, mine.owner, `One of your mines exploded at ${coord(mine.x, mine.y)}.`);
     if (ship.hp <= 0) sink(st, ship);

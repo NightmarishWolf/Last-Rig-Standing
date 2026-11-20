@@ -1,6 +1,8 @@
 // The two public entry points: applyAction() changes the game, getView() is what one player may see.
+import { doPower } from './powers.js';
 import { doAct } from './abilities.js';
-import { doSell, doSellShip } from './economy.js';
+import { doFixBlowout, worldRound } from './world.js';
+import { autoSell, doSell, doSellShip, doSetAutoSell } from './economy.js';
 import { doBuyShip, doCancelBuild } from './production.js';
 import { doCancelFleetOrder, doDisbandFleet, doFormFleet, doJoinFleet, doLeaveFleet, doReformFleet, doRegroupFleet, doSetFleetOrder, fleetsOf, runFleetOrders, tidyFleets } from './fleets.js';
 import { doSetStanding, runStanding } from './standing.js';
@@ -15,7 +17,13 @@ import { doBuyPort } from './ports.js';
 import { forwardPorts } from './stats.js';
 import { checkWin, eliminate, nextTurn, recordHistory, startTurn } from './turns.js';
 import { fail, ok, r2 } from './util.js';
-import { visibility } from './visibility.js';
+import { visibility, exploreAll } from './visibility.js';
+import { burning, tideSources } from './factions.js';
+
+// Every move that works is numbered (st.seq) and shown to whoever listens (the replay recorder).
+// Replaying the same moves, in order, on a copy of the starting game gives the same game.
+let listener = null;
+export const onApplied = fn => { listener = fn; };
 
 export function applyAction(st, a) {
   if (st.phase !== 'playing') return fail('Game over.');
@@ -31,6 +39,8 @@ export function applyAction(st, a) {
   } else r = runAction(st, a);
   tidyFleets(st); // ships sunk along the way leave their fleets
   for (const pl of st.players) { pl.money = r2(pl.money); pl.oil = r2(pl.oil); } // two decimals, no float drift
+  if (r.ok && st.exploreFog) exploreAll(st); // reveal fog: whatever is in sight now stays revealed
+  if (r.ok) { st.seq = (st.seq || 0) + 1; listener?.(st, a); }
   return r;
 }
 
@@ -42,6 +52,7 @@ function runAction(st, a) {
     case 'buyShip': return doBuyShip(st, a);          // { ship, yard }: queue at a shipyard, paid now
     case 'cancelBuild': return doCancelBuild(st, a);
     case 'buyRig': return doBuyRig(st, a);
+    case 'fixBlowout': return doFixBlowout(st, a);
     case 'buyPort': return doBuyPort(st, a);
     case 'buildPlatform': return doBuildPlatform(st, a);
     case 'upgradeBase': return doUpgradeBase(st, a);
@@ -63,8 +74,10 @@ function runAction(st, a) {
     case 'setStanding': return doSetStanding(st, a);
     case 'baseStrike': return doBaseStrike(st, a);   // { platformId, x, y }: recon drone, cruise missile, bomber sortie
     case 'satellite': return doSatellite(st, a);     // { x, y }
+    case 'power': return doPower(st, a);             // { power, x?, y? } (commander powers)
     case 'sell': return doSell(st, a);
     case 'sellShip': return doSellShip(st, a);      // { shipId }
+    case 'setAutoSell': return doSetAutoSell(st, a); // { on?, keep? }
     case 'ready': return doReady(st, a.by ?? st.current, a.ready !== false);
     case 'endTurn':
       if (st.simul) return doReady(st, a.by ?? st.current, true);
@@ -74,6 +87,7 @@ function runAction(st, a) {
       runVoyages(st, st.current);
       if (st.phase === 'playing') runFleetOrders(st, st.current);
       if (st.phase === 'playing') runStanding(st, st.current);
+      if (st.phase === 'playing') autoSell(st, st.current); // (Automated Trading: oil above what you keep)
       if (st.phase === 'playing') nextTurn(st);
       return ok();
     case 'surrender': {
@@ -97,7 +111,8 @@ export function getView(st, p) {
     myShips: st.ships.filter(s => s.owner === p),
     myRigs: st.rigs.filter(r => r.owner === p),
     myMines: st.mines.filter(m => m.owner === p),
-    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s) })),
+    // (pirates show what they are; anyone can see a ship burning: badly damaged enough to board)
+    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s), ...(burning(st, s, p) ? { burning: true } : {}), ...(s.owner < 0 ? { type: s.type, hp: s.hp, neutral: s.neutral } : {}) })),
     enemyRigs: st.rigs.filter(r => r.owner !== p && vis.rigs.has(r.id)),
     myPorts: forwardPorts(st, p),
     enemyPorts: (st.ports || []).filter(o => o.owner !== p && vis.ports.has(o.id)),
@@ -110,7 +125,25 @@ export function getView(st, p) {
     enemyBases: (st.bases || []).filter(b => b.owner !== p && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
     deposits: st.deposits.filter(d => me.known[d.id]),
     wrecks: st.wrecks,
+    // the Free Tide's raft network: your own, and enemy Tide around bases and ships you can see
+    tides: tidesSeen(st, p, vis),
   };
+}
+
+function tidesSeen(st, p, vis) {
+  const out = [];
+  st.players.forEach((pl, o) => {
+    if (pl.out || pl.faction !== 'tide') return;
+    for (const t of tideSources(st, o)) {
+      if (o !== p && !st.noFog) {
+        const b = (st.bases || []).find(b => b.id === t.id);
+        const seen = b ? st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id)) : vis.ships.has(t.id);
+        if (!seen) continue;
+      }
+      out.push({ owner: o, x: t.x, y: t.y, r: t.r });
+    }
+  });
+  return out;
 }
 
 // ---------- simultaneous rounds ----------
@@ -130,17 +163,25 @@ function doReady(st, p, ready) {
 export function endRound(st) {
   const prev = st.current;
   const alive = () => st.players.map((_, i) => i).filter(i => !st.players[i].out);
-  for (const p of alive()) {
+  // voyages, fleet orders and standing orders (guards firing...) run player by player: whoever goes first
+  // gets the first shot, so the order rotates every round
+  const n = st.players.length;
+  const order = st.players.map((_, i) => (i + st.round) % n).filter(i => !st.players[i].out);
+  for (const p of order) {
     st.current = p;
     runVoyages(st, p);
     if (st.phase === 'playing') runFleetOrders(st, p);
     if (st.phase === 'playing') runStanding(st, p);
+    if (st.phase === 'playing') autoSell(st, p);
     if (st.phase !== 'playing') return;
   }
   const round0 = st.round;
   recordHistory(st, round0);
   st.round++;
   processLastRig(st);
+  if (st.phase !== 'playing') return;
+  worldRound(st); // spills fade, world events, pirates, ice
+  checkWin(st);
   if (st.phase !== 'playing') return;
   for (const p of alive()) {
     st.turnCount++;

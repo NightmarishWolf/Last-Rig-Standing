@@ -5,7 +5,11 @@
 // (The engine's "can I build here?" checks are fine: a human gets the same answers as error messages.)
 import * as E from '../engine/index.js';
 import { DIFFICULTY, PERSONALITIES } from '../data/bots.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, shipFor } from '../data/ships.js';
+
+const personalityFor = (pers, faction) => (faction && pers[faction] ? { ...pers, ...pers[faction] } : pers);
+// This bot's ship for a job ('scout', 'picket', 'line'...), or null if its faction has none.
+export const roleShip = (ctx, role) => shipFor(ctx.faction, role);
 
 export function makeContext(st, p, act) {
   const me = st.players[p], ai = me.ai;
@@ -15,7 +19,9 @@ export function makeContext(st, p, act) {
     st, p, me, ai, act,
     mem: ai.mem,
     knobs: DIFFICULTY[ai.difficulty] || DIFFICULTY.normal,
-    pers: PERSONALITIES[ai.personality] || PERSONALITIES.admiral,
+    // (a Free Tide bot plays the same personality with the Tide's ships and research)
+    faction: me.faction || 'navy',
+    pers: personalityFor(PERSONALITIES[ai.personality] || PERSONALITIES.admiral, me.faction),
     actions: 0,
     // the view is cached and refreshed after every action
     _view: null,

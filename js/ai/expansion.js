@@ -5,7 +5,7 @@
 //   { kind: 'scout' }                   Explore standing order (surveys as it goes)
 //   { kind: 'expand', dep, x, y }       sail next to a deposit and found a base there
 import * as E from '../engine/index.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, isRole } from '../data/ships.js';
 import { canSpend, canSurvey, cheb, isArmed, myShips, sailSome, sharp, spotNextTo, taskOf } from './context.js';
 import { enemiesNear, enemyClaimed } from './memory.js';
 
@@ -50,6 +50,8 @@ function surveySpot(ctx, s, claimed, bad = []) {
   // the survey focus drifts from home waters out to No Man's Sea (where the big deposits are) over the first rounds
   const h = st.players[p].home, f = Math.min(0.85, st.round / 8);
   const hc = { x: (h.x0 + h.x1) / 2 * (1 - f) + st.W / 2 * f, y: (h.y0 + h.y1) / 2 * (1 - f) + st.H / 2 * f };
+  // a super-rich field somewhere in a marked area (world event): survey there first
+  const fields = (st.events?.active || []).filter(e => e.kind === 'field' && !st.players[p].known[e.depId]);
   let best = null;
   const R = 40; // look this far around the ship first (keeps it cheap on huge maps)
   for (let pass = 0; pass < 2 && !best; pass++) {
@@ -60,11 +62,12 @@ function surveySpot(ctx, s, claimed, bad = []) {
       if (claimed.some(c => Math.abs(c.x - x) < step && Math.abs(c.y - y) < step)) continue;
       if (bad.includes(x + ',' + y)) continue;
       // the ship must fit there as it faces now (no land, nothing of ours in the way)
-      if (!E.cellsOf(s.type, x, y, s.rot).every(([cx, cy]) => E.inBounds(st, cx, cy) && !E.isLand(st, cx, cy) && !E.shipAt(st, cx, cy, o => o.owner === p && o.id !== s.id)
+      if (!E.cellsOf(s.type, x, y, s.rot).every(([cx, cy]) => E.inBounds(st, cx, cy) && !E.isLand(st, cx, cy) && !E.iceAt(st, cx, cy) && !E.shipAt(st, cx, cy, o => o.owner === p && o.id !== s.id)
         && !ctx.view.deposits.some(d => d.x === cx && d.y === cy))) continue; // never park on a deposit
       // nearby first, but pulled toward the middle of home waters and then out toward No Man's Sea
       // (not along the map edge, where there's half as much water to find)
-      const d = cheb(s, { x, y }) + 0.6 * cheb(hc, { x, y }) + (x < step || y < step || x >= st.W - step || y >= st.H - step ? 6 : 0);
+      const d = cheb(s, { x, y }) + 0.6 * cheb(hc, { x, y }) + (x < step || y < step || x >= st.W - step || y >= st.H - step ? 6 : 0)
+        - (fields.some(e => cheb(e, { x, y }) <= e.r) ? 60 : 0);
       if (!best || d < best.d) best = { x, y, d };
     }
   }
@@ -115,7 +118,7 @@ export async function expansion(ctx) {
     for (const d of expansionTargets(ctx)) {
       if (slots <= 0) break;
       const cands = ships.filter(s => (free(ctx, s) || ['survey', 'reserve'].includes(taskOf(ctx, s)?.kind)) && !E.fleetOf(st, s.id) && (cheap(s) || !isArmed(s.type)) && s.movesLeft > 0)
-        .sort((a, b) => cheb(a, d) + (a.type === 'survey' ? 25 : 0) - cheb(b, d) - (b.type === 'survey' ? 25 : 0));
+        .sort((a, b) => cheb(a, d) + (isRole(a.type, 'scout') ? 25 : 0) - cheb(b, d) - (isRole(b.type, 'scout') ? 25 : 0));
       const s = cands[0];
       if (!s) break;
       const far = cheb(s, d);
@@ -137,15 +140,15 @@ export async function expansion(ctx) {
   // survey ships first: they cover the most water per drop of oil
   const maxSurveyors = ctx.knobs.scouts + 1;
   let surveyors = ships.filter(s => taskOf(ctx, s)?.kind === 'survey')
-    .sort((a, b) => (b.type === 'survey') - (a.type === 'survey'));
+    .sort((a, b) => (isRole(b.type, 'scout')) - (isRole(a.type, 'scout')));
   for (const s of surveyors.slice(maxSurveyors)) delete ctx.mem.tasks[s.id];
   surveyors = surveyors.slice(0, maxSurveyors);
   // a survey ship always takes over from a patrol boat
-  const better = ships.find(s => s.type === 'survey' && free(ctx, s) && !s.standing);
-  if (better && surveyors.length >= maxSurveyors && surveyors[surveyors.length - 1].type !== 'survey') {
+  const better = ships.find(s => isRole(s.type, 'scout') && free(ctx, s) && !s.standing);
+  if (better && surveyors.length >= maxSurveyors && !isRole(surveyors[surveyors.length - 1].type, 'scout')) {
     delete ctx.mem.tasks[surveyors.pop().id];
   }
-  for (const s of ships.filter(s => free(ctx, s) && canSurvey(s.type) && !s.standing).sort((a, b) => (b.type === 'survey') - (a.type === 'survey'))) {
+  for (const s of ships.filter(s => free(ctx, s) && canSurvey(s.type) && !s.standing).sort((a, b) => (isRole(b.type, 'scout')) - (isRole(a.type, 'scout')))) {
     if (surveyors.length >= maxSurveyors) break;
     ctx.mem.tasks[s.id] = { kind: 'survey' }; surveyors.push(s);
   }
@@ -203,8 +206,8 @@ export async function expansion(ctx) {
   const want = ctx.knobs.scouts - ships.filter(s => taskOf(ctx, s)?.kind === 'scout').length;
   // (exploring burns a whole turn of movement every turn: only once the oil is really flowing)
   for (let i = 0; i < want && ctx.phase === 'war' && me.oil > 50 && oilIn >= 15; i++) {
-    const s = ships.filter(s => free(ctx, s) && !s.standing && (s.type === 'survey' || (cheap(s) && ships.length > 3)))
-      .sort((a, b) => (b.type === 'survey') - (a.type === 'survey'))[0];
+    const s = ships.filter(s => free(ctx, s) && !s.standing && (isRole(s.type, 'scout') || (cheap(s) && ships.length > 3)))
+      .sort((a, b) => (isRole(b.type, 'scout')) - (isRole(a.type, 'scout')))[0];
     if (!s) break;
     if ((await ctx.do({ type: 'setStanding', shipId: s.id, standing: { kind: 'explore' } })).ok) ctx.mem.tasks[s.id] = { kind: 'scout' };
   }

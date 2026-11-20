@@ -4,6 +4,8 @@
 // Each tech: { id, name, branch, era, req: [tech ids], effects: [...], unlocks: {...}, doctrine }
 //   era:      1–4 (sets the cost, see ERA_COST)
 //   req:      every listed tech must be researched first (they can be in other branches)
+//   faction:  set from the branch (weap/armor/ships are the Navy's, tide/swarm/plunder the Free Tide's)
+//   same:     (Tide techs) counts as this Navy tech wherever shared research or platforms need it
 //   doctrine: techs sharing a doctrine id are a choice: researching one locks the others for good
 //   unlocks:  { ships: [...], platforms: [...], port: true, baseLevel: n }
 //
@@ -14,6 +16,7 @@
 //     oilCap, sellMult, priceDropMult, upkeepMult, surveyRadius, rigRate, reservesMult, portRange,
 //     claimRadius, slots, platformCostMult, platformHpMult, platformUpkeepMult, baseCostMult,
 //     rp, heal, baseSight, stealth, flashExact, platformRange, platformRepair,
+//     tideRadius, tideMax, tideHeal, tideMove, tideOilMult, tideShip, packBonus, plunderMult, plunderRange, boardShare (Free Tide),
 //     deepLayers (dry rigs drill deeper: see DEEP_LAYERS in economy.js), pumpBonus (oil per Pump Station)
 // ============================================================
 
@@ -25,9 +28,12 @@ export const BRANCHES = {
   econ:   { name: 'Economy', icon: '💰' },
   drill:  { name: 'Drilling', icon: '🛢️' },
   sens:   { name: 'Sensors & Intel', icon: '📡' },
-  weap:   { name: 'Weapons', icon: '💥' },
-  armor:  { name: 'Armor & Survival', icon: '🛡️' },
-  ships:  { name: 'Shipbuilding', icon: '⚓' },
+  weap:   { name: 'Weapons', icon: '💥', faction: 'navy' },
+  armor:  { name: 'Armor & Survival', icon: '🛡️', faction: 'navy' },
+  ships:  { name: 'Shipbuilding', icon: '⚓', faction: 'navy' },
+  tide:   { name: 'The Tide', icon: '🌊', faction: 'tide' },
+  swarm:  { name: 'Swarm Yards', icon: '🏴', faction: 'tide' },
+  plunder: { name: 'Plunder & Arms', icon: '☠️', faction: 'tide' },
   rigs:   { name: 'Rig Engineering', icon: '🏗️' },
   future: { name: 'Post-Oil', icon: '⚛️' },
 };
@@ -48,7 +54,7 @@ export const TECHS = [
     'Fast fleets: +1 move for light ships and escorts.'),
   T('endurance_doc', 'Endurance Doctrine', 'prop', 2, ['fuel_eff'], [{ ship: 'all', stat: 'oil', mult: 0.7 }, { player: 'upkeepMult', mult: 0.9 }], {}, 'prop2',
     'Long voyages: ships burn 30% less oil and cost 10% less upkeep.'),
-  T('hydrofoils', 'Hydrofoils', 'prop', 3, ['turbines'], [{ ship: 'light', stat: 'move', add: 1 }], { ships: ['hydrofoil'] }),
+  T('hydrofoils', 'Hydrofoils', 'prop', 3, ['turbines'], [{ ship: 'light', stat: 'move', add: 1 }], { ships: ['hydrofoil', 'lancer'] }),
   T('gas_turbines', 'Gas Turbines', 'prop', 3, ['turbines', 'fuel_eff'], [{ ship: 'capital', stat: 'move', add: 1 }]),
   T('snorkel', 'Snorkels', 'prop', 3, ['ballast'], [{ ship: 'sub', stat: 'move', add: 1 }, { ship: 'sub', stat: 'sight', add: 1 }]),
   T('nuclear_prop', 'Nuclear Propulsion', 'prop', 4, ['snorkel', 'gas_turbines'], [{ ship: 'sub', stat: 'move', add: 1 }], { ships: ['nuclearsub'] }),
@@ -60,6 +66,7 @@ export const TECHS = [
 
   // ---------------- 💰 ECONOMY (money, markets and storage) ----------------
   T('trading', 'Commodity Trading', 'econ', 1, [], [{ player: 'sellMult', mult: 1.1 }]),
+  T('auto_trading', 'Automated Trading', 'econ', 1, ['trading'], [], {}, null, 'Auto-sell: at the end of each of your turns, oil above the amount you choose to keep is sold at the market price (set it under Resources).'),
   T('storage_tanks', 'Storage Tanks', 'econ', 2, [], [{ player: 'oilCap', add: 40 }]),
   T('refining', 'Refining', 'econ', 2, ['trading'], [{ player: 'sellMult', mult: 1.1 }]),
   T('free_market', 'Free Market', 'econ', 2, ['refining'], [{ player: 'sellMult', mult: 1.15 }, { player: 'priceDropMult', mult: 0.7 }], {}, 'econ2',
@@ -73,11 +80,13 @@ export const TECHS = [
 
   // ---------------- ⛏️ DRILLING (oil production: finding it, pumping it, and making it last) ----------------
   T('seismic', 'Seismic Surveys', 'drill', 1, [], [{ player: 'surveyRadius', add: 1 }]),
+  // Polar maps only (hidden elsewhere): the Icebreaker, to open up oil under the pack ice
+  { ...T('ice_hulls', 'Ice-class Hulls', 'drill', 1, [], [], { ships: ['icebreaker'] }, null, 'Unlocks the Icebreaker, which breaks lanes through the pack ice (they slowly freeze over again). Polar maps only.'), polar: true },
   T('pump_stations', 'Pump Stations', 'drill', 2, ['platform_construction'], [], { platforms: ['pump'] }),
   T('deep_drilling', 'Deeper Wells', 'drill', 2, ['seismic'], [{ player: 'deepLayers', add: 1 }], {}, null,
     'When one of your rigs runs dry, it drills deeper and strikes a second layer with 40% of the deposit\'s original oil.'),
   T('deep_water', 'Deep-Water Drilling', 'drill', 3, ['seismic'], [{ player: 'rigRate', add: 1 }]),
-  T('mobile_drilling', 'Mobile Drilling', 'drill', 3, ['deep_water'], [], { ships: ['drillship'] }),
+  T('mobile_drilling', 'Mobile Drilling', 'drill', 3, ['deep_water'], [], { ships: ['drillship', 'rigraft'] }),
   T('improved_pumps', 'Improved Pumps', 'drill', 3, ['pump_stations'], [{ player: 'pumpBonus', add: 1 }], {}, null,
     'Pump Stations pump +1 more oil each (every rig in the base).'),
   T('ultra_deep', 'Ultra-Deep Drilling', 'drill', 3, ['deep_drilling', 'deep_water'], [{ player: 'deepLayers', add: 1 }], {}, null,
@@ -122,11 +131,11 @@ export const TECHS = [
   T('air_defense', 'Air Defense', 'weap', 3, ['fire_control'], [], { ships: ['frigate'] }),
   T('wake_homing', 'Wake-Homing Torpedoes', 'weap', 3, ['mine_warfare'], [{ weapon: 'torpedo', stat: 'dmg', add: 1 }]),
   T('cruise_missiles', 'Cruise Missiles', 'weap', 3, ['guided_missiles'], [], { platforms: ['cruise'] }, null,
-    'Missile Boats and Cruisers get Cruise Missiles (range 14, outranging any base), and bases can build Cruise Missile Batteries for coastal defence (range 6).'),
+    'Missile Corvettes and Guided Missile Cruisers get Cruise Missiles (range 14, outranging any base), and bases can build Cruise Missile Batteries for coastal defence (range 6).'),
   T('strategic_bombers', 'Strategic Bombers', 'weap', 4, ['naval_aviation'], [], { platforms: ['airbase'] }, null,
     'Airbases: bomber sorties hit a 3×3 area up to 10 squares from the base.'),
   T('ballistic_missiles', 'Sub-Launched Missiles', 'weap', 4, ['nuclear_prop', 'guided_missiles'], [], {}, null,
-    'Nuclear Submarines can fire a missile at anything you can see up to 12 squares away.'),
+    'Nuclear Attack Subs can fire a missile at anything you can see up to 12 squares away.'),
   T('naval_aviation', 'Naval Aviation', 'weap', 4, ['air_defense', 'guided_missiles'], [], { ships: ['carrier'] }),
   T('asw', 'Anti-Submarine Warfare', 'weap', 4, ['wake_homing'], [{ weapon: 'depth', stat: 'dmg', add: 1 }, { weapon: 'depth', stat: 'range', add: 1 }]),
   T('saturation', 'Saturation Fire', 'weap', 4, ['guided_missiles'], [{ weapon: 'all', stat: 'shots', add: 1 }], {}, 'weap4',
@@ -157,7 +166,10 @@ export const TECHS = [
   // ---------------- ⚓ SHIPBUILDING ----------------
   T('destroyer_program', 'Destroyer Program', 'ships', 1, [], [], { ships: ['destroyer'] }),
   T('forward_bases', 'Forward Bases', 'ships', 1, [], [], { port: true }, null, 'Build forward ports on island coasts.'),
-  T('fleet_logistics', 'Fleet Logistics', 'ships', 2, ['forward_bases'], [{ player: 'upkeepMult', mult: 0.85 }]),
+  T('fleet_logistics', 'Fleet Logistics', 'ships', 2, ['forward_bases'], [{ player: 'upkeepMult', mult: 0.85 }], { ships: ['supply'] }, null,
+    'Ship upkeep 15% cheaper, and the Supply Ship: a moving supply line for your fleet.'),
+  T('amphibious_warfare', 'Amphibious Warfare', 'ships', 3, ['fleet_logistics'], [], { ships: ['assault'] }, null,
+    'The Amphibious Assault Ship: its marines capture an enemy rig base (not an Admiralty) whose central rig is down to half HP or less, with no defending ships within 2 squares of it.'),
   T('salvage_ops', 'Salvage Operations', 'ships', 2, ['forward_bases'], [], { ships: ['salvage'] }),
   T('quantity', 'Quantity', 'ships', 2, ['destroyer_program'], [{ ship: 'all', stat: 'cost', mult: 0.85 }, { ship: 'all', stat: 'build', add: -1 }], {}, 'ships2',
     'Mass production: every ship costs 15% less and builds 1 turn faster.'),
@@ -174,6 +186,51 @@ export const TECHS = [
   T('wolf_packs', 'Wolf Packs', 'ships', 4, ['command_control'], [{ ship: 'sub', stat: 'cost', mult: 0.8 }, { ship: 'light', stat: 'cost', mult: 0.8 }], {}, 'ships4',
     'Swarms: submarines and light ships cost 20% less.'),
 
+
+  // ================ FREE TIDE ONLY ================
+  // `same`: counts as that Navy tech wherever shared research or buildings need it (gun platforms, dry docks...)
+  // ---------------- 🌊 THE TIDE ----------------
+  T('raft_lashing', 'Lashed Rafts', 'tide', 1, [], [{ player: 'tideRadius', add: 1 }], {}, null, 'The Tide reaches 1 square further from every base.'),
+  { ...T('floating_docks', 'Floating Docks', 'tide', 1, [], [], { port: true }, null, 'Build forward ports on island coasts.'), same: 'forward_bases' },
+  T('tide_healers', 'Raft Surgeons', 'tide', 2, ['raft_lashing'], [{ player: 'tideHeal', add: 1 }], {}, null, 'Ships on the Tide heal 1 more HP a turn.'),
+  T('slipstreams', 'Slipstreams', 'tide', 2, ['raft_lashing'], [{ player: 'tideOilMult', mult: 0 }], {}, 'tide2',
+    'Moves that start on the Tide cost no oil at all.'),
+  T('spreading_tide', 'Spreading Tide', 'tide', 2, ['raft_lashing'], [{ player: 'tideRadius', add: 1 }, { player: 'tideMax', add: 1 }], {}, 'tide2',
+    'The Tide reaches 1 square further and can grow 1 square bigger.'),
+  { ...T('flak_rafts', 'Flak Rafts', 'tide', 3, ['tide_healers'], [{ player: 'tideMax', add: 1 }], {}, null, 'Counts as Air Defense for AA Platforms, and the Tide can grow 1 square bigger.'), same: 'air_defense' },
+  T('leviathans', 'Leviathans', 'tide', 3, ['tide_healers'], [], { ships: ['leviathan'] }, null, 'The Leviathan: a slow floating fortress that spreads the Tide around it.'),
+  T('living_tide', 'Living Tide', 'tide', 4, ['leviathans'], [{ player: 'tideShip', add: 1 }, { player: 'tideMove', add: 1 }], {}, null,
+    'Ships on the Tide get +1 more move, and Leviathans and the Tide Queen spread it 1 square further.'),
+  T('tide_queen', 'The Tide Queen', 'tide', 4, ['leviathans'], [], { ships: ['queen'] }, null, 'The Tide Queen (limit 1): your swarm boats near her hit harder, and she spreads the Tide.'),
+
+  // ---------------- 🏴 SWARM YARDS ----------------
+  { ...T('scrap_guns', 'Scrap Guns', 'swarm', 1, [], [{ weapon: 'gun', stat: 'dmg', add: 1 }], {}, null, '+1 damage for all guns (counts as Naval Artillery for gun platforms).'), same: 'artillery' },
+  { ...T('brig_yards', 'Brig Yards', 'swarm', 1, [], [], { ships: ['brig'] }, null, 'The Raider Brig (counts as the Destroyer Program for Dry Docks).'), same: 'destroyer_program' },
+  T('smuggler_subs', 'Smuggler Subs', 'swarm', 1, [], [], { ships: ['smuggler'] }),
+  T('mine_junks', 'Mine Junks', 'swarm', 2, ['smuggler_subs'], [], { ships: ['minejunk'] }),
+  T('fast_yards', 'Fast Yards', 'swarm', 2, ['brig_yards'], [{ ship: 'escort', stat: 'build', add: -1 }, { ship: 'sub', stat: 'build', add: -1 }], {}, null, 'Escorts and subs build 1 turn faster.'),
+  T('bigger_packs', 'Bigger Packs', 'swarm', 2, ['brig_yards'], [{ player: 'packBonus', add: 1 }], {}, 'swarm2', 'Skiff Packs launch 3 boats instead of 2.'),
+  T('tough_hulls', 'Patched Hulls', 'swarm', 2, ['brig_yards'], [{ ship: 'light', stat: 'hp', add: 1 }], {}, 'swarm2', 'Light boats get +1 HP.'),
+  { ...T('rocket_racks', 'Rocket Racks', 'swarm', 2, ['scrap_guns'], [], { ships: ['rocketjunk'] }, null, 'The Rocket Junk (counts as Guided Missiles for Missile Batteries).'), same: 'guided_missiles' },
+  { ...T('long_rockets', 'Long Rockets', 'swarm', 3, ['rocket_racks'], [{ weapon: 'missile', stat: 'range', add: 1 }], { platforms: ['cruise'] }, null,
+    '+1 range for rockets and missiles, and bases can build Cruise Missile Batteries.'), same: 'cruise_missiles' },
+  { ...T('drone_swarms', 'Drone Swarms', 'swarm', 4, ['long_rockets', 'fast_yards'], [], { ships: ['mothership'] }, null, 'The Drone Mothership.'), same: 'naval_aviation' },
+  T('endless_swarm', 'Endless Swarm', 'swarm', 4, ['fast_yards'], [{ ship: 'light', stat: 'cost', mult: 0.8 }, { ship: 'escort', stat: 'cost', mult: 0.85 }], {}, 'swarm4',
+    'Light boats cost 20% less and escorts 15% less.'),
+  T('war_rafts', 'War Rafts', 'swarm', 4, ['fast_yards'], [{ ship: 'all', stat: 'hp', mult: 1.25 }], {}, 'swarm4', 'Every ship gets 25% more HP.'),
+
+  // ---------------- ☠️ PLUNDER & ARMS ----------------
+  T('fireships', 'Fireships', 'plunder', 1, [], [], { ships: ['fireship'] }, null, 'The Fireship: rams and explodes, hitting everything around the target square.'),
+  T('cutthroats', 'Cutthroats', 'plunder', 1, [], [{ weapon: 'torpedo', stat: 'range', add: 1 }], {}, null, '+1 range for torpedoes.'),
+  T('boarding_parties', 'Boarding Parties', 'plunder', 2, ['fireships'], [], { ships: ['boarder'] }, null, 'The Boarding Skiff: captures a burning enemy ship (a third of its HP or less) next to it.'),
+  T('black_market', 'Black Market', 'plunder', 2, ['cutthroats'], [{ player: 'plunderMult', mult: 1.5 }], {}, null, 'Plunder is worth 50% more.'),
+  T('grappling_hooks', 'Grappling Hooks', 'plunder', 3, ['boarding_parties'], [{ player: 'boardShare', add: 1 / 6 }], {}, null, 'Board ships at half their HP or less.'),
+  T('q_ships', 'Q-Ships', 'plunder', 3, ['black_market'], [], { ships: ['qship'] }, null, 'The Q-Ship: a working Oil Barge with hidden missile launchers that give no muzzle flash.'),
+  T('wrecker_crews', 'Wrecker Crews', 'plunder', 3, ['black_market'], [{ player: 'plunderRange', add: 2 }, { weapon: 'fire', stat: 'dmg', add: 1 }], {}, null, 'Plunder is collected from 2 squares further, and Fireships hit 1 harder.'),
+  T('sea_wolves', 'Sea Wolves', 'plunder', 4, ['grappling_hooks'], [{ weapon: 'torpedo', stat: 'dmg', add: 1 }, { weapon: 'gun', stat: 'range', add: 1 }], {}, 'plunder4',
+    'Fight dirty: +1 damage for torpedoes and +1 range for guns.'),
+  T('kings_ransom', "King's Ransom", 'plunder', 4, ['q_ships'], [{ player: 'plunderMult', mult: 1.5 }, { player: 'upkeepMult', mult: 0.85 }], {}, 'plunder4',
+    'Rich pickings: plunder worth 50% more again, and upkeep 15% cheaper.'),
   // ---------------- 🏗️ RIG ENGINEERING ----------------
   T('platform_construction', 'Platform Construction', 'rigs', 1, [], [], { platforms: ['wellhead', 'storage'] },
     null, 'Rig bases claim 3×3. Build Wellheads and Storage Tanks.'),
@@ -213,4 +270,10 @@ export const TECHS = [
     null, 'Build the Deep-Sea Fusion Plant at a Hub base. Finish it to win a Post-Oil victory.'),
 ];
 
+// a tech in a faction's own branch is that faction's only
+for (const t of TECHS) if (BRANCHES[t.branch].faction) t.faction = BRANCHES[t.branch].faction;
+
 export const TECH = Object.fromEntries(TECHS.map(t => [t.id, t]));
+// Navy tech id → the Tide techs that stand in for it
+export const SAME = {};
+for (const t of TECHS) if (t.same) (SAME[t.same] ||= []).push(t.id);

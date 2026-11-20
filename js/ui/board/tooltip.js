@@ -1,4 +1,7 @@
 // Hover tooltip for oil deposits, rigs and ports (e.g. "18/35 oil left").
+import { SHIPS } from '../../data/ships.js';
+import { EVENT_TUNING } from '../../data/events.js';
+import { worldTip } from './world.js';
 import { DEPOSITS, PORT, RIG } from '../../data/economy.js';
 import { BASE_LEVELS, PLATFORMS } from '../../data/bases.js';
 import * as E from '../../engine/index.js';
@@ -49,8 +52,14 @@ export function oilInfo(v, x, y) {
 
 export function drawOilTooltip(v) {
   if (!S.hover || S.mode.kind === 'target') return;
-  const lines = oilInfo(v, S.hover.x, S.hover.y);
-  if (!lines) return;
+  const { x: hx, y: hy } = S.hover;
+  const pirate = v.enemyShips.find(s => s.owner < 0 && s.cells.some(([a, b]) => a === hx && b === hy));
+  const extra = [
+    ...(pirate ? [{ t: `${pirate.neutral === 'rogue' ? '🦈 Rogue submarine' : '🏴‍☠️ Pirate ' + SHIPS[pirate.type].name} · HP ${pirate.hp} · bounty $${EVENT_TUNING[pirate.neutral === 'rogue' ? 'rogue' : 'pirates'].bounty}`, c: pcol(-1) }] : []),
+    ...worldTip(hx, hy),
+  ];
+  const lines = [...(oilInfo(v, hx, hy) || []), ...extra];
+  if (!lines.length) return;
   S.ctx.textAlign = 'left'; S.ctx.textBaseline = 'top';
   const fs = 12, lh = 17;
   const w = 12 + Math.max(...lines.map(l => { S.ctx.font = `${l.big ? 'bold 14px' : fs + 'px'} system-ui`; return S.ctx.measureText(l.t).width; })) + 12;

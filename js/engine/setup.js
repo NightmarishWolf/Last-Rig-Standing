@@ -1,11 +1,17 @@
+import { tallyUnit } from './util.js';
+import { exploreAll } from './visibility.js';
 // Creating a new game: home layouts, islands, oil deposits and starting fleets.
 import { DEPOSITS, MARKET, RIG, START } from '../data/economy.js';
 import { BOT_NAMES, DIFFICULTY, PERSONALITIES } from '../data/bots.js';
 import { HOME_SCALE, MAP_SIZES, PLAYER_NAMES, WATER_PER_DEPOSIT } from '../data/maps.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, packOf, shipFor } from '../data/ships.js';
+import { FACTIONS } from '../data/factions.js';
+import { BOT_COMMANDER, BOT_LEVEL, COMMANDERS, COMMANDER_ORDER, MAX_LEVEL } from '../data/commanders.js';
 import { cellsOf, inRect, inSpawn, isLand, zoneOf } from './geometry.js';
 import { rand, randInt } from './rng.js';
 import { generateTerrain } from './terrain.js';
+import { depositScale, oilFocus, resolveMapType } from './maptypes.js';
+import { setupEvents } from './world.js';
 import { findPath } from './pathfind.js';
 import { startTurn } from './turns.js';
 import { foundBase } from './bases.js';
@@ -59,13 +65,28 @@ function layoutHomes(W, H, n) {
   return homes;
 }
 
-// A seat: 'human' (default), or { seat: 'ai', difficulty, personality } for a computer player.
-function seatOf(o, i, seed) {
-  if (!o || o === 'human' || o.seat === 'human') return { name: PLAYER_NAMES[i], seat: 'human', out: false };
+// A seat: 'human' (default), { seat: 'human', faction }, or { seat: 'ai', difficulty, personality, faction } for a computer player.
+// The seat's commander: { id, level, mastery } or null (no commander). Humans bring theirs from their
+// profile (o.commander, o.level, o.mastery); bots pick by personality ('auto') at their difficulty's level.
+// opts.commanderLevel1: everyone's commander plays at level 1.
+function commanderOf(o, faction, difficulty, personality, i, seed, opts) {
+  let id = o?.commander;
+  if (id === 'auto') id = BOT_COMMANDER[faction]?.[personality] || COMMANDER_ORDER[faction][0];
+  if (!id || !COMMANDERS[id] || COMMANDERS[id].faction !== faction) return null;
+  const bot = o.seat === 'ai';
+  let level = bot ? (Number.isInteger(o.level) ? o.level : BOT_LEVEL[difficulty] || 1) : (Number.isInteger(o.level) ? o.level : 1);
+  level = opts.commanderLevel1 ? 1 : Math.max(1, Math.min(MAX_LEVEL, level));
+  const mastery = o.mastery === 0 || o.mastery === 1 ? o.mastery : bot ? (seed + i) % 2 : 0;
+  return { id, level, mastery };
+}
+
+function seatOf(o, i, seed, opts = {}) {
+  const faction = FACTIONS[o?.faction] ? o.faction : 'navy';
+  if (!o || o === 'human' || o.seat === 'human') return { name: (typeof o?.name === 'string' && o.name.trim().slice(0, 24)) || PLAYER_NAMES[i], seat: 'human', out: false, faction, commander: commanderOf(o, faction, null, null, i, seed, opts), ...(typeof o?.profile === 'string' ? { profileId: o.profile } : {}) };
   const difficulty = DIFFICULTY[o.difficulty] ? o.difficulty : 'normal';
   const personality = PERSONALITIES[o.personality] ? o.personality : 'admiral';
   return {
-    name: PLAYER_NAMES[i], seat: 'ai', out: false,
+    name: PLAYER_NAMES[i], seat: 'ai', out: false, faction, commander: commanderOf(o, faction, difficulty, personality, i, seed, opts),
     ai: { difficulty, personality, rng: (seed * 31 + i * 7919) % 2147483647 || 1, mem: {} },
     bonus: DIFFICULTY[difficulty].bonus || null,
   };
@@ -77,7 +98,8 @@ export function newGame(opts = {}) {
   const size = MAP_SIZES[opts.size] ? opts.size : 'standard';
   const n = Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
   const { w: W, h: H } = MAP_SIZES[size];
-  const seed = opts.seed ?? Math.floor(Math.random() * 1e9);
+  // (only a whole number is a seed: anything else, like a blank seed box, means a new random map)
+  const seed = Number.isInteger(opts.seed) ? opts.seed : Math.floor(Math.random() * 1e9);
   const layout = MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
   const st = {
     version: 3, seed, rng: seed, size, W, H,
@@ -86,6 +108,11 @@ export function newGame(opts = {}) {
     mirror: opts.mirror !== false && !MAP_SIZES[size].classic,
     // simultaneous rounds: everyone plays at once and the round ends when all are ready (actions.js)
     simul: !!opts.simultaneous,
+    // fog of war off: everyone sees every ship, rig and platform, except submerged submarines (and mines)
+    noFog: opts.fog === false || opts.fog === 'off',
+    commanderLevel1: !!opts.commanderLevel1, // (everyone's commander at level 1)
+    // reveal fog: fog of war, but anything you've seen once stays visible for the rest of the game
+    exploreFog: opts.fog === 'reveal',
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
     victory: { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is)
@@ -95,7 +122,7 @@ export function newGame(opts = {}) {
     deposits: [], ships: [], rigs: [], ports: [], mines: [], wrecks: [], bases: [], platforms: [], fleets: [],
     market: { price: MARKET.basePrice },
     players: layout.map((l, i) => ({
-      ...seatOf(opts.seats && opts.seats[i], i, seed),
+      ...seatOf(opts.seats && opts.seats[i], i, seed, opts),
       home: l.home, spawn: l.spawn,
       money: START.money, oil: START.oil, known: {}, surveyed: {}, prevTurn: 0, domStreak: 0, exile: null, research: newResearch(),
       builds: [], explored: {},
@@ -110,10 +137,16 @@ export function newGame(opts = {}) {
     while (usedNames.has(k)) k = (k + 1) % BOT_NAMES.length;
     usedNames.add(k); pl.name = BOT_NAMES[k];
   }
+  // map type ('random' picks one from the seed); the tutorial's hand-made arena has none
+  st.mapType = MAP_SIZES[size].classic ? 'classic' : resolveMapType(st, opts.mapType || 'classic');
   generateMap(st);
   st.oilTotal = st.deposits.reduce((t, d) => t + d.reserves, 0); // for Last Rig Standing
+  st.spills = [];
+  setupEvents(st, opts.events); // world events (off unless chosen)
   if (st.simul) { st.ready = st.players.map(() => false); st.players.forEach((_, p) => startTurn(st, p, true)); st.current = 0; }
   else startTurn(st, 0, true);
+  for (const sh of st.ships) tallyUnit(st, sh.owner, sh.type, 'start'); // (for the balance stats)
+  exploreAll(st);
   return st;
 }
 
@@ -126,7 +159,7 @@ function generateMap(st) {
   let okWorld = false;
   for (let attempt = 0; attempt < 8 && !okWorld; attempt++) okWorld = generateTerrain(st, cfg.landShare) && warshipsCanCross(st);
   if (!okWorld) { st.land.fill(0); generateTerrain(st, cfg.landShare * 0.5) || st.land.fill(0); }
-  if (!warshipsCanCross(st)) carveSeaLanes(st);
+  if (!warshipsCanCross(st)) { carveSeaLanes(st); st.lanesCarved = true; } // (straight lanes: a last resort)
 
   const pickReserves = (type, where) => { const [a, b] = DEPOSITS[type][where]; return randInt(st, a, b); };
   const placeDeposit = (type, rect, ok, reserves) => {
@@ -170,19 +203,25 @@ function generateMap(st) {
   // No Man's Sea: about one deposit per WATER_PER_DEPOSIT open-water squares, ~40% rich
   let water = 0;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!isLand(st, x, y) && zoneOf(st, x, y) === 'middle') water++;
-  const count = Math.max(6, Math.round(water / WATER_PER_DEPOSIT));
+  const count = Math.max(6, Math.round(water / WATER_PER_DEPOSIT * depositScale(st)));
   const midTypes = ['rich', 'rich'];
   while (midTypes.length < count) midTypes.push(rand(st) < 0.4 ? 'rich' : 'medium');
   const whole = { x0: 0, y0: 0, x1: W - 1, y1: H - 1 };
+  // some map types gather the oil in one place (the Strait's narrows, the Inland Sea): the richest share
+  // of the middle deposits goes there, the rest spread as usual
+  const focus = oilFocus(st);
+  if (focus) midTypes.sort((a, b) => (b === 'rich') - (a === 'rich'));
+  const focusN = k => (focus ? Math.round(k * focus.share) : 0);
+  const placeMid = (t, rect, ok, res, inFocus) => (inFocus && placeDeposit(t, rect, (x, y) => ok(x, y) && focus.ok(x, y), res)) || placeDeposit(t, rect, ok, res);
   if (sym) {
     // place in one mirrored section and copy (squares on the mirror line would copy onto themselves: skip them)
     const n = Math.max(1, Math.round(midTypes.length / sym.parts));
-    midTypes.slice(0, n).forEach(t => {
+    midTypes.slice(0, n).forEach((t, i) => {
       const res = pickReserves(t, 'middle');
-      const dep = placeDeposit(t, sym.section, (x, y) => zoneOf(st, x, y) === 'middle' && sym.images(x, y).every(([a, b], k) => k === 0 || a !== x || b !== y), res);
+      const dep = placeMid(t, sym.section, (x, y) => zoneOf(st, x, y) === 'middle' && sym.images(x, y).every(([a, b], k) => k === 0 || a !== x || b !== y), res, i < focusN(n));
       if (dep) sym.images(dep.x, dep.y).slice(1).forEach(([x, y]) => addDeposit(st, t, x, y, res));
     });
-  } else midTypes.forEach(t => placeDeposit(t, whole, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle')));
+  } else midTypes.forEach((t, i) => placeMid(t, whole, (x, y) => zoneOf(st, x, y) === 'middle', pickReserves(t, 'middle'), i < focusN(midTypes.length)));
   placeStartingFleets(st);
   giveHeadStarts(st);
 }
@@ -207,14 +246,14 @@ function giveHeadStarts(st) {
       for (let x = pl.spawn.x0; x <= pl.spawn.x1 && n > 0; x++) {
         const near = st.ships.some(s => E_cells(s).some(([a, b]) => Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1));
         if (near || isLand(st, x, y) || !inSpawn(st, p, x, y)) continue;
-        addShip(st, p, 'survey', x, y, 0, true); n--;
+        addShip(st, p, shipFor(pl.faction, 'scout'), x, y, 0, true); n--;
       }
   });
 }
 
 // Can a Cruiser (a long ship that needs room to turn) sail from player 1's spawn strip to every other one?
 function warshipsCanCross(st) {
-  const grid = Uint8Array.from(st.land);
+  const grid = Uint8Array.from(st.land, (v, i) => v || (st.ice?.[i] ? 1 : 0)); // (pack ice blocks too)
   const spotIn = rect => {
     for (const r of [1, 0]) for (let y = rect.y0; y <= rect.y1; y++) for (let x = rect.x0; x <= rect.x1; x++)
       if (cellsOf('cruiser', x, y, r).every(([a, b]) => inRect(rect, a, b) && !grid[b * st.W + a])) return { x, y, r };
@@ -228,7 +267,7 @@ function warshipsCanCross(st) {
 // Last resort: open 5-square-wide sea lanes between the homes (straight through, kept symmetric).
 function carveSeaLanes(st) {
   const { W, H } = st;
-  const open = (x, y) => { if (x >= 0 && y >= 0 && x < W && y < H) st.land[y * W + x] = 0; };
+  const open = (x, y) => { if (x >= 0 && y >= 0 && x < W && y < H) { st.land[y * W + x] = 0; if (st.ice) st.ice[y * W + x] = 0; } };
   const mid = pl => ({ x: Math.round((pl.home.x0 + pl.home.x1) / 2), y: Math.round((pl.home.y0 + pl.home.y1) / 2) });
   const rows = new Set(st.players.map(pl => mid(pl).y));
   for (const y of rows) for (let x = 0; x < W; x++) for (let d = -2; d <= 2; d++) open(x, y + d);
@@ -268,13 +307,13 @@ function placeStartingFleets(st) {
     const outerX = pl.spawn.x0 === 0 ? 0 : st.W - 2;
     const edge = spots.filter(([x, y]) => (horizontal ? y === pl.spawn.y1 : x === outerX));
     const pool = edge.length >= 2 ? edge : spots;
-    [Math.floor(pool.length * 0.4), Math.floor(pool.length * 0.6)].forEach(i => addShip(st, p, 'patrol', pool[i][0], pool[i][1], 0, true));
+    startBoats(st, p, pool, [0.4, 0.6]);
     // survey ships further out along the strip (they're one square, so any free spot will do)
     for (const f of [0.2, 0.8]) {
       const free = ([x, y]) => !st.ships.some(s => E_cells(s).some(([a, b]) => Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1));
       const order = [...spots].sort((a, b) => Math.abs(spots.indexOf(a) - spots.length * f) - Math.abs(spots.indexOf(b) - spots.length * f));
       const pick = [Math.floor(pool.length * f)].map(i => pool[i]).find(c => c && free(c)) || order.find(free);
-      if (pick) addShip(st, p, 'survey', pick[0], pick[1], 0, true);
+      if (pick) addShip(st, p, shipFor(pl.faction, 'scout'), pick[0], pick[1], 0, true);
     }
   });
 }
@@ -388,8 +427,26 @@ function addDeposit(st, type, x, y, reserves) {
     const outerX = pl.spawn.x0 === 0 ? 0 : st.W - 2;
     const edge = spots.filter(([x, y]) => (horizontal ? y === pl.spawn.y1 : x === outerX));
     const pool = edge.length >= 2 ? edge : spots;
-    [Math.floor(pool.length * 0.25), Math.floor(pool.length * 0.75)].forEach(i => addShip(st, p, 'patrol', pool[i][0], pool[i][1], 0, true));
+    startBoats(st, p, pool, [0.25, 0.75]);
   });
+}
+
+// The starting picket boats (two Picket Boats for the Navy; one Skiff Pack for the Free Tide, its boats side
+// by side), at these shares along the pool of spots.
+function startBoats(st, p, pool, at) {
+  const type = shipFor(st.players[p].faction, 'picket');
+  // (a pack already brings several boats: one pack, in the middle of the spots, matches the Navy's two boats)
+  if (packOf(type) > 1) at = [(at[0] + at[at.length - 1]) / 2];
+  for (const f of at) {
+    const [x0, y0] = pool[Math.floor(pool.length * f)];
+    addShip(st, p, type, x0, y0, 0, true);
+    // the rest of a pack: the nearest free spots in the pool
+    for (let k = 1; k < packOf(type); k++) {
+      const spot = [...pool].sort((a, b) => Math.abs(a[0] - x0) + Math.abs(a[1] - y0) - Math.abs(b[0] - x0) - Math.abs(b[1] - y0))
+        .find(c => cellsOf(type, c[0], c[1], 0).every(([a, b]) => !st.ships.some(s => E_cells(s).some(([u, v]) => u === a && v === b))));
+      if (spot) addShip(st, p, type, spot[0], spot[1], 0, true);
+    }
+  }
 }
 
 export function addShip(st, owner, type, x, y, rot, ready = false) {

@@ -4,9 +4,12 @@ import { BASE_LEVELS, PLATFORMS } from '../data/bases.js';
 import { STRIKES } from '../data/economy.js';
 import { CONQUEST, DOMINATION, LAST_RIG } from '../data/victory.js';
 import { TECH } from '../data/research.js';
-import { PASSIVE_TEXT, SHIPS } from '../data/ships.js';
+import { PASSIVE_TEXT, SHIPS, forFaction } from '../data/ships.js';
+import { FACTIONS, SUPPLY } from '../data/factions.js';
+import { COMMANDERS, EXCLUSIVE_LEVEL, perksAt } from '../data/commanders.js';
 import { me, oil, pcol, planRot, pname, selected, selectedBase, usd } from './helpers.js';
 import { S } from './state.js';
+import { EVENTS, EVENT_TUNING, SPILLS } from '../data/events.js';
 import { FLEET, QUEUE, STANDING } from '../data/production.js';
 import { DIFFICULTY, PERSONALITIES } from '../data/bots.js';
 
@@ -63,6 +66,8 @@ export function renderPanel() {
   const rp = E.rpIncome(st, p);
   let html = `
   ${victoryCard(st, p)}
+  ${commanderCard(st, p)}
+  ${worldCard(st, p)}
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
@@ -80,8 +85,9 @@ export function renderPanel() {
       ${[1, 5, 10].map(n => `<button data-sell="${n}" ${pl.oil < n ? 'disabled' : ''}>Sell ${n} (${usd(E.sellValue(st, n, p).total)})</button>`).join('')}
       <button data-sell="all" ${pl.oil < 1 ? 'disabled' : ''}>All</button>
     </div>
+    ${autoSellRow(st, p)}
     <div class="row">
-      <button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a Survey, Command, Repair Ship or Carrier): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
+      <button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a ship with Rig Crews, like a Survey Ship or Prospector Skiff): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
       ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}
       <button data-end="1" class="primary" style="margin-left:auto" ${S.st.simul ? 'title="Done for this round: the round ends when everyone is ready"' : ''}>${S.st.simul ? 'Ready ✓' : 'End turn'} <span class="key-hint">⏎</span></button>
     </div>
@@ -96,7 +102,14 @@ export function renderPanel() {
   if (s) html += standingCard(s, f);
 
   html += shipyardCard(st, p);
+  // (typing an auto-sell amount: keep the box, and what's in it, across redraws)
+  const typing = document.activeElement?.classList.contains('autokeep-in') ? document.activeElement : null;
+  const caret = typing && typing.selectionStart;
   document.getElementById('panel').innerHTML = html;
+  if (typing) {
+    const span = document.querySelector('#panel [data-autokeep-edit]');
+    if (span) { span.replaceWith(typing); typing.focus(); try { typing.setSelectionRange(caret, caret); } catch { /* number inputs */ } }
+  }
   if (!s) lastShownShip = null; // re-selecting the same ship later flashes again
   // a newly selected ship: bring its card into view
   document.querySelector('#panel .selected-card.flash')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -117,7 +130,7 @@ function shipyardCard(st, p) {
   let html = `<div class="card"><h3>Shipyard</h3>`;
   if (yards.length > 1) html += `<div class="yard-tabs">${yards.map(y => {
     const n = builds.filter(b => b.yard === y.id).length;
-    return `<button class="yard-tab ${y.id === yard.id ? 'active' : ''}" data-yard="${y.id}" title="${y.slots} at a time${y.faster ? `, ${y.faster} turn faster` : ''}">${y.kind === 'home' ? '⚓' : y.kind === 'port' ? '⛵' : '🔧'} ${y.name}${n ? ` <b>${n}</b>` : ''}</button>`;
+    return `<button class="yard-tab ${y.id === yard.id ? 'active' : ''}" data-yard="${y.id}" title="${y.slots} at a time${y.faster ? `, ${y.faster} turn faster` : ''}">${y.kind === 'home' ? '⚓' : y.kind === 'port' ? '⛵' : y.kind === 'tide' ? '🌊' : '🔧'} ${y.name}${n ? ` <b>${n}</b>` : ''}</button>`;
   }).join('')}</div>`;
   const q = E.yardQueue(st, p, yard.id);
   html += `<div class="small muted">${yard.name} builds ${yard.slots} ship${yard.slots > 1 ? 's' : ''} at a time${yard.faster ? `, each ${yard.faster} turn faster` : ''}. You pay up front; finished ships appear next to the yard at the start of your turn.${yard.kind !== 'home' && !S.fit ? ' <button class="ghost small-btn" data-yard-show="1">Show</button>' : ''}</div>`;
@@ -136,7 +149,8 @@ function shipyardCard(st, p) {
   } else html += `<div class="small muted" style="margin-top:6px">Nothing being built here.</div>`;
   const full = q.length >= QUEUE.max;
   for (const cls of Object.keys(CLASS_NAMES)) {
-    const list = Object.entries(SHIPS).filter(([, d]) => d.cls === cls && !d.hidden);
+    // (a commander's exclusive ship only shows for that commander)
+    const list = Object.entries(SHIPS).filter(([k, d]) => d.cls === cls && !d.hidden && (!d.polar || st.ice) && forFaction(k, pl.faction) && (!d.commander || pl.commander?.id === d.commander));
     if (!list.length) continue;
     // each class folds away (light ships start open), so the list never turns into one long scroll
     const open = (S.shopOpen ||= { light: true })[cls];
@@ -149,9 +163,9 @@ function shipyardCard(st, p) {
       const tip = [describeShip(def, p), ...Object.entries(def.passives || {}).map(([pk, pv]) => PASSIVE_TEXT[pk]?.(pv))].filter(Boolean).join('\n');
       html += `<div class="shop-item ${unlocked ? '' : 'locked'}" title="${tip.replace(/"/g, '&quot;')}">
         ${shapeSvg(def.shape)}
-        <div><div class="name">${def.name}</div><div class="meta">${unlocked
+        <div><div class="name">${def.commander ? `<span title="${COMMANDERS[def.commander].name}'s exclusive ship">${COMMANDERS[def.commander].icon}</span> ` : ''}${def.name}${def.pack ? ` <span class="pack-tag" title="One order launches ${E.packSize(st, p, k)} boats">×${E.packSize(st, p, k)}</span>` : ''}</div><div class="meta">${unlocked
           ? `HP ${E.shipStat(st, p, k, 'hp')} · Move ${E.shipStat(st, p, k, 'move')} · ${+E.shipStat(st, p, k, 'oil').toFixed(2)} oil/sq · Sight ${E.shipStat(st, p, k, 'sight')} · Upkeep $${E.upkeepOf(st, p, k)} · <b>⏱ ${turns} turn${turns > 1 ? 's' : ''}</b>`
-          : `🔒 Needs research: <b>${TECH[E.shipNeeds(k)].name}</b>`}</div></div>
+          : !E.commanderShipOk(st, p, k) ? `🔒 ${COMMANDERS[def.commander].name} level ${EXCLUSIVE_LEVEL}` : `🔒 Needs research: <b>${TECH[E.shipNeeds(k)]?.name || '?'}</b>`}</div></div>
         <button data-buy="${k}" ${why ? `disabled title="${why.replace(/"/g, '&quot;')}"` : `title="Build at ${yard.name}"`}>$${cost}</button>
       </div>`;
     }
@@ -245,7 +259,7 @@ function spectatorPanel() {
     const oilIn = st.rigs.filter(r => r.owner === i).reduce((t, r) => t + E.rigRate(st, r), 0);
     const pers = o.ai ? PERSONALITIES[o.ai.personality] : null, diff = o.ai ? DIFFICULTY[o.ai.difficulty] : null;
     return `<div class="spec-row ${o.out ? 'out' : ''} ${i === st.current ? 'now' : ''}" style="--c:${pcol(i)}">
-      <div class="spec-name"><b>${o.name}</b> ${pers ? `<span class="small muted">${pers.icon} ${pers.name} · ${diff.icon} ${diff.name}</span>` : ''}${o.out ? ' <span class="small muted">· out</span>' : ''}</div>
+      <div class="spec-name"><b>${o.name}</b> <span class="small" title="${chipTitle(o)}">${FACTIONS[o.faction || 'navy'].icon}${o.commander ? ` ${COMMANDERS[o.commander.id].icon} <span class="muted">${o.commander.level}</span>` : ''}</span> ${pers ? `<span class="small muted">${pers.icon} ${pers.name} · ${diff.icon} ${diff.name}</span>` : ''}${o.out ? ' <span class="small muted">· out</span>' : ''}</div>
       <div class="stats">
         <div class="stat"><span>Money</span><span class="v money">${usd(o.money)}</span></div>
         <div class="stat"><span>Oil</span><span class="v oil">${oil(o.oil)} (+${oilIn})</span></div>
@@ -257,14 +271,48 @@ function spectatorPanel() {
     </div>`;
   }).join('');
   return `${victoryCard(st, st.current)}
-    <div class="card"><h3>👁 Spectating · round ${st.round}</h3><div class="spec-list">${rows}</div></div>`;
+    ${worldCard(st, -1)}<div class="card"><h3>${st.replay ? '🎬 Replay' : '👁 Spectating'} · round ${st.round}</h3><div class="spec-list">${rows}</div></div>`;
 }
 
 // Everyone's standing, and your progress toward each way of winning.
+// Automated Trading: sell everything above a chosen amount at the end of each turn.
+// −/+ change it by 1 (Shift: 10); click the number to type it.
+function autoSellRow(st, p) {
+  if (!E.canAutoSell(st, p)) return '';
+  const a = st.players[p].autoSell || { on: false, keep: 0 }, cap = Math.round(E.pstat(st, p, 'oilCap'));
+  return `<div class="autosell ${a.on ? 'on' : ''}" title="At the end of each of your turns (after voyages and standing orders), oil above this amount is sold at the market price.">
+    <button class="small-btn ${a.on ? 'primary' : ''}" data-autosell-toggle>🤖 Auto-sell: ${a.on ? 'On' : 'Off'}</button>
+    <span class="small">keep</span>
+    <button class="small-btn" data-autokeep="-1" ${a.keep <= 0 ? 'disabled' : ''} title="−1 (Shift: −10)">−</button>
+    <span class="autokeep" data-autokeep-edit title="Click to type an amount (0 to ${cap})">${a.keep}</span>
+    <button class="small-btn" data-autokeep="1" ${a.keep >= cap ? 'disabled' : ''} title="+1 (Shift: +10)">+</button>
+    <span class="small">oil</span>
+  </div>`;
+}
+
+// World events, slicks and blowouts: what's going on now and what's announced for next round.
+function worldCard(st, p) {
+  const ev = st.events, rows = [];
+  const left = e => (e.until != null ? ` <span class="muted small">· ${e.until - st.round + 1} round${e.until - st.round ? 's' : ''} left</span>` : '');
+  for (const e of ev?.active || []) {
+    const d = EVENTS[e.kind];
+    if (e.kind === 'blowout' && p >= 0 && e.owner !== p) continue;
+    const where = e.x != null && e.kind !== 'storm' ? ` <a class="jump" data-jump="${e.x},${e.y}">${E.coord(Math.max(0, Math.min(st.W - 1, e.x)), Math.max(0, Math.min(st.H - 1, e.y)))}</a>` : '';
+    rows.push(`<div class="world-row" title="${d.desc}">${d.icon} <b>${d.name}</b>${where}${left(e)}</div>`);
+  }
+  if (ev?.pending) { const d = EVENTS[ev.pending.kind]; rows.push(`<div class="world-row next" title="${d.desc}">📣 Next round: ${d.icon} ${d.name}</div>`); }
+  const slicks = (st.spills || []).length;
+  if (slicks) rows.push(`<div class="world-row" title="No rigs can be built in a slick; sailing through one costs double oil. Drillships and Fleet Tenders can clean them up.">🛢️ ${slicks} oil slick${slicks > 1 ? 's' : ''} on the map</div>`);
+  const blown = p >= 0 ? st.rigs.filter(r => r.owner === p && r.blowout) : [];
+  for (const r of blown) rows.push(`<div class="world-row"><button class="small-btn" data-fixblowout="${r.id}" ${st.players[p].money < EVENT_TUNING.blowout.fixCost ? 'disabled' : ''} title="Pay to fix it now: it pumps again from your next turn">🔥 Fix blowout at ${E.coord(r.x, r.y)} ($${EVENT_TUNING.blowout.fixCost})</button></div>`);
+  if (!rows.length) return '';
+  return `<div class="card world-card"><h3>World</h3>${rows.join('')}</div>`;
+}
+
 function victoryCard(st, p) {
   const v = E.victorySummary(st, p);
   const capOk = q => { const c = E.capitalOf(st, q); return c && !c.wrecked; };
-  const chips = st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}">${o.name}${o.seat === 'ai' ? ` <span title="Computer player · ${DIFFICULTY[o.ai.difficulty].name}">🤖</span>` : ''}${o.out ? ' · out'
+  const chips = st.players.map((o, i) => `<span class="chip ${o.out ? 'out' : ''} ${i === p ? 'me' : ''}" style="--c:${pcol(i)}"><span title="${chipTitle(o)}">${FACTIONS[o.faction || 'navy'].icon}${o.commander ? COMMANDERS[o.commander.id].icon : ''}</span> ${o.name}${o.seat === 'ai' ? ` <span title="Computer player · ${DIFFICULTY[o.ai.difficulty].name}">🤖</span>` : ''}${o.out ? ' · out'
     : o.exile != null ? ` · <b style="color:#ff6b6b">⚠ ${o.exile} turn${o.exile > 1 ? 's' : ''}</b>` : ''}${E.victoryOn(st, 'domination') && o.domStreak > 0 && !o.out ? ` · <b style="color:#ffd666">🗺️ ${o.domStreak}/${DOMINATION.rounds}</b>` : ''}</span>`).join('');
   const rivals = st.players.map((_, i) => i).filter(i => i !== p && !st.players[i].out);
   const rows = [];
@@ -286,6 +334,39 @@ function victoryCard(st, p) {
 }
 
 let lastShownShip = null;
+// Navy: in supply or not (and how long it's been away); Free Tide: on the Tide or not.
+function factionStat(st, p, s) {
+  if (st.players[p].faction === 'tide') {
+    const on = E.shipOnTide(st, s);
+    return `<div class="stat" title="On the Tide: +1 move, half oil, heals each turn"><span>Tide</span><span class="v" style="color:${on ? '#7fd17a' : '#8aa3b8'}">${on ? '🌊 on the rafts' : 'off the Tide'}</span></div>`;
+  }
+  const sup = E.inSupply(st, s), low = E.lowOnSupplies(s);
+  const text = sup ? '📦 in supply' : low ? `⚠ low (−${SUPPLY.lowDmg} dmg)` : `out ${s.away || 0}/${SUPPLY.lowAfter} rounds`;
+  return `<div class="stat" title="In supply near your bases, ports, home waters or a Supply Ship: repairs ${SUPPLY.heal} HP a turn out of combat. ${SUPPLY.lowAfter}+ rounds out of supply: −${SUPPLY.lowDmg} damage."><span>Supply</span><span class="v" style="color:${sup ? '#7fd17a' : low ? '#f0a531' : '#c8d3dd'}">${text}</span></div>`;
+}
+
+// a player's faction and commander, for their chip's tooltip
+// Your commander and their powers (click to use; aimed ones then want a square on the map).
+function commanderCard(st, p) {
+  const c = st.players[p].commander;
+  if (!c) return '';
+  const C = COMMANDERS[c.id], powers = E.powersOf(st, p);
+  return `<div class="card cmd-panel"><h3 title="${chipTitle(st.players[p])}">${C.icon} ${C.name} <span class="muted small">level ${c.level}</span></h3>
+    <div class="row power-row">${powers.map(w => {
+      const why = E.powerProblem(st, p, w.id);
+      const active = S.mode.kind === 'power' && S.mode.power === w.id;
+      return `<button class="power-btn ${active ? 'active' : ''}" data-power="${w.id}" ${why ? 'disabled' : ''} title="${(w.name + ': ' + w.text + (why ? '\n\n' + why : '')).replace(/"/g, '&quot;')}">
+        <span class="pw-icon">${w.icon}</span> ${w.name}${w.cd > 0 ? ` <span class="pw-cd">${w.cd}</span>` : ''}</button>`;
+    }).join('') || '<span class="small muted">Powers unlock at level 1 and 8.</span>'}</div></div>`;
+}
+
+function chipTitle(o) {
+  const f = FACTIONS[o.faction || 'navy'], c = o.commander && COMMANDERS[o.commander.id];
+  if (!c) return `${f.name} · no commander`;
+  const perks = perksAt(o.commander.id, o.commander.level, o.commander.mastery);
+  return (`${f.name} · ${c.name} (${c.title}), level ${o.commander.level}\n` + perks.map(k => `• ${k.name}: ${k.text}`).join('\n')).replace(/"/g, '&quot;');
+}
+
 function shipCard(s) {
   const st = S.st, p = me(), def = SHIPS[s.type];
   const pas = Object.entries(def.passives || {}).map(([k, val]) => PASSIVE_TEXT[k] ? `<li>${PASSIVE_TEXT[k](k === 'armor' ? E.shipStat(st, p, s.type, 'armor') : val)}</li>` : '').join('');
@@ -303,6 +384,7 @@ function shipCard(s) {
         <div class="stat"><span>Oil/square</span><span class="v oil">${+oilRate.toFixed(2)}${E.moveCost(st, s, 4) < oilRate * 4 - 1e-9 ? ' (½)' : ''}</span></div>
         <div class="stat"><span>Sight</span><span class="v">${E.shipStat(st, p, s.type, 'sight')}</span></div>
         <div class="stat"><span>Upkeep</span><span class="v">$${E.upkeepOf(st, p, s.type)}/turn</span></div>
+        ${factionStat(st, p, s)}
       </div>
       ${pas ? `<ul class="small muted" style="padding-left:18px;margin:8px 0 0">${pas}</ul>` : ''}
       ${def.actions.map(a => {
@@ -391,13 +473,16 @@ function longRangeRow(st, p, b) {
 export function describeAction(a, p = me()) {
   const w = k => E.weaponStat(S.st, p, a, k);
   switch (a.kind) {
-    case 'attack': { const shots = w('shots'); return `Range ${w('range')}, ${w('dmg')} dmg${shots > 1 ? ` × ${shots} shots` : ''}${a.area === 3 ? ', 3×3 area' : ''}${a.subsOnly ? ', subs only' : ''}${a.rigMult ? `, ×${a.rigMult} vs rigs` : ''}${a.oil ? `, ${a.oil} oil per launch` : ''}${a.longRange ? ', target must be visible' : ''}${a.cooldown ? `, reload ${a.cooldown}` : ''}`; }
+    case 'attack': { const shots = w('shots'); return `Range ${w('range')}, ${w('dmg')} dmg${shots > 1 ? ` × ${shots} shots` : ''}${a.area === 3 ? ', 3×3 area' : ''}${a.subsOnly ? ', subs only' : ''}${a.rigMult ? `, ×${a.rigMult} vs rigs` : ''}${a.oil ? `, ${a.oil} oil per launch` : ''}${a.longRange ? ', target must be visible' : ''}${a.cooldown ? `, reload ${a.cooldown}` : ''}${a.selfDestruct ? ', the ship is destroyed' : ''}`; }
     case 'scan': return `Reveal a ${a.size}×${a.size} area within ${w('range')}${a.cooldown ? `, reload ${a.cooldown}` : ''}`;
     case 'survey': { const r = a.radius + E.pstat(S.st, p, 'surveyRadius'); return `Find oil within ${r} square${r > 1 ? 's' : ''} of this ship`; }
     case 'mine': return `Place a hidden mine next to this ship (max ${a.max})`;
     case 'repair': return `Heal ${a.amount} HP on an adjacent ship, rig or platform`;
     case 'spoof': return `Plant a fake contact on the enemy's screen within ${a.range}`;
     case 'salvage': return `Recover ${a.share * 100}% of a wreck's value (adjacent)`;
+    case 'clean': return `Clean up an oil slick within ${a.range}: takes ${SPILLS.clean.rounds} rounds off it`;
+    case 'board': return `Capture an adjacent enemy ship that's burning (🔥: ${E.pstat(S.st, p, 'boardShare') ? 'half' : 'a third'} of its HP or less). The skiff's crew goes over; if the ship isn't burning they're beaten back (−1 HP)`;
+    case 'assault': return `Capture an enemy base (not an Admiralty) within ${a.range}: its central rig must be at half HP or less, with no defending ships within 2 squares${a.cooldown ? `, reload ${a.cooldown}` : ''}`;
   }
   return '';
 }

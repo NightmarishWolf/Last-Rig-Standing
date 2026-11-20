@@ -1,4 +1,5 @@
 // The hint line under the board, and error toasts.
+import { POWERS } from '../data/commanders.js';
 import * as E from '../engine/index.js';
 import { SHIPS } from '../data/ships.js';
 import { oilInfo } from './board/tooltip.js';
@@ -40,6 +41,7 @@ export function updateStatus() {
     t = `<b>${E.strikeName(o.kind)}</b>: click a square in the shaded range.${why ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
   }
   else if (S.mode.kind === 'satellite') t = '<b>Satellite pass</b>: click anywhere on the map to reveal a 7×7 area. Esc to cancel.';
+  else if (S.mode.kind === 'power') { const w = POWERS[S.mode.power]; t = `<b>${w.icon} ${w.name}</b>: ${w.text} Click a square to aim. Esc to cancel.`; }
   else if (S.mode.kind === 'patrolPick') t = `<b>Patrol:</b> click the points to patrol between (${S.mode.points.length} so far), then <b>Start patrol</b> in the panel. Esc to cancel.`;
   else if (S.mode.kind === 'escortPick') t = `<b>Escort:</b> click one of your ships to look after. Esc to cancel.`;
   else if (S.mode.kind === 'placePlatform') {
@@ -56,7 +58,7 @@ export function updateStatus() {
   else if (S.mode.kind === 'placeRig') {
     const any = E.getView(S.st, me()).deposits.some(d => !E.rigBuildProblem(S.st, me(), d.x, d.y));
     const why = S.hover && E.rigBuildProblem(S.st, me(), S.hover.x, S.hover.y);
-    t = !any ? '<b>No deposit available right now.</b> A rig needs a discovered deposit with one of your ships right next to it (Survey, Command, Repair Ships and Carriers can be up to 5 squares away). Esc to cancel.'
+    t = !any ? '<b>No deposit available right now.</b> A rig needs a discovered deposit with one of your ships right next to it (ships with Rig Crews, like Survey Ships and Prospector Skiffs, can be up to 5 squares away). Esc to cancel.'
       : S.hover && !why ? `Click to build a rig here for <b class="money">$${E.rigCost(S.st, me())}</b>.`
       : `Click a <b style="color:#7fd17a">highlighted deposit</b> to build a rig.${why && S.hover ? ` <span style="color:#f09595">${why}</span>` : ''} Esc to cancel.`;
   }

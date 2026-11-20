@@ -32,3 +32,7 @@ export * from './bases.js';
 export * from './victory.js';
 export * from './turns.js';
 export * from './util.js';
+export * from './world.js';
+export * from './maptypes.js';
+export * from './factions.js';
+export * from './powers.js';

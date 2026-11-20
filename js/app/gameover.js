@@ -2,8 +2,11 @@
 // charts over the whole game (oil, money, fleet, bases, research), one measure at a time.
 // The charts are plain SVG: one line per player in their colour, a legend, a label at the end of each
 // line, and a crosshair with a tooltip on hover.
-import { PLAYER_COLORS } from '../data/maps.js';
+import { MAP_SIZES, MAP_TYPES, PLAYER_COLORS } from '../data/maps.js';
 import { SHIPS } from '../data/ships.js';
+import { COMMANDERS } from '../data/commanders.js';
+import { FACTIONS } from '../data/factions.js';
+import { progress } from './profile.js';
 
 const REASONS = {
   elimination: ['⚔️', 'Conquest victory'], domination: ['🗺️', 'Domination victory'],
@@ -20,7 +23,7 @@ const METRICS = [
 ];
 let metric = 'fleet';
 
-export function renderGameOver(st) {
+export function renderGameOver(st, xp = []) {
   const w = st.winner, [icon, title] = REASONS[st.winReason] || REASONS.elimination;
   const name = p => `<b style="color:${PLAYER_COLORS[p]}">${st.players[p].name}</b>`;
   const line = w == null ? 'Every fleet went down.'
@@ -34,8 +37,10 @@ export function renderGameOver(st) {
       <div>
         <h2>${w == null ? 'Nobody wins' : `${name(w)} wins!`}</h2>
         <div class="muted">${w == null ? '' : title + ' · '}${st.round} rounds. ${line}</div>
+        ${st.mapType && !st.tutorial ? `<div class="muted small" style="margin-top:4px">Map: ${MAP_TYPES[st.mapType]?.icon || ''} ${MAP_TYPES[st.mapType]?.name || st.mapType} · ${MAP_SIZES[st.size]?.name || st.size} · seed <b class="seed-copy" title="Click to copy. Type it in New game → Map seed (same size, players, type and layout) to play this map again.">${st.seed}</b></div>` : ''}
       </div>
     </div>
+    ${xpBlock(st, xp)}
     ${statsTable(st)}
     <div class="chart-box">
       <div class="chart-tabs" role="tablist">${METRICS.map(m => `<button data-metric="${m.id}" class="${m.id === metric ? 'on' : ''}">${m.name}</button>`).join('')}</div>
@@ -44,11 +49,31 @@ export function renderGameOver(st) {
     <div class="row" style="margin-top:18px">
       <button class="primary big" data-new>New game</button>
       <button class="big" data-viewmap>View the final map</button>
+      ${st.gameId && !st.tutorial ? '<button class="big" data-watchreplay title="Watch the whole game again, with or without the fog of war">🎬 Watch replay</button>' : ''}
       <button class="big ghost" data-menu>Main menu</button>
       <button class="big ghost" data-gamedata title="Stats, round-by-round history and every move, for balancing">⬇️ Download game data</button>
     </div>
   </div>`;
 }
+
+// Commander XP earned on this computer: a bar per profile, level-ups, new perks and unlocked commanders.
+function xpBlock(st, xp) {
+  if (!xp?.length) return '';
+  return `<div class="xp-box">${xp.map(r => {
+    const c = r.commander && COMMANDERS[r.commander];
+    if (!c) return `<div class="xp-row"><b>${esc(r.profile?.name || 'You')}</b> <span class="muted small">played without a commander: no XP (the game still counts toward your ${FACTIONS[st.players[r.p].faction || 'navy'].name} record).</span></div>`;
+    const pr = progress(r.profile, r.commander);
+    const pct = pr.need ? Math.round(pr.into / pr.need * 100) : 100;
+    return `<div class="xp-row">
+      <div class="xp-top"><span class="xp-icon">${c.icon}</span><b>${esc(r.profile?.name || 'You')}</b> · ${c.name} <span class="muted small">${c.title}</span>
+        <span class="xp-gain">+${r.xp.toLocaleString()} XP</span></div>
+      <div class="xp-bar" title="${pr.need ? `${pr.into} / ${pr.need} XP to level ${pr.level + 1}` : 'Max level'}"><i style="width:${pct}%"></i><span>Level ${pr.level}${pr.need ? '' : ' (max)'}</span></div>
+      ${r.after > r.before ? `<div class="xp-level">⭐ Level ${r.after}!${r.perks.length ? ' Unlocked: ' + r.perks.map(k => `<b title="${esc(k.text)}">${esc(k.name)}</b>`).join(', ') : ''}</div>` : ''}
+      ${r.unlocks.length ? `<div class="xp-level">🔓 New commander${r.unlocks.length > 1 ? 's' : ''}: ${r.unlocks.map(id => `<b>${COMMANDERS[id].icon} ${COMMANDERS[id].name}</b>`).join(', ')}</div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
 function statsTable(st) {
   const hist = st.history || [];
@@ -56,6 +81,7 @@ function statsTable(st) {
   const s = (p, k) => st.players[p].stats?.[k] || 0;
   const rows = [
     ['Result', p => p === st.winner ? '🏆 Winner' : st.players[p].out ? 'Knocked out' : 'Still afloat'],
+    ['Faction', p => { const f = FACTIONS[st.players[p].faction || 'navy'], c = st.players[p].commander; return `${f.icon} ${f.short}${c ? ` · ${COMMANDERS[c.id].icon} ${COMMANDERS[c.id].name} <span class="muted">(level ${c.level})</span>` : ''}`; }],
     ['Oil pumped', p => Math.round(s(p, 'oilPumped')).toLocaleString()],
     ['Oil sold', p => `${Math.round(s(p, 'oilSold')).toLocaleString()} for $${Math.round(s(p, 'oilMoney')).toLocaleString()}`],
     ['Bases founded', p => s(p, 'basesFounded') + ` <span class="muted">(peak ${peak(p, 3)})</span>`],
@@ -63,6 +89,7 @@ function statsTable(st) {
     ['Enemy ships sunk', p => s(p, 'kills')],
     ['Ships lost', p => s(p, 'shipsLost')],
     ['Enemy structures destroyed', p => s(p, 'destroyed')],
+    ...(st.players.some((_, p) => s(p, 'plunder') || s(p, 'captures')) ? [['Plunder / captures', p => `$${Math.round(s(p, 'plunder')).toLocaleString()} / ${s(p, 'captures')}`]] : []),
     ['Research', p => Object.keys(st.players[p].research?.done || {}).length + ' techs'],
   ];
   const ps = st.players.map((_, i) => i);
@@ -155,17 +182,18 @@ export const fleetValue = (st, p) => st.ships.filter(s => s.owner === p).reduce(
 
 // Everything about a finished game in one file, for balancing: settings, every player's totals,
 // the round-by-round history, and (for online games) every move in order.
-export function downloadGameData(st, moves = []) {
+export function downloadGameData(st, moves = [], desyncs = []) {
   const data = {
     lastRigStanding: 'game-data', version: 1, savedAt: new Date().toISOString(),
-    settings: { size: st.size, players: st.players.length, mirror: st.mirror, victory: st.victory, seed: st.seed, online: !!st.online },
+    settings: { size: st.size, mapType: st.mapType, events: st.events?.mode || 'off', players: st.players.length, mirror: st.mirror, victory: st.victory, seed: st.seed, online: !!st.online, simul: !!st.simul, fog: st.noFog ? 'off' : st.exploreFog ? 'reveal' : 'on' },
     result: { winner: st.winner, reason: st.winReason, rounds: st.round },
     players: st.players.map((pl, i) => ({
-      seat: i, name: pl.name, kind: pl.seat === 'ai' ? 'bot' : 'human', difficulty: pl.ai?.difficulty, personality: pl.ai?.personality,
-      out: !!pl.out, stats: pl.stats || {}, techs: Object.keys(pl.research?.done || {}),
+      seat: i, name: pl.name, kind: pl.seat === 'ai' ? 'bot' : 'human', difficulty: pl.ai?.difficulty, personality: pl.ai?.personality, faction: pl.faction || 'navy', commander: pl.commander?.id || null, level: pl.commander?.level || null,
+      out: !!pl.out, stats: { ...(pl.stats || {}), units: undefined }, units: pl.stats?.units || {}, techs: Object.keys(pl.research?.done || {}),
     })),
     history: { columns: ['oil', 'money', 'ships', 'bases', 'techs', 'fleetValue'], rounds: st.history || [] },
     moves: moves.length ? moves : (window.__lrsMoves || []),
+    desyncs, // online: reports of players' games drifting out of sync (for finding bugs)
   };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));

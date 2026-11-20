@@ -5,7 +5,8 @@
 import * as E from '../engine/index.js';
 import { BRANCHES, ERA_COST, FUNDING, TECH, TECHS } from '../data/research.js';
 import { PLATFORMS, BASE_LEVELS } from '../data/bases.js';
-import { SHIPS } from '../data/ships.js';
+import { SHIPS, forFaction } from '../data/ships.js';
+import { factionOf } from '../data/factions.js';
 import { me } from './helpers.js';
 import { S } from './state.js';
 
@@ -22,8 +23,14 @@ const PLAYER_TEXT = {
   stealth: v => `enemies see your ships ${v} square closer`, flashExact: () => 'see exactly where enemy shots come from',
   platformRange: v => `gun platforms +${v} range`, platformRepair: v => `platforms repair ${v} HP/turn`,
   deepLayers: v => `dry rigs drill ${v} layer${v > 1 ? 's' : ''} deeper`, pumpBonus: v => `Pump Stations +${v} oil`,
+  tideRadius: v => `the Tide reaches +${v} further`, tideMax: v => `the Tide grows +${v} bigger`, tideHeal: v => `ships on the Tide heal +${v}/turn`,
+  tideMove: v => `ships on the Tide +${v} move`, tideOilMult: v => (v === 0 ? 'free moves on the Tide' : `moves on the Tide cost ${Math.round((1 - v) * 100)}% less`),
+  tideShip: v => `Leviathans and the Queen spread the Tide +${v}`, packBonus: v => `+${v} boat per Skiff Pack`, plunderMult: v => `plunder worth ${Math.round((v - 1) * 100)}% more`,
+  plunderRange: v => `plunder collected from +${v} squares`, boardShare: () => 'board ships at half HP or less',
 };
 
+// (the player's own faction: shared techs only mention the ships it can build)
+const myFaction = () => (S.st ? factionOf(S.st, me()) : 'navy');
 export function techSummary(t) {
   if (t.text) return t.text;
   const parts = [];
@@ -32,12 +39,13 @@ export function techSummary(t) {
       const who = { all: 'all ships', light: 'light ships', escort: 'escorts', sub: 'subs', capital: 'capital ships', support: 'support ships' }[e.ship] || SHIPS[e.ship]?.name;
       parts.push(e.add ? `${who} ${e.add > 0 ? '+' : ''}${e.add} ${STAT_NAMES[e.stat]}` : `${who} ${STAT_NAMES[e.stat]} ×${e.mult}`);
     } else if (e.weapon) {
-      const who = { all: 'all weapons', gun: 'guns', torpedo: 'torpedoes', missile: 'missiles', air: 'airstrikes', depth: 'depth charges', scan: 'scans' }[e.weapon];
+      const who = { all: 'all weapons', gun: 'guns', torpedo: 'torpedoes', missile: 'missiles', air: 'airstrikes', depth: 'depth charges', scan: 'scans', fire: 'fireships' }[e.weapon];
       parts.push(`${who} +${e.add} ${e.stat === 'dmg' ? 'damage' : e.stat}`);
     } else if (e.player) parts.push(PLAYER_TEXT[e.player](e.add ?? e.mult));
   }
   const u = t.unlocks;
-  if (u.ships) parts.push('unlocks ' + u.ships.map(s => SHIPS[s].name).join(', '));
+  const ships = (u.ships || []).filter(s => forFaction(s, myFaction()));
+  if (ships.length) parts.push('unlocks ' + ships.map(s => SHIPS[s].name).join(', '));
   if (u.platforms) parts.push('platforms: ' + u.platforms.map(k => PLATFORMS[k].name).join(', '));
   if (u.port) parts.push('build forward ports');
   if (u.baseLevel) parts.push(`upgrade bases to ${BASE_LEVELS[u.baseLevel].name}`);
@@ -63,7 +71,7 @@ const PLAYER_ICON = { oilCap: '🛢️', sellMult: '💰', priceDropMult: '📈'
 export function techIcon(t) {
   const u = t.unlocks;
   if (t.branch === 'future') return '⚛️';
-  if (u.ships) return SHIPS[u.ships[0]].cls === 'sub' ? '🌊' : SHIPS[u.ships[0]].cls === 'capital' ? '⚓' : '🚢';
+  if (u.ships && t.branch !== 'prop' && t.branch !== 'drill') return SHIPS[u.ships[0]].cls === 'sub' ? '🌊' : SHIPS[u.ships[0]].cls === 'capital' ? '⚓' : '🚢';
   if (u.platforms) return PLATFORM_ICON[u.platforms[0]] || '🏗️';
   if (u.baseLevel) return '🏗️';
   if (u.port) return '⚓';
@@ -77,14 +85,18 @@ export function techIcon(t) {
 // ---------- layout ----------
 // Tiles sit in a grid cell per branch × era. Inside a cell they're ordered so a tech sits under the
 // techs it needs from the same branch (like a tree), without drawing any lines.
-let layoutCache = null;
+let layoutCache = null, layoutKey = null;
+// the branches this player's faction researches (shared ones, plus its own military branches)
+const myBranches = () => Object.entries(BRANCHES).filter(([, b]) => !b.faction || b.faction === myFaction());
 function layout() {
-  if (layoutCache) return layoutCache;
+  const key = myFaction() + (S.st.ice ? ':ice' : '');
+  if (layoutCache && layoutKey === key) return layoutCache;
+  layoutKey = key;
   const cells = {};
-  for (const bid of Object.keys(BRANCHES)) {
+  for (const [bid] of myBranches()) {
     const pos = {}; // tech id -> 0..1 position across its cell
     for (const era of [1, 2, 3, 4, 5]) {
-      const list = TECHS.filter(t => t.branch === bid && t.era === era);
+      const list = TECHS.filter(t => t.branch === bid && t.era === era && (!t.polar || S.st.ice));
       if (!list.length) continue;
       const key = t => { const own = t.req.filter(q => pos[q] != null); return own.length ? own.reduce((a, q) => a + pos[q], 0) / own.length : (list.indexOf(t) + 0.5) / list.length; };
       const sorted = [...list].sort((a, b) => key(a) - key(b));
@@ -97,7 +109,8 @@ function layout() {
 // every tech a tech needs, all the way down (direct ones flagged)
 function ancestors(id) {
   const out = new Map();
-  const walk = (x, direct) => { for (const q of TECH[x].req) { if (!out.has(q) || direct) out.set(q, out.get(q) || direct); walk(q, false); } };
+  // (another faction's tech in a shared tech's needs means this faction's stand-in for it)
+  const walk = (x, direct) => { for (const q0 of TECH[x].req) { const q = E.mine(S.st, me(), q0); if (!out.has(q) || direct) out.set(q, out.get(q) || direct); walk(q, false); } };
   walk(id, true);
   return out;
 }
@@ -111,7 +124,7 @@ export function renderResearch() {
   const left = E.turnsLeft(st, p);
   const queueHtml = r.queue.length ? r.queue.map((id, i) => `<span class="q-item">${techIcon(TECH[id])} ${i + 1}. ${TECH[id].name} <button class="ghost tiny" data-dequeue="${id}" title="Remove">×</button></span>`).join('') : '<span class="muted">empty: click any dim tech to plan ahead</span>';
   const cells = layout();
-  const branches = Object.entries(BRANCHES);
+  const branches = myBranches();
   let html = `
     <div class="rs-head">
       <div>
@@ -177,8 +190,8 @@ function highlight(id, showTip = true) {
     <div class="tip-title">${techIcon(t)} ${t.name}</div>
     <div class="muted small">${BRANCHES[t.branch].icon} ${BRANCHES[t.branch].name} · ${ERA_NAMES[t.era]} · ${E.techCost(id)} RP</div>
     <div class="tip-text">${techSummary(t)}</div>
-    ${t.req.length ? `<div class="tip-needs"><b>Needs:</b> ${t.req.map(q => `<span class="${E.techStatus(st, p, q) === 'done' ? 'ok' : 'no'}">${E.techStatus(st, p, q) === 'done' ? '✓' : '✗'} ${TECH[q].name}</span>`).join(' ')}</div>` : ''}
-    ${missing.length > t.req.filter(q => E.techStatus(st, p, q) !== 'done').length ? `<div class="muted small">${missing.length} techs to research first in all</div>` : ''}
+    ${t.req.length ? `<div class="tip-needs"><b>Needs:</b> ${t.req.map(q0 => E.mine(st, p, q0)).map(q => `<span class="${E.hasTech(st, p, q) ? 'ok' : 'no'}">${E.hasTech(st, p, q) ? '✓' : '✗'} ${TECH[q].name}</span>`).join(' ')}</div>` : ''}
+    ${missing.length > t.req.filter(q => !E.hasTech(st, p, q)).length ? `<div class="muted small">${missing.length} techs to research first in all</div>` : ''}
     ${rivals.length ? `<div class="small" style="color:#f0b48a">⚖ Doctrine: researching this closes ${rivals.map(o => o.name).join(', ')} for good.</div>` : ''}
     <div class="small" style="margin-top:4px">${STATUS_TEXT[status] || ''}</div>`;
   tip.classList.remove('hidden');
