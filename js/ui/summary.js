@@ -26,7 +26,7 @@ export const summaryEnabled = () => prefs().turnSummary !== false;
 const last = {}; // player -> the items last shown (for the 📋 button)
 
 export function showTurnSummary(st, p, force = false) {
-  if (st.tutorial || st.phase !== 'playing') return;
+  if (st.tutorial || st.campaign || st.phase !== 'playing') return;
   const items = force && last[p] ? last[p] : E.turnSummary(st, p);
   if (!force) last[p] = items;
   if (!items.length && !force) return;

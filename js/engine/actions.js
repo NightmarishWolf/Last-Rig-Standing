@@ -17,7 +17,7 @@ import { doCancelOrder, doSetOrder, runVoyages } from './orders.js';
 import { doBuyPort } from './ports.js';
 import { forwardPorts } from './stats.js';
 import { checkWin, eliminate, nextTurn, recordHistory, startTurn } from './turns.js';
-import { fail, ok, r2 } from './util.js';
+import { allied, fail, ok, r2 } from './util.js';
 import { visibility, exploreAll } from './visibility.js';
 import { burning, tideSources } from './factions.js';
 
@@ -25,6 +25,17 @@ import { burning, tideSources } from './factions.js';
 // Replaying the same moves, in order, on a copy of the starting game gives the same game.
 let listener = null;
 export const onApplied = fn => { listener = fn; };
+// Campaign missions hook in here (js/campaign/runner.js): something that happens as you end your turn,
+// before your ships' voyages and standing orders (e.g. an escorted ship sailing on).
+export const turnHooks = { beforeEndTurn: null };
+// Ships a mission sails for you (st.campaign.locked): you can't give them orders.
+const lockedIn = (st, a) => {
+  const L = st.campaign?.locked;
+  if (!L?.length || a.script) return null;
+  const ids = [a.shipId, ...(a.shipIds || [])].filter(Boolean);
+  const s = ids.map(id => st.ships.find(x => x.id === id)).find(x => x && L.includes(x.id));
+  return s ? `The ${s.name || 'ship'} follows her own orders: you can't command her.` : null;
+};
 
 export function applyAction(st, a) {
   if (st.phase !== 'playing') return fail('Game over.');
@@ -46,6 +57,8 @@ export function applyAction(st, a) {
 }
 
 function runAction(st, a) {
+  const why = lockedIn(st, a);
+  if (why) return fail(why);
   switch (a.type) {
     case 'move': return doMove(st, a);
     case 'rotate': return doRotate(st, a);
@@ -84,6 +97,8 @@ function runAction(st, a) {
       if (st.simul) return doReady(st, a.by ?? st.current, true);
       // the turn summary next time shows everything from here on (what your ships do on their own included)
       st.players[st.current].summaryFrom = st.logSeq || 0;
+      turnHooks.beforeEndTurn?.(st);
+      if (st.phase !== 'playing') return ok();
       // before the turn passes: voyages sail on, then fleets, then standing orders
       runVoyages(st, st.current);
       if (st.phase === 'playing') runFleetOrders(st, st.current);
@@ -115,18 +130,18 @@ export function getView(st, p) {
     // (pirates show what they are; a ship in sight shows if it's burning: badly damaged enough to board; a contact doesn't)
     // (seen with your own eyes: you can tell its type and heading, though a Q-Ship passes for an Oil Barge
     // until it fires)
-    enemyShips: st.ships.filter(s => s.owner !== p && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s), ...(vis.ident.has(s.id) && burning(st, s, p) ? { burning: true } : {}),
+    enemyShips: st.ships.filter(s => s.owner !== p && !allied(st, p, s.owner) && vis.ships.has(s.id)).map(s => ({ id: s.id, owner: s.owner, cells: shipCells(s), ...(vis.ident.has(s.id) && burning(st, s, p) ? { burning: true } : {}),
       ...(vis.ident.has(s.id) ? { type: seenType(st, s), x: s.x, y: s.y, rot: s.rot } : {}), ...(s.owner < 0 ? { type: s.type, x: s.x, y: s.y, rot: s.rot, hp: s.hp, neutral: s.neutral } : {}) })),
-    enemyRigs: st.rigs.filter(r => r.owner !== p && vis.rigs.has(r.id)),
+    enemyRigs: st.rigs.filter(r => r.owner !== p && !allied(st, p, r.owner) && vis.rigs.has(r.id)),
     myPorts: forwardPorts(st, p),
-    enemyPorts: (st.ports || []).filter(o => o.owner !== p && vis.ports.has(o.id)),
+    enemyPorts: (st.ports || []).filter(o => o.owner !== p && !allied(st, p, o.owner) && vis.ports.has(o.id)),
     myPlatforms: (st.platforms || []).filter(o => o.owner === p),
-    enemyPlatforms: (st.platforms || []).filter(o => o.owner !== p && vis.platforms.has(o.id)),
+    enemyPlatforms: (st.platforms || []).filter(o => o.owner !== p && !allied(st, p, o.owner) && vis.platforms.has(o.id)),
     myBases: (st.bases || []).filter(b => b.owner === p),
     myFleets: fleetsOf(st, p),
     builds: me.builds || [],
     // enemy bases are known once you've seen their central rig (or its wreck)
-    enemyBases: (st.bases || []).filter(b => b.owner !== p && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
+    enemyBases: (st.bases || []).filter(b => b.owner !== p && !allied(st, p, b.owner) && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
     deposits: st.deposits.filter(d => me.known[d.id]),
     wrecks: st.wrecks,
     // the Free Tide's raft network: your own, and enemy Tide around bases and ships you can see

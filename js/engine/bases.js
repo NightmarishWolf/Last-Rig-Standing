@@ -16,7 +16,7 @@ import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { maxBaseLevel, platformUnlocked } from './research.js';
-import { fail, log, ok, others, pname, shipAt, tally, tallyUnit } from './util.js';
+import { autoTargetOk, fail, log, ok, others, pname, shipAt, tally, tallyUnit } from './util.js';
 import { fusionFinished, victoryOn } from './victory.js';
 import { hiddenBlocker, revealBlocker } from './visibility.js';
 import { sink } from './combat.js';
@@ -233,7 +233,7 @@ export function doUpgradeBase(st, a) {
 
 // ---------- start of turn ----------
 // Finish construction, heal, repair, and let gun platforms fire.
-export function processBases(st, p, visibleShips) {
+export function processBases(st, p, visibleShips, ident = null) {
   for (const o of (st.platforms || []).filter(o => o.owner === p && o.buildLeft > 0)) {
     if (baseById(st, o.baseId)?.wrecked) continue;
     o.buildLeft--;
@@ -274,7 +274,7 @@ export function processBases(st, p, visibleShips) {
     const def = PLATFORMS[o.kind], range = def.range + pstat(st, p, 'platformRange');
     let best = null, bd = Infinity;
     for (const s of st.ships) {
-      if (s.owner === p || !visibleShips.has(s.id)) continue;
+      if (s.owner === p || !visibleShips.has(s.id) || !autoTargetOk(st, p, s, ident)) continue;
       const d = dist(shipCells(s), [[o.x, o.y]]);
       if (d <= range && d < bd) { best = s; bd = d; }
     }

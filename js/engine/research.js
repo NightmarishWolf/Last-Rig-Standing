@@ -61,7 +61,7 @@ export function rpIncome(st, p) {
 // Start of a player's turn: pay for funding, add RP, finish techs.
 export function processResearch(st, p) {
   const r = R(st, p), me = st.players[p];
-  let funded = Math.min(r.funding || 0, Math.floor(me.money / FUNDING.costPerRp));
+  let funded = Math.max(0, Math.min(r.funding || 0, Math.floor(me.money / FUNDING.costPerRp)));
   if (funded < (r.funding || 0)) log(st, p, `Not enough money for full research funding: bought ${funded} RP.`);
   me.money -= funded * FUNDING.costPerRp;
   const inc = rpIncome(st, p);

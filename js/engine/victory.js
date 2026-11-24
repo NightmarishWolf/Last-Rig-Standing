@@ -22,7 +22,7 @@ export const capitalOf = (st, p) => (st.bases || []).find(b => b.owner === p && 
 
 // Start of a player's turn: without a working Admiralty, the exile countdown runs.
 export function processConquest(st, p) {
-  if (st.tutorial) return null; // the tutorial's practice target has no Admiralty
+  if (st.tutorial || st.campaign) return null; // the tutorial's practice target and mission enemies have no Admiralty
   const me = st.players[p], cap = capitalOf(st, p);
   if (cap && !cap.wrecked) { if (me.exile != null) log(st, p, 'Your Admiralty is back in action.', { k: 'done' }); me.exile = null; return; }
   if (me.exile == null) {

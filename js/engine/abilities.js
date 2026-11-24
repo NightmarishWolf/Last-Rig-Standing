@@ -11,7 +11,7 @@ import { checkWin } from './turns.js';
 import { hasTech } from './research.js';
 import { TECH } from '../data/research.js';
 import { scrambled, seesSquare } from './strikes.js';
-import { fail, log, ok, others, passives, portAt, r2, rigAt, shipAt } from './util.js';
+import { allied, fail, log, ok, others, passives, portAt, r2, rigAt, shipAt } from './util.js';
 import { addSpill, doCleanSpill, inStorm, spillAt } from './world.js';
 import { doAssault, doBoard, doSiphon } from './factions.js';
 import { tallyUnit } from './util.js';
@@ -69,6 +69,11 @@ export function doAct(st, a) {
   }
   const firstUse = !ship.acted || ship.activeAction !== act.id;
   if (act.tag === 'air' && inStorm(st, x, y)) return fail('No aircraft fly into the storm.');
+  // (under a truce: no boarding, siphoning, landing marines on, or ramming an ally)
+  if (['board', 'siphon', 'assault', 'fire'].includes(act.kind)) {
+    const t = shipAt(st, x, y, o => o.owner !== p) || rigAt(st, x, y);
+    if (t && allied(st, p, t.owner)) return fail("They're under truce with you.");
+  }
   switch (act.kind) {
     case 'clean': {
       if (!spillAt(st, x, y)) return fail('Pick a square of an oil slick within 2 squares.');

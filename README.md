@@ -62,12 +62,15 @@ Each feature has its own small file. Start in `js/data/` for balance changes.
 
 ```
 index.html               page skeleton
+assets/
+  portraits/             character portraits, {who}-{mood}.png (64×64)
 css/
   base.css               colours, fonts, buttons
   layout.css             top bar, board area, panel placement
   panel.css              side panel, shipyard, log, player chips
   dialogs.css            menus, setup screen, rules, confirm boxes
   tutorial.css           tutorial coach box
+  campaign.css           campaign: comms box, goals, campaign/briefing pages, ranks, achievements
   timer.css              turn timer
   responsive.css         small screens (loaded last)
 js/
@@ -81,6 +84,7 @@ js/
     production.js        shipyards (slots, speed), build queue, fleets, standing orders
     bots.js              bot difficulties and personalities (what they build and research)
     maps.js              map sizes, player names and colours
+    cosmetics.js         looks you can unlock (campaign milestones now, the shop later)
   engine/                game rules, no graphics
     index.js             one import for the whole engine
     actions.js           applyAction() and getView(): the only ways in and out
@@ -146,6 +150,9 @@ js/
     simul.js             simultaneous rounds: bots playing alongside you, Ready / Not ready, round changes
     bots.js              computer turns on screen: animation, curtain, spectator controls
     flow.js              pass-the-device, game over, tutorial enter/exit
+    campaign.js          the campaign on screen: campaign page, briefing, comms box, enemy turns, results
+    achievements.js      which achievements a game earns, the Achievements page, unlock pop-ups
+    profile.js           profiles: commander XP, campaign bests, achievements, Dabloons
     timer.js             turn timer
     storage.js           save slots in the browser (autosaves, named saves, export/import files)
     settings.js, state.js
@@ -154,10 +161,15 @@ js/
     worker.js, run.js    plays bot games in the background (run.js is also used by tools/simulate.mjs)
     stats.js             one record per game, and the totals over many games
     dashboard.js         the charts and tables
-  tutorial/
-    steps.js             the tutorial steps and coach text (edit text here)
-    map.js               the tutorial's hand-built map
-    coach.js             the coach box and step logic
+  campaign/              the campaign (story: docs/LORE.md)
+    index.js             the missions in order, per arc, and which are open
+    missions/navy01.js   one file per mission: hand-made map (text), setup, dialogue, steps, triggers,
+                         the scripted enemy, goals, par
+    runner.js            runs a mission: steps, triggers, win/loss, the result
+    mapfile.js           reads a text map ('#' land, '.' sea, letters = marks the mission uses)
+    score.js             ranks F–S+ and their rewards
+    portraits.js         the characters' portraits (64×64 pixel art in assets/portraits/, four moods each)
+  tutorial/              the old tutorial (no longer on the menu: the campaign teaches the game now)
 
 tools/
   simulate.mjs           bot-vs-bot simulator (needs Node.js 18+): node tools/simulate.mjs games=20 size=small players=4
@@ -213,7 +225,8 @@ a type: `node tools/simulate.mjs games=8 map=strait` and the Balance lab's "By m
 - **Add or change a tech:** `js/data/research.js` (the header explains every effect you can use).
 - **Add or change a platform or base level:** `js/data/bases.js`.
 - **Map sizes, land amount, deposit density:** `js/data/maps.js`.
-- **Tutorial wording:** `js/tutorial/steps.js`.
+- **Mission wording, maps and goals:** `js/campaign/missions/`. Ranks and rewards: `js/campaign/score.js`.
+- **Achievements:** `js/data/achievements.js` (checks for skirmish games in `js/app/achievements.js`).
 
 ## Controls
 

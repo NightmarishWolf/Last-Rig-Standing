@@ -55,7 +55,7 @@ function put(st, entry) {
 
 // Autosave (called after every action). The tutorial never saves.
 export function save(st) {
-  if (st.tutorial || st.replay) return; // (a replay being watched is a copy: never saved over the game)
+  if (st.tutorial || st.campaign || st.replay) return; // (a replay being watched is a copy: never saved over the game; missions aren't saved)
   st.gameId ||= newGameId();
   const id = 'auto-' + st.gameId;
   put(st, summaryOf(st, id, 'Autosave', 'auto'));

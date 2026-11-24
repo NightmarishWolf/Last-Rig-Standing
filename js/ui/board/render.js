@@ -11,7 +11,7 @@ import { SHIPS } from '../../data/ships.js';
 import { hatch, roundRect } from './canvas.js';
 import { drawFog } from './fog.js';
 import { drawBasePieces, drawClaims } from './bases.js';
-import { drawMarkers } from './markers.js';
+import { drawMarkers, drawProps } from './markers.js';
 import { drawUnitBadges, drawYardBadges } from './fleets.js';
 import { drawFx, tweenCells } from './fx.js';
 import { drawTurrets, endFrame } from './weapons.js';
@@ -96,6 +96,7 @@ function drawBoard() {
   }
   S.st.players.forEach((pl, i) => {
     const h = pl.home;
+    if (pl.hideHome) return; // (a mission's enemy has no home waters on the map)
     ctx.globalAlpha = i === p ? 0.14 : 0.07; ctx.fillStyle = pcol(i);
     ctx.fillRect(px(h.x0), py(h.y0), cell * (h.x1 - h.x0 + 1), cell * (h.y1 - h.y0 + 1));
     ctx.globalAlpha = 1;
@@ -119,7 +120,8 @@ function drawBoard() {
   // home borders in each owner's colour
   ctx.setLineDash([6, 6]);
   S.st.players.forEach((pl, i) => {
-    const h = pl.home; ctx.strokeStyle = pcol(i); ctx.globalAlpha = pl.out ? 0.15 : 0.55;
+    const h = pl.home; if (pl.hideHome) return;
+    ctx.strokeStyle = pcol(i); ctx.globalAlpha = pl.out ? 0.15 : 0.55;
     ctx.strokeRect(px(h.x0) + 1, py(h.y0) + 1, cell * (h.x1 - h.x0 + 1) - 2, cell * (h.y1 - h.y0 + 1) - 2);
   });
   ctx.globalAlpha = 1; ctx.setLineDash([]);
@@ -212,6 +214,7 @@ function drawBoard() {
   drawBasePieces(v);
   S.animating = false;
   const foes = v.enemyShips.map(e => e.cells);
+  drawProps();
   // a ship as its sprite when zoomed in (turned to its heading, in its owner's colour), else the plain hull
   const sprite = (s, cells, color, alpha) => {
     if (!spriteZoom() || !hasSprite(s.type)) return false;

@@ -1,4 +1,5 @@
 // The side panel (resources, selected ship or base, shipyard, log) and the top bar.
+import { REPO } from '../data/economy.js';
 import * as E from '../engine/index.js';
 import { BASE_LEVELS, PLATFORMS } from '../data/bases.js';
 import { STRIKES } from '../data/economy.js';
@@ -12,6 +13,10 @@ import { S } from './state.js';
 import { EVENTS, EVENT_TUNING, SPILLS } from '../data/events.js';
 import { FLEET, QUEUE, STANDING } from '../data/production.js';
 import { DIFFICULTY, PERSONALITIES } from '../data/bots.js';
+import { goalsNow, missionOf } from '../campaign/runner.js';
+
+// parts of the screen a campaign mission keeps out of the way (taught in later missions)
+const hidden = (st, part) => !!missionOf(st)?.hide?.includes(part);
 
 const CLASS_NAMES = { light: 'Light ships', sub: 'Submarines', escort: 'Escorts', capital: 'Capital ships', support: 'Support' };
 
@@ -23,21 +28,31 @@ export function renderTop() {
   document.getElementById('turn-info').innerHTML =
     `<b style="color:${pcol(p)}">${pname(p)}</b> · Round ${S.st.round}` +
     (S.st.simul ? ` <span class="simul-badge" title="Simultaneous rounds: everyone plays at once; the round ends when all are ready">⚡ ${S.st.players.filter((pl, i) => !pl.out && S.st.ready?.[i]).length}/${S.st.players.filter(pl => !pl.out).length} ready</span>` : '') +
-    ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>` +
+    (hidden(S.st, 'research') ? '' : ` <button id="btn-research" class="research-btn ${cur ? '' : 'idle'}" title="Open the research tree (T)">🔬 ${cur ? `${cur.name} · ${left === Infinity ? '∞' : left} turn${left === 1 ? '' : 's'}` : 'Choose research'}</button>`) +
     (S.st.finalReserves ? ` <span class="alert-badge">🛢️ Final Reserves: ${S.st.finalReserves.roundsLeft} rounds</span>` : '') +
     (S.st.players[p].exile != null ? ` <span class="alert-badge red">⚠ Admiralty lost: ${S.st.players[p].exile} turns</span>` : '') +
     upkeepBadges(p);
 }
+
+// Debt: what the warnings say.
+export const REPO_RULE = `Upkeep you can't pay puts you in the red (below $0). Stay in the red for ${REPO.graceRounds} turns and the bank repossesses ships, most expensive first, until you're back to $0. You don't pick which. If your whole fleet isn't worth the debt by then, you're bankrupt: game over.`;
+export const redText = f => f.bankrupt ? `Bankrupt next turn: game over` : f.repo.length ? `Repossession next turn: ${E.shipNames(f.repo)}`
+  : `In the red next turn (${usd(f.after)}): ${f.turnsLeft} turn${f.turnsLeft === 1 ? '' : 's'} to fix it`;
+export const redDetail = f => f.bankrupt
+  ? `If you end your turn like this you'll be ${usd(f.after)} and your whole fleet is only worth ${usd(f.worth)}: you'll be <b>bankrupt and out of the game</b>.`
+  : f.repo.length
+  ? `If you end your turn like this you'll be ${usd(f.after)} and the bank will <b>repossess ${E.shipNames(f.repo)}</b> (most expensive first, until you're back to $0).`
+  : `If you end your turn like this you'll be <b>in the red</b> (${usd(f.after)}). You then have ${f.turnsLeft} turn${f.turnsLeft === 1 ? '' : 's'} to get back to $0 before the bank starts repossessing ships, most expensive first (if your fleet isn't worth the debt by then, it's game over).`;
 
 // Warnings in the top bar: next turn's upkeep can't be paid, or there's not enough oil for your orders.
 function upkeepBadges(p) {
   if (S.botTurn || S.spectate || S.st.phase !== 'playing') return '';
   const f = E.upkeepForecast(S.st, p), o = E.oilForecast(S.st, p);
   let out = '';
-  if (f.unpaid.length) out += ` <span class="alert-badge red" title="Next turn's upkeep is $${f.need + f.funding}; you have ${usd(S.st.players[p].money)}. Unpaid ships lose 1 HP.">⚠ Upkeep short ${usd(f.short)}: ${f.sinking.length ? `${E.shipNames(f.sinking)} will sink` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} lose HP`}</span>`;
+  if (f.red) out += ` <span class="alert-badge red" title="Next turn's upkeep is $${f.need + f.funding}; you have ${usd(S.st.players[p].money)}. ${REPO_RULE}">⚠ ${redText(f)}</span>`;
   else if (f.need > 0 && S.st.players[p].money < f.need * 3) {
     const turns = Math.floor(S.st.players[p].money / Math.max(1, f.need + f.funding));
-    out += ` <span class="alert-badge" title="Upkeep is $${f.need + f.funding} a turn. Sell oil before it runs out: unpaid ships lose HP, and 1-HP ships like Survey Ships sink.">💰 Money for ${turns} more turn${turns === 1 ? '' : 's'} of upkeep</span>`;
+    out += ` <span class="alert-badge" title="Upkeep is $${f.need + f.funding} a turn. Sell oil before it runs out: ${REPO_RULE}">💰 Money for ${turns} more turn${turns === 1 ? '' : 's'} of upkeep</span>`;
   }
   if (o.short) out += ` <span class="alert-badge" title="Ships on voyages or standing orders want ${o.want} oil at the end of this turn; you have ${o.have}.">⛽ Low oil: some orders will stall</span>`;
   return out;
@@ -46,12 +61,12 @@ function upkeepBadges(p) {
 // The same warning, with a fix, in the Resources card.
 function upkeepWarning(st, p) {
   const f = E.upkeepForecast(st, p);
-  if (!f.unpaid.length) return '';
+  if (!f.red) return '';
   const fix = f.oilToCover != null
     ? `<button data-cover="${f.oilToCover}" class="primary">Sell ${f.oilToCover} oil to cover it</button>`
-    : '<span class="small">Not enough oil to cover it: sell a ship, or cut research funding.</span>';
+    : '<span class="small">Not enough oil to cover it: sell a ship yourself (you choose which), or cut research funding.</span>';
   return `<div class="voyage warn-box">⚠ <b>Next turn's upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''}, you have ${usd(st.players[p].money)}.</b>
-    ${f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`} if you end your turn like this.
+    ${redDetail(f)}
     <div class="row" style="margin-top:6px">${fix}</div></div>`;
 }
 
@@ -64,14 +79,16 @@ export function renderPanel() {
   const s = selected(), b = selectedBase();
   const oilTurn = st.rigs.filter(r => r.owner === p).reduce((t, r) => t + E.rigRate(st, r), 0);
   const rp = E.rpIncome(st, p);
+  const hide = part => hidden(st, part);
   let html = `
-  ${victoryCard(st, p)}
-  ${commanderCard(st, p)}
-  ${worldCard(st, p)}
+  ${missionCard(st)}
+  ${hide('victory') ? '' : victoryCard(st, p)}
+  ${hide('commander') ? '' : commanderCard(st, p)}
+  ${hide('world') ? '' : worldCard(st, p)}
   <div class="card">
     <h3>Resources</h3>
     <div class="stats">
-      <div class="stat"><span>Money</span><span class="v money">${usd(pl.money)}</span></div>
+      <div class="stat"><span>Money</span><span class="v money"${pl.money < 0 ? ` style="color:#ff6b6b" title="In the red: ${Math.max(0, REPO.graceRounds - (pl.redRounds || 0))} more turn${REPO.graceRounds - (pl.redRounds || 0) === 1 ? '' : 's'} to get back to $0 before ships are repossessed"` : ''}>${usd(pl.money)}${pl.money < 0 ? ' 🏦' : ''}</span></div>
       <div class="stat"><span>Oil</span><span class="v oil" title="Storage cap: oil pumped past this spills. Storage Tanks and research raise it.">${oil(pl.oil)}/${E.oilCapOf(st, p)}</span></div>
       <div class="stat"><span>Oil price</span><span class="v">$${(st.market.price * E.sellMultOf(st, p)).toFixed(2)}</span></div>
       <div class="stat"><span>Oil/turn</span><span class="v oil">+${oilTurn}</span></div>
@@ -80,15 +97,15 @@ export function renderPanel() {
       <div class="stat"><span>Upkeep</span><span class="v" style="color:#f09595">−$${E.upkeepTotal(st, p)}/turn</span></div>
       <div class="stat"><span>Research</span><span class="v" style="color:#9fd0ff">+${rp.total} RP</span></div>
     </div>
-    <div class="small muted" style="margin-top:6px">Sell oil (price drops as you sell, recovers each turn):</div>
+    ${hide('market') ? '' : `<div class="small muted" style="margin-top:6px">Sell oil (price drops as you sell, recovers each turn):</div>
     <div class="row">
       ${[1, 5, 10].map(n => `<button data-sell="${n}" ${pl.oil < n ? 'disabled' : ''}>Sell ${n} (${usd(E.sellValue(st, n, p).total)})</button>`).join('')}
       <button data-sell="all" ${pl.oil < 1 ? 'disabled' : ''}>All</button>
     </div>
-    ${autoSellRow(st, p)}
+    ${autoSellRow(st, p)}`}
     <div class="row">
-      <button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a ship with Rig Crews, like a Survey Ship or Prospector Skiff): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
-      ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}
+      ${hide('build') ? '' : `<button data-rig="1" class="${S.mode.kind === 'placeRig' ? 'active' : ''}" title="On a discovered deposit next to one of your ships (or within 5 of a ship with Rig Crews, like a Survey Ship or Prospector Skiff): founds a new rig base. Inside one of your claims: builds a Wellhead.">Build rig (base $${E.baseFoundCost(st, p)})</button>
+      ${E.portUnlocked(st, p) ? `<button data-port="1" class="${S.mode.kind === 'placePort' ? 'active' : ''}" ${pl.money < E.portCost(st, p) ? 'disabled' : ''} title="Build on an island coast next to one of your ships. Launch new ships near it.">Build port ($${E.portCost(st, p)})</button>` : ''}`}
       <button data-end="1" class="primary" style="margin-left:auto" ${S.st.simul ? 'title="Done for this round: the round ends when everyone is ready"' : ''}>${S.st.simul ? 'Ready ✓' : 'End turn'} <span class="key-hint">⏎</span></button>
     </div>
     ${upkeepWarning(st, p)}
@@ -96,12 +113,16 @@ export function renderPanel() {
 
   if (b) html += baseCard(b);
   if (S.mode.kind === 'fleetPick') html += fleetPickCard();
-  if (s) html += shipCard(s);
-  const f = s && E.fleetOf(st, s.id);
+  const scripted = s && st.campaign?.locked?.includes(s.id); // (a ship the mission sails for you)
+  if (scripted) html += `<div class="card selected-card"><h3>Selected · ${s.name || SHIPS[s.type].name} (${SHIPS[s.type].name})</h3>
+    <div class="stats"><div class="stat"><span>HP</span><span class="v">${s.hp}/${E.shipStat(st, p, s.type, 'hp')}</span></div></div>
+    <p class="small muted">She sails on her own orders: you can't command her. Keep your warships close and the raiders off her.</p></div>`;
+  else if (s) html += shipCard(s);
+  const f = s && !scripted && E.fleetOf(st, s.id);
   if (f) html += fleetCard(f, s);
-  if (s) html += standingCard(s, f);
+  if (s && !scripted) html += standingCard(s, f);
 
-  html += shipyardCard(st, p);
+  if (!hide('shipyard')) html += shipyardCard(st, p);
   // (typing an auto-sell amount: keep the box, and what's in it, across redraws)
   const typing = document.activeElement?.classList.contains('autokeep-in') ? document.activeElement : null;
   const caret = typing && typing.selectionStart;
@@ -113,6 +134,23 @@ export function renderPanel() {
   if (!s) lastShownShip = null; // re-selecting the same ship later flashes again
   // a newly selected ship: bring its card into view
   document.querySelector('#panel .selected-card.flash')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// ---------- campaign: the mission's goals ----------
+function missionCard(st) {
+  const def = missionOf(st), M = st.campaign;
+  if (!def) return '';
+  const done = !!M.wonRound;
+  const prog = def.goals.progress?.(st, M);
+  // a secondary goal's live(st, M) says how it's going: true (on track / done), false (missed), null (can't tell yet)
+  const mark = g => { const v = g.live?.(st, M); return v === false ? ['missed', '✗'] : v && done ? ['done', '✓'] : ['', '◇']; };
+  const desc = g => g.desc.replace('{par}', def.par);
+  return `<div class="card mission-goals">
+    <h3>🎖 ${def.title} · Goals</h3>
+    <div class="goal ${done ? 'done' : ''}">${done ? '✓' : '◆'} ${goalsNow(st).main}${prog && !done ? ` <span class="goal-prog">${prog}</span>` : ''}</div>
+    ${def.secondary.map(g => { const [cls, ic] = mark(g); return `<div class="goal sec ${cls}" title="${desc(g)}">${ic} <b>${g.name}</b>: ${desc(g)}${g.id === 'clock' && !done ? ` <span class="muted small">(round ${st.round})</span>` : ''}</div>`; }).join('')}
+    ${def.goals.deadline && !done ? `<div class="small muted" style="margin-top:4px">${def.goals.deadlineText || `Fails after round ${def.goals.deadline}.`}</div>` : ''}
+  </div>`;
 }
 
 // remember which shipyard classes are folded open (the panel is redrawn all the time)
@@ -383,7 +421,7 @@ function shipCard(s) {
         <div class="stat"><span>Moves left</span><span class="v">${canMove ? s.movesLeft : 0}</span></div>
         <div class="stat"><span>Oil/square</span><span class="v oil">${+oilRate.toFixed(2)}${E.moveCost(st, s, 4) < oilRate * 4 - 1e-9 ? ' (½)' : ''}</span></div>
         <div class="stat"><span>Sight</span><span class="v">${E.shipStat(st, p, s.type, 'sight')}</span></div>
-        <div class="stat"><span>Upkeep</span><span class="v">$${E.upkeepOf(st, p, s.type)}/turn</span></div>
+        <div class="stat"><span>Upkeep</span><span class="v">${s.onLoan ? 'on loan (free)' : `$${E.upkeepOf(st, p, s.type)}/turn`}</span></div>
         ${factionStat(st, p, s)}
       </div>
       ${pas ? `<ul class="small muted" style="padding-left:18px;margin:8px 0 0">${pas}</ul>` : ''}

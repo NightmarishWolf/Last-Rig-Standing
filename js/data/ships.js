@@ -86,6 +86,13 @@ export const SHIPS = {
     actions: [],
   },
 
+  // campaign only: families from the raft-towns, following the fleet because there's nowhere else to go
+  refugee: {
+    name: 'Refugee Boat', cls: 'support', hidden: true, cost: 0, build: 1, hp: 2, oil: 0, move: 3, sight: 1,
+    shape: [[0, 0], [1, 0]],
+    actions: [],
+  },
+
   // ---------- Escorts and support ----------
   destroyer: {
     faction: 'navy', role: 'line', name: 'Destroyer', cls: 'escort', cost: 380, build: 2, hp: 4, oil: 0.5, move: 3, sight: 3,

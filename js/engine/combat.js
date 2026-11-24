@@ -1,7 +1,7 @@
 // Resolving shots: interception, screening, armor, damage, and sinking.
 import { SHIPS } from '../data/ships.js';
 import { coord, dist, inBounds, shipCells, zoneOf } from './geometry.js';
-import { log, passives, pname, portAt, rigAt, shipAt, tally, tallyUnit } from './util.js';
+import { log, passives, pname, portAt, rigAt, shipAt, tally, tallyUnit, allied } from './util.js';
 import { PLATFORMS } from '../data/bases.js';
 import { baseById, wreckBase } from './bases.js';
 import { addSpill, payBounty } from './world.js';
@@ -49,7 +49,7 @@ export function resolveShot(st, ship, act, tx, ty) {
   const hitShips = new Set();
   let anyHit = false, sunkName = null;
   for (const [x, y] of squares) {
-    let target = shipAt(st, x, y, s => s.owner !== p);
+    let target = shipAt(st, x, y, s => s.owner !== p && !allied(st, p, s.owner)); // (an ally's ship is never hit)
     if (target && act.subsOnly && !passives(target).submerged) target = null;
     if (target && !hitShips.has(target.id)) {
       hitShips.add(target.id);
@@ -71,7 +71,7 @@ export function resolveShot(st, ship, act, tx, ty) {
     }
     if (!act.subsOnly) {
       const port = portAt(st, x, y);
-      if (port && port.owner !== p) {
+      if (port && port.owner !== p && !allied(st, p, port.owner)) {
         const e = port.owner;
         notify.add(e);
         port.hp -= structDmg;
@@ -87,7 +87,7 @@ export function resolveShot(st, ship, act, tx, ty) {
         continue;
       }
       const plat = (st.platforms || []).find(o => o.x === x && o.y === y);
-      if (plat && plat.owner !== p) {
+      if (plat && plat.owner !== p && !allied(st, p, plat.owner)) {
         const e = plat.owner, name = PLATFORMS[plat.kind].name;
         notify.add(e);
         plat.hp -= structDmg;
@@ -104,7 +104,7 @@ export function resolveShot(st, ship, act, tx, ty) {
         continue;
       }
       const rig = rigAt(st, x, y);
-      if (rig && rig.owner !== p) {
+      if (rig && rig.owner !== p && !allied(st, p, rig.owner)) {
         const e = rig.owner;
         notify.add(e);
         rig.hp -= structDmg;

@@ -94,18 +94,21 @@ function seatOf(o, i, seed, opts = {}) {
 
 // ---------- new game ----------
 // opts: { size: 'standard', players: 2, seats: ['human', { seat: 'ai', difficulty, personality }, ...], seed }
+// opts.scenario (campaign missions): a hand-made map { W, H, land, homes: [{ home, spawn }], mapType, build(st) }
+// instead of a generated one; build() places the deposits, bases and ships.
 export function newGame(opts = {}) {
-  const size = MAP_SIZES[opts.size] ? opts.size : 'standard';
-  const n = Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
-  const { w: W, h: H } = MAP_SIZES[size];
+  const scen = opts.scenario || null;
+  const size = scen ? 'campaign' : MAP_SIZES[opts.size] ? opts.size : 'standard';
+  const n = scen ? scen.homes.length : Math.min(MAP_SIZES[size].maxPlayers, Math.max(2, opts.players || 2));
+  const { w: W, h: H } = scen ? { w: scen.W, h: scen.H } : MAP_SIZES[size];
   // (only a whole number is a seed: anything else, like a blank seed box, means a new random map)
   const seed = Number.isInteger(opts.seed) ? opts.seed : Math.floor(Math.random() * 1e9);
-  const layout = MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
+  const layout = scen ? scen.homes : MAP_SIZES[size].classic ? layoutHomes(W, H, n) : layoutWorld(W, H, n);
   const st = {
     version: 3, seed, rng: seed, size, W, H,
     // mirrored map (default): every player's side of the map is the same, so nobody starts with better
     // islands or closer oil. Off = a fully random map.
-    mirror: opts.mirror !== false && !MAP_SIZES[size].classic,
+    mirror: !scen && opts.mirror !== false && !MAP_SIZES[size].classic,
     // simultaneous rounds: everyone plays at once and the round ends when all are ready (actions.js)
     simul: !!opts.simultaneous,
     // fog of war off: everyone sees every ship, rig and platform, except submerged submarines (and mines)
@@ -115,7 +118,7 @@ export function newGame(opts = {}) {
     exploreFog: opts.fog === 'reveal',
     turnCount: 1, round: 1, current: 0,
     turnTimer: opts.turnTimer ?? 90, // seconds per turn, 0 = off
-    victory: { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is)
+    victory: scen ? {} : { domination: true, postoil: true, lastrig: true, ...(opts.victory || {}) }, // which victories are on (Conquest always is; a mission sets its own goals)
     winReason: null,
     phase: 'playing', winner: null, nextId: 1,
     land: new Array(W * H).fill(0),
@@ -138,8 +141,11 @@ export function newGame(opts = {}) {
     usedNames.add(k); pl.name = BOT_NAMES[k];
   }
   // map type ('random' picks one from the seed); the tutorial's hand-made arena has none
-  st.mapType = MAP_SIZES[size].classic ? 'classic' : resolveMapType(st, opts.mapType || 'classic');
-  generateMap(st);
+  if (scen) { st.mapType = scen.mapType || 'classic'; st.land = scen.land.slice(); scen.build(st); }
+  else {
+    st.mapType = MAP_SIZES[size].classic ? 'classic' : resolveMapType(st, opts.mapType || 'classic');
+    generateMap(st);
+  }
   st.oilTotal = st.deposits.reduce((t, d) => t + d.reserves, 0); // for Last Rig Standing
   st.spills = [];
   setupEvents(st, opts.events); // world events (off unless chosen)

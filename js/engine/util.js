@@ -56,3 +56,15 @@ export const fmt2 = v => { const x = r2(v); return Number.isInteger(x) ? String(
 export const ok = () => ({ ok: true });
 
 export const fail = error => ({ ok: false, error });
+
+// Automatic fire (gun platforms, standing orders) in a mission that says "identify first"
+// (st.campaign.identifyFirst): only at ships in plain sight, never at a contact, and never at a non-combatant.
+// Everywhere else it's any enemy ship you can see.
+// (and a mission's non-combatants, like a refugee boat or a hijacked tanker with her crew aboard, never
+// draw automatic fire anywhere)
+export const autoTargetOk = (st, p, s, ident) => !s.noncombatant && !allied(st, p, s.owner) && (!(st.campaign?.identifyFirst && p === 0) || !!ident?.has(s.id));
+
+// Truces (campaign): st.truce = [[a, b], ...] pairs of players who won't fire on each other, don't count as
+// enemies in each other's view, and share what they see.
+export const allied = (st, a, b) => a !== b && a >= 0 && b >= 0 && !!st.truce?.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+export const alliesOf = (st, p) => (st.truce || []).flatMap(([x, y]) => (x === p ? [y] : y === p ? [x] : []));

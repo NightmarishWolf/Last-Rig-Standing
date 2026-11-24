@@ -1,0 +1,103 @@
+/* Campaign: the comms box over the board, mission goals, the campaign and briefing pages,
+   mission results, ranks, achievements and their pop-ups. */
+
+/* ---- comms box (reuses the tutorial's #coach slot above the board) ---- */
+.coach.comms { background: linear-gradient(180deg, #13263a, #0e1d2d); border-color: #35577a; flex-direction: row; gap: 14px; padding: 12px 14px; overflow: hidden; }
+.comms-portrait { flex: 0 0 auto; width: 120px; height: 120px; border-radius: 8px; overflow: hidden; border: 2px solid #4a6f95; box-shadow: 0 0 0 3px #0a1622; image-rendering: pixelated; }
+.comms-portrait svg { display: block; width: 100%; height: 100%; }
+.comms-portrait.quiet { opacity: .55; filter: saturate(.6); }
+.comms-portrait.talking { animation: commsIn .25s ease-out; }
+@keyframes commsIn { from { transform: translateY(4px); opacity: .4; } to { transform: none; opacity: 1; } }
+.comms-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.comms-head { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: #8fb2d4; text-transform: uppercase; letter-spacing: 1.1px; }
+.comms-name { font-weight: 700; color: #ffd666; margin: 6px 0 4px; font-size: 15px; }
+.comms-text { line-height: 1.5; color: #e7eef6; font-size: 15px; }
+.comms-text.orders { color: #d7f0e9; }
+.comms-actions { margin-top: auto; display: flex; gap: 8px; justify-content: flex-end; }
+.small-btn .key-hint, .comms-actions .key-hint { opacity: .7; font-size: 11px; margin-left: 4px; }
+.comms-choice { flex-wrap: wrap; }
+.comms-choice .small-btn { padding: 6px 12px; }
+.reward-row.cosmetic { border-color: #c8a032; }
+
+/* ---- goals card in the side panel ---- */
+.mission-goals { border-color: #4a6f95; background: linear-gradient(180deg, #13263a, var(--panel)); }
+.mission-goals .goal { margin: 4px 0; line-height: 1.35; }
+.mission-goals .goal.sec { font-size: 13px; color: #c5d6e6; }
+.mission-goals .goal.done { color: #7fd17a; }
+.mission-goals .goal.missed { color: #8a8f96; text-decoration: line-through; text-decoration-color: rgba(255,107,107,.6); }
+
+/* ---- ranks ---- */
+.rank-badge { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 7px; font-weight: 900; font-size: 16px;
+  color: #10161d; background: var(--rc); box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 0 0 2px rgba(0,0,0,.35); font-family: Georgia, "Times New Roman", serif; }
+.rank-badge.big { min-width: 74px; height: 74px; font-size: 40px; border-radius: 14px; }
+
+/* ---- campaign page ---- */
+.campaign-page { max-width: 880px; }
+.arc { margin-top: 16px; }
+.arc-head { display: flex; justify-content: space-between; align-items: flex-end; }
+.arc-head h2 { margin: 2px 0 0; }
+.arc-kicker { text-transform: uppercase; letter-spacing: 1.3px; font-size: 11.5px; color: #8fb2d4; }
+.mission-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.mission-card { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); min-height: 74px; }
+.mission-card:not(:disabled):hover { border-color: #ffd666; }
+.mission-card .m-num { flex: 0 0 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #1d3350; font-weight: 800; color: #cfe1f3; }
+.mission-card .m-text { flex: 1; min-width: 0; }
+.mission-card .m-text b { font-size: 15px; }
+.mission-card .m-new { color: #ffd666; font-weight: 700; }
+.mission-card.soon { opacity: .45; border-style: dashed; }
+.mission-card.locked { opacity: .55; }
+.soon-arc { opacity: .6; border-top: 1px solid var(--line); padding-top: 8px; }
+.dabloons { font-weight: 700; color: #ffd666; }
+
+/* ---- briefing ---- */
+.briefing { max-width: 960px; }
+.brief-top { display: flex; justify-content: space-between; gap: 16px; }
+.brief-top h2 { margin: 2px 0; font-size: 26px; }
+.brief-best { text-align: center; }
+.brief-cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; margin-top: 12px; }
+.brief-talk { display: flex; flex-direction: column; gap: 10px; }
+.brief-line { display: flex; gap: 12px; align-items: flex-start; background: rgba(255,255,255,.03); border-radius: 10px; padding: 8px; }
+.brief-portrait { flex: 0 0 72px; width: 72px; height: 72px; border-radius: 7px; overflow: hidden; border: 2px solid #35577a; image-rendering: pixelated; }
+.brief-portrait svg { display: block; width: 100%; height: 100%; }
+.brief-name { font-weight: 700; color: #ffd666; margin-bottom: 2px; }
+.brief-goals h3 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: #8fb2d4; }
+.brief-goals .goal { margin: 3px 0; }
+.brief-goals .goal.main { font-weight: 700; }
+.teach { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+.chip-t { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #1d3350; color: #cfe1f3; }
+
+/* ---- results ---- */
+.result .result-top { display: flex; gap: 16px; align-items: center; margin: 10px 0 12px; }
+.result.fail h2 { color: #ff8a8a; }
+.score-box { background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 12px; }
+.score-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.06); align-items: center; }
+.score-row:last-child { border-bottom: 0; }
+.reward-row { margin: 12px 0 6px; }
+
+/* ---- achievements ---- */
+.ach-page { max-width: 760px; }
+.ach-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ach-head h2 { margin: 0; }
+.ach-totals { display: flex; gap: 14px; align-items: center; }
+.ach-group { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: #8fb2d4; }
+.ach-list { display: flex; flex-direction: column; gap: 6px; }
+.ach-row { display: flex; gap: 12px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); opacity: .7; }
+.ach-row.got { opacity: 1; border-color: #6b8a3a; background: linear-gradient(90deg, rgba(127,209,122,.10), var(--panel-2)); }
+.ach-row.secret { font-style: italic; }
+.ach-row .ach-icon { font-size: 22px; width: 32px; text-align: center; }
+.ach-text { flex: 1; }
+.ach-side { text-align: right; display: flex; flex-direction: column; gap: 2px; }
+.ach-date { color: #7fd17a; font-size: 12px; font-weight: 700; }
+.ach-earned { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ach-chip { background: rgba(255,214,102,.1); border: 1px solid rgba(255,214,102,.35); border-radius: 8px; padding: 3px 8px; }
+#ach-pop { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 300; pointer-events: none; }
+.ach-toast { display: flex; gap: 12px; align-items: center; min-width: 280px; max-width: 360px; padding: 10px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, #2a2410, #1a170b); border: 1px solid #c9a645; box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: achIn .4s ease-out; transition: opacity .7s, transform .7s; }
+.ach-toast.gone { opacity: 0; transform: translateX(30px); }
+.ach-toast .ach-icon { font-size: 30px; }
+.ach-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #e7c86a; }
+.ach-reward { color: #ffd666; font-weight: 700; font-size: 12.5px; margin-top: 2px; }
+@keyframes achIn { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) { .mission-list, .brief-cols { grid-template-columns: 1fr; } }
+.mission-goals .goal-prog { color: #ffd666; font-weight: 700; margin-left: 4px; }

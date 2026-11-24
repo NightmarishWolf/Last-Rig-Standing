@@ -2,6 +2,7 @@
 // charts over the whole game (oil, money, fleet, bases, research), one measure at a time.
 // The charts are plain SVG: one line per player in their colour, a legend, a label at the end of each
 // line, and a crosshair with a tooltip on hover.
+import { achievementLine } from './achievements.js';
 import { MAP_SIZES, MAP_TYPES, PLAYER_COLORS } from '../data/maps.js';
 import { SHIPS } from '../data/ships.js';
 import { COMMANDERS } from '../data/commanders.js';
@@ -61,7 +62,7 @@ function xpBlock(st, xp) {
   if (!xp?.length) return '';
   return `<div class="xp-box">${xp.map(r => {
     const c = r.commander && COMMANDERS[r.commander];
-    if (!c) return `<div class="xp-row"><b>${esc(r.profile?.name || 'You')}</b> <span class="muted small">played without a commander: no XP (the game still counts toward your ${FACTIONS[st.players[r.p].faction || 'navy'].name} record).</span></div>`;
+    if (!c) return `<div class="xp-row"><b>${esc(r.profile?.name || 'You')}</b> <span class="muted small">played without a commander: no XP (the game still counts toward your ${FACTIONS[st.players[r.p].faction || 'navy'].name} record).</span>${achievementLine(r.achievements)}</div>`;
     const pr = progress(r.profile, r.commander);
     const pct = pr.need ? Math.round(pr.into / pr.need * 100) : 100;
     return `<div class="xp-row">
@@ -69,6 +70,7 @@ function xpBlock(st, xp) {
         <span class="xp-gain">+${r.xp.toLocaleString()} XP</span></div>
       <div class="xp-bar" title="${pr.need ? `${pr.into} / ${pr.need} XP to level ${pr.level + 1}` : 'Max level'}"><i style="width:${pct}%"></i><span>Level ${pr.level}${pr.need ? '' : ' (max)'}</span></div>
       ${r.after > r.before ? `<div class="xp-level">⭐ Level ${r.after}!${r.perks.length ? ' Unlocked: ' + r.perks.map(k => `<b title="${esc(k.text)}">${esc(k.name)}</b>`).join(', ') : ''}</div>` : ''}
+      ${achievementLine(r.achievements)}
       ${r.unlocks.length ? `<div class="xp-level">🔓 New commander${r.unlocks.length > 1 ? 's' : ''}: ${r.unlocks.map(id => `<b>${COMMANDERS[id].icon} ${COMMANDERS[id].name}</b>`).join(', ')}</div>` : ''}
     </div>`;
   }).join('')}</div>`;

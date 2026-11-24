@@ -1,5 +1,6 @@
 // Turn flow: start-of-turn production and upkeep, domination, elimination, next player.
-import { DEPOSITS, MARKET } from '../data/economy.js';
+import { DEPOSITS, MARKET, REPO } from '../data/economy.js';
+import { repossess, shipSaleValue } from './economy.js';
 import { processConquest, processDomination, processLastRig } from './victory.js';
 import { SHIPS } from '../data/ships.js';
 import { sink } from './combat.js';
@@ -13,7 +14,7 @@ import { processYards } from './production.js';
 import { tickStrikes } from './strikes.js';
 import { tickPowers } from './powers.js';
 import { visibility } from './visibility.js';
-import { alivePlayers, log, others, passives, rigAt, tally } from './util.js';
+import { alivePlayers, fmt2, log, others, passives, r2, rigAt, tally } from './util.js';
 import { calmBonus, stormMoves, worldRound } from './world.js';
 import { burnSlicks, processSupply, processTide, tideMoves, tideSources } from './factions.js';
 
@@ -41,7 +42,7 @@ export function startTurn(st, p, first = false) {
   st.market.price = Math.min(MARKET.basePrice, Math.round((st.market.price + gap * share) * 100) / 100);
 
   // bases: finish construction, heal, repair, gun platforms fire
-  processBases(st, p, visibility(st, p).ships);
+  { const v = visibility(st, p); processBases(st, p, v.ships, v.ident); }
   // burning water: Incendiary Junk fire slicks, and (Kade's Slicks Burn) any slick, hurt ships starting a turn in them
   burnSlicks(st, p);
   // faction mechanics: Navy ships in supply repair; the Free Tide grows and heals its ships
@@ -79,16 +80,29 @@ export function startTurn(st, p, first = false) {
   if (spilled > 0) log(st, p, `Storage full: ${spilled} oil spilled. Sell oil or build Storage Tanks.`, { k: 'oil' });
   // research
   processResearch(st, p);
-  // upkeep: ships and platforms cost money each turn; ships you can't pay for lose 1 HP
-  let paid = 0, unpaid = 0;
-  const pu = platformUpkeep(st, p);
-  if (me.money >= pu) { me.money -= pu; paid += pu; } else { paid += me.money; me.money = 0; unpaid++; }
-  for (const s of st.ships.filter(s => s.owner === p).sort((a, b) => upkeepOf(st, p, a.type) - upkeepOf(st, p, b.type))) {
-    const u = upkeepOf(st, p, s.type);
-    if (me.money >= u) { me.money -= u; paid += u; }
-    else { unpaid++; s.hp -= 1; if (s.hp <= 0) sink(st, s); }
-  }
-  if (unpaid) log(st, p, `Couldn't pay all upkeep: unpaid ships lost 1 HP each.`, { k: 'hit' });
+  // upkeep: ships and platforms cost money each turn. What you can't pay goes on the books: your money
+  // drops below $0 ("in the red"). Stay in the red too long and the bank repossesses ships.
+  if (me.money >= 0) me.redRounds = 0; // paid off since last time: the clock starts over
+  const paid = r2(platformUpkeep(st, p) + st.ships.filter(s => s.owner === p && !s.onLoan).reduce((t, s) => t + upkeepOf(st, p, s.type), 0));
+  me.money = r2(me.money - paid);
+  if (me.money < 0) {
+    me.redRounds = (me.redRounds || 0) + 1;
+    if (me.redRounds > REPO.graceRounds) {
+      // the whole fleet isn't worth the debt: bankrupt, out of the game
+      const worth = st.ships.filter(s => s.owner === p && !s.onLoan).reduce((t, s) => t + shipSaleValue(st, s), 0);
+      if (me.money + worth < 0) {
+        log(st, p, `Bankrupt: −$${fmt2(-me.money)} and your fleet is only worth $${fmt2(worth)}. The bank takes everything.`, { k: 'hit' });
+        eliminate(st, p, 'went bankrupt');
+        checkWin(st);
+        return 'skip';
+      }
+      repossess(st, p);
+      me.redRounds = 0;
+    } else {
+      const left = REPO.graceRounds - me.redRounds;
+      log(st, p, `In the red: −$${fmt2(-me.money)}. ${left ? `Get back to $0 within ${left + 1} turn${left ? 's' : ''}` : 'Get back to $0 this turn'} (sell oil or ships) or the bank repossesses ships, most expensive first. If your whole fleet isn't worth the debt, you're bankrupt and out of the game.`, { k: 'hit' });
+    }
+  } else me.redRounds = 0;
   const tide = tideSources(st, p);
   for (const s of st.ships.filter(s => s.owner === p)) {
     s.acted = false; s.shotsLeft = 0; s.activeAction = null; s.freeUsed = {};
@@ -128,6 +142,7 @@ export function eliminate(st, p, reason) {
 
 export function checkWin(st) {
   if (st.phase !== 'playing') return;
+  if (st.campaign) return; // a mission decides for itself when it's won or lost (js/campaign)
   for (const p of alivePlayers(st)) {
     // still in the war: a ship, a rig that still pumps oil (dry rigs don't count), or money to rebuild with
     const pumping = st.rigs.some(r => r.owner === p && (st.deposits.find(d => d.id === r.depId)?.reserves || 0) > 0);

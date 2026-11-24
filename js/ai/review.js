@@ -50,7 +50,7 @@ export async function reviewFleet(ctx) {
 
   // 1) money crisis: upkeep we can't cover even by selling all our oil
   const f = E.upkeepForecast(st, p);
-  if (f.unpaid.length && f.oilToCover == null) {
+  if (f.red && f.oilToCover == null) {
     const pick = ships.filter(sellable).sort((a, b) => usefulness(ctx, a) - usefulness(ctx, b))[0];
     if (pick) want.push([pick, 'crisis']);
   }

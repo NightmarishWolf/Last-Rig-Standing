@@ -18,7 +18,8 @@ import { S } from '../ui/state.js';
 import { botAction, mySeat, online, paused as netPaused } from './online.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-export const humans = st => st.players.map((_, i) => i).filter(i => st.players[i].seat !== 'ai' && !st.players[i].out);
+// (in a campaign only seat 0 is a person: any other non-AI seats are sides the mission scripts)
+export const humans = st => st.players.map((_, i) => i).filter(i => st.players[i].seat !== 'ai' && !st.players[i].out && (!st.campaign || i === 0));
 const speedMs = () => (BOT_SPEEDS.find(s => s.id === view.botSpeed) || BOT_SPEEDS[1]).ms;
 const overlayOpen = () => !document.getElementById('overlay').classList.contains('hidden') && !document.querySelector('#overlay [data-curtain]');
 

@@ -158,6 +158,16 @@ export const SPRITES = {
   prospector: [1, 1, () => wake(0, 0.5, 0.3) + hull(0, 0.5, 1, 0.42, '#c9b48a', T.woodD, { bow: 0.45, stern: 0.08 }) + deck(0, 0.5, 1, 0.42, '#e0cfa6', { bow: 0.45, stern: 0.08 })
     + motor(0.12, 0.5) + line(0.5, 0.5, 0.62, 0.1, T.black, 1.5) + circ(0.62, 0.12, 0.05, '#f2a23a') + circ(0.5, 0.5, 0.08, T.tarp) + flag(0.25, 0.38)],
   barge: [4, 1, () => tideBarge(false)],
+  // gunnery practice: a towed target barge with bullseye panels (campaign)
+  target: [3, 1, () => hull(0, 0.5, 3, 0.7, '#7a7f87', '#3b4048', { bow: 0.3, stern: 0.2, blunt: 0.6 }) + deck(0, 0.5, 3, 0.7, '#9aa0a8', { bow: 0.3 })
+    + [0.6, 1.5, 2.4].map(x => circ(x, 0.5, 0.26, '#f4f1ea') + circ(x, 0.5, 0.17, '#c8322d') + circ(x, 0.5, 0.08, '#f4f1ea')).join('')
+    + line(0.15, 0.5, -0.05, 0.5, '#2b2b2b', 2)],
+  // a fishing boat packed with people and bundles, washing on a line, no guns (campaign)
+  refugee: [2, 1, () => hull(0, 0.5, 2, 0.62, '#8a6a48', '#3b2a1a', { bow: 0.6, blunt: 0.2 }) + deck(0, 0.5, 2, 0.62, '#a5835c', { bow: 0.6, blunt: 0.2 })
+    + rect(0.15, 0.33, 0.35, 0.34, '#6d7b84', 3, `stroke="#3b4048" stroke-width="1"`) + line(0.62, 0.22, 1.55, 0.3, '#3b2a1a', 1)
+    + rect(0.8, 0.22, 0.12, 0.12, '#d9c27a', 1) + rect(1.05, 0.24, 0.12, 0.12, '#c0392b', 1) + rect(1.3, 0.27, 0.12, 0.1, '#5d8fb8', 1)
+    + [[0.7, 0.55], [0.9, 0.62], [1.05, 0.5], [1.22, 0.63], [1.38, 0.52], [0.85, 0.44], [1.55, 0.58]].map(([x, y], i) => circ(x, y, 0.07, ['#e0b28a', '#b9825a', '#7a4f33', '#f0c9a0'][i % 4], `stroke="#2a1d14" stroke-width="1"`)).join('')
+    + drum(0.3, 0.5, 0.08, '#4e6b4a')],
   rigraft: [2, 2, () => raft(0.08, 0.1, 1.84, 1.8) + rect(0.65, 0.65, 0.7, 0.7, 'none', 1, `stroke="#c8a032" stroke-width="3"`) + line(0.65, 0.65, 1.35, 1.35, '#c8a032', 2) + line(1.35, 0.65, 0.65, 1.35, '#c8a032', 2)
     + circ(1.0, 1.0, 0.1, '#111') + drum(0.32, 0.32) + drum(1.68, 0.32) + drum(0.32, 1.68, 0.09, '#2f5d8a') + drum(1.68, 1.68) + flag(0.3, 0.98)],
   gunboat: [2, 1, () => wake(0, 0.5, 0.4) + hull(0, 0.5, 2, 0.56, T.rust, T.rustD, { bow: 0.7 }) + deck(0, 0.5, 2, 0.56, '#8b6a52', { bow: 0.7 }) + patch(0.5, 0.3, 0.25, 0.18) + patch(1.2, 0.55, 0.2, 0.14)

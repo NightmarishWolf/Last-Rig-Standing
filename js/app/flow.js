@@ -19,6 +19,8 @@ import { applyPause, mySeat, onlineHandoff, paused } from './online.js';
 import { activeProfile, awardGame, getProfile } from './profile.js';
 import { simulHandoff } from './simul.js';
 import { track } from './replay.js';
+import { earn, skirmishAchievements } from './achievements.js';
+import { campaignHandoff } from './campaign.js';
 
 export function startTutorial() {
   stopTimer(); A.sessionActive = false;
@@ -38,6 +40,8 @@ export function exitTutorial() {
 
 export function handoff(st, reason) {
   stopTimer();
+  // a mission's enemy is scripted (js/campaign), or a real computer player that plays on screen first
+  if (st.campaign) { if (isBot(st, st.current)) playBotTurns(s => (s.phase === 'over' ? gameOver(s) : campaignHandoff(s))); else campaignHandoff(st); return; }
   track(st); // record the game for its replay (once per game)
   if (st.tutorial) {
     // the enemy does nothing in the tutorial: skip straight back to the player
@@ -99,7 +103,12 @@ export function gameOver(st) {
 function awardXp(st) {
   if (st.tutorial || st.replay) return [];
   const out = [];
-  const give = (p, profId) => { const r = awardGame(profId, st, p); if (r) out.push({ p, profile: getProfile(profId), ...r }); };
+  const give = (p, profId) => {
+    const r = awardGame(profId, st, p);
+    if (!r) return;
+    const achievements = earn(profId, skirmishAchievements(st, p, getProfile(profId)), r.commander);
+    out.push({ p, ...r, profile: getProfile(profId), achievements });
+  };
   if (st.online) { const p = mySeat(); if (p != null && st.players[p]?.seat === 'human') give(p, activeProfile().id); }
   else st.players.forEach((pl, p) => { if (pl.seat === 'human' && !pl.takenOver && pl.profileId) give(p, pl.profileId); });
   return out;

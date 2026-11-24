@@ -111,7 +111,7 @@ export function processTide(st, p) {
 export function raftDocks(st, p) {
   if (!isTide(st, p)) return [];
   const slots = 1 + Math.round(pstat(st, p, 'raftSlots'));
-  const docks = (st.bases || []).filter(b => b.owner === p && baseTide(st, b) >= TIDE.yardFrom)
+  const docks = (st.bases || []).filter(b => b.owner === p && !b.noDock && baseTide(st, b) >= TIDE.yardFrom) // (noDock: a mission's raft-town that builds nothing)
     .map(b => ({ id: 'tide:' + b.id, kind: 'tide', name: `Raft Dock ${coord(b.x, b.y)}`, x: b.x, y: b.y, r: baseTide(st, b), baseId: b.id, slots }));
   for (const s of st.ships) if (s.owner === p && passives(s).raftDock) {
     const src = tideSources(st, p).find(o => o.id === s.id);

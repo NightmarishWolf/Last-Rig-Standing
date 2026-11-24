@@ -6,9 +6,10 @@ import { draw } from './board/render.js';
 import { centerOffset, me, planRot, reach, select, selected, usd } from './helpers.js';
 import { dispatch, endTurnNow, refresh } from './index.js';
 import { S } from './state.js';
-import { currentYard, nearbyLoners } from './panel.js';
+import { currentYard, nearbyLoners, redDetail } from './panel.js';
 import { showConfirm, showOverlay } from './dialogs.js';
 import { toast } from './status.js';
+import { missionOf } from '../campaign/runner.js';
 import { closeResearch, openResearch, researchOpen, researchTapIsPreview, renderResearch } from './research.js';
 import { requestDraw } from './board/render.js';
 import { centerOn, panBy, zoomAt } from './camera.js';
@@ -153,7 +154,7 @@ export function onKey(e) {
   if (document.body.classList.contains('at-home')) return; // the main menu handles its own keys
   if (e.key === 'Escape') return cancelMode();
   if (S.botTurn && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S', '+', '=', '-', '_'].includes(e.key)) return; // only the camera during computer turns
-  if (e.key === 't' || e.key === 'T') { if (researchOpen()) closeResearch(); else openResearch(); return; }
+  if ((e.key === 't' || e.key === 'T') && !missionOf(S.st)?.hide?.includes('research')) { if (researchOpen()) closeResearch(); else openResearch(); return; }
   if (researchOpen()) return; // the board's keys are off while the research screen is open
   // camera: WASD / arrow keys scroll (hold Shift for faster), + and - zoom
   const pan = { ArrowLeft: [1, 0], a: [1, 0], A: [1, 0], ArrowRight: [-1, 0], d: [-1, 0], D: [-1, 0],
@@ -252,7 +253,7 @@ export function onPanelClick(e) {
   if (d.end) {
     // about to let ships go unpaid? say so first
     const f = E.upkeepForecast(S.st, me());
-    if (f.unpaid.length) return confirmUnpaid(f);
+    if (f.red) return confirmUnpaid(f);
     return endTurnNow();
   }
   if (d.deselect) { S.selectedId = null; S.selectedBase = null; S.mode = { kind: 'idle' }; }
@@ -280,9 +281,8 @@ export function onPanelClick(e) {
 
 // End turn with upkeep that can't be paid: offer to sell oil first.
 function confirmUnpaid(f) {
-  const what = f.sinking.length ? `${E.shipNames(f.sinking)} will <b>sink</b>` : `${f.unpaid.length} ship${f.unpaid.length > 1 ? 's' : ''} will lose 1 HP`;
-  showOverlay(`<h2>⚠ You can't pay next turn's upkeep</h2>
-    <p class="muted">Upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''} and you have ${usd(S.st.players[me()].money)}. ${what}.</p>
+  showOverlay(`<h2>⚠ ${f.bankrupt ? 'You will go bankrupt' : f.repo.length ? 'Ships will be repossessed' : "You can't pay next turn's upkeep"}</h2>
+    <p class="muted">Upkeep is $${f.need + f.funding}${f.funding ? ` (incl. $${f.funding} research funding)` : ''} and you have ${usd(S.st.players[me()].money)}. ${redDetail(f)}</p>
     <div class="row" style="margin-top:16px">
       ${f.oilToCover != null ? `<button class="primary big" data-fix>Sell ${f.oilToCover} oil, then end turn</button>` : ''}
       <button class="big ${f.oilToCover != null ? 'ghost' : 'danger'}" data-anyway>End turn anyway</button>

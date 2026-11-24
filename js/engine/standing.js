@@ -19,7 +19,7 @@ import { upkeepTotal } from './stats.js';
 import { sailToward } from './orders.js';
 import { advanceFleet, flagship, fleetById, fleetOf, fleetShips, fleetsOf, tidyFleets } from './fleets.js';
 import { checkWin } from './turns.js';
-import { fail, log, ok, passives } from './util.js';
+import { autoTargetOk, fail, log, ok, passives } from './util.js';
 import { placementOk, visibility } from './visibility.js';
 
 const C = EXPLORE_CHUNK;
@@ -81,7 +81,7 @@ export function autoFire(st, ship) {
       if (!st.ships.includes(ship) || canUseAction(st, ship, act) || !affordable(st, ship, act)) break;
       const vis = visibility(st, ship.owner), cells = shipCells(ship), range = actionRange(st, ship, act);
       const targets = st.ships
-        .filter(e => e.owner !== ship.owner && vis.ships.has(e.id) && !(act.subsOnly && !passives(e).submerged) && dist(cells, shipCells(e)) <= range)
+        .filter(e => e.owner !== ship.owner && vis.ships.has(e.id) && autoTargetOk(st, ship.owner, e, vis.ident) && !(act.subsOnly && !passives(e).submerged) && dist(cells, shipCells(e)) <= range)
         .sort((a, b) => a.hp - b.hp);
       if (!targets.length) break;
       const [tx, ty] = shipCells(targets[0]).find(c => dist(cells, [c]) <= range);

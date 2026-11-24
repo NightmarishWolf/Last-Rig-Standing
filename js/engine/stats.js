@@ -17,8 +17,10 @@ export const rigCost = (st, p) => baseFoundCost(st, p);
 export const upkeepOf = (st, p, type) =>
   Math.round((SHIPS[type].passives?.upkeep ?? shipStat(st, p, type, 'cost') / (SHIPS[type].pack || 1) * ECONOMY.upkeepRate) * pstat(st, p, 'upkeepMult') * shipStat(st, p, type, 'upkeepMult'));
 
+// (onLoan: a mission's ship that someone else pays for, e.g. a carrier lent by another command, or a tanker
+// on the Council's books: no upkeep, and the bank can't take it)
 export const upkeepTotal = (st, p) =>
-  st.ships.filter(s => s.owner === p).reduce((t, s) => t + upkeepOf(st, p, s.type), 0) + platformUpkeep(st, p);
+  st.ships.filter(s => s.owner === p && !s.onLoan).reduce((t, s) => t + upkeepOf(st, p, s.type), 0) + platformUpkeep(st, p);
 
 // Forward ports: built on island coasts, they let you launch ships near the front.
 export const forwardPorts = (st, p) => (st.ports || []).filter(o => o.owner === p);
@@ -45,6 +47,7 @@ export function moveCost(st, ship, steps) {
   if (steps <= 0) return 0;
   const rate = shipStat(st, ship.owner, ship.type, 'oil');
   if (st.players[ship.owner]?.freeMoves === st.round) return 0; // (Nyx's Smuggling Run)
+  if (ship.ownFuel) return 0; // (a mission's laden tanker burns its own cargo, not your tanks)
   // a fuel line (a tanker nearby) halves it; so does the Free Tide's raft network (they don't add up)
   return r2(steps * rate * Math.min(fuelLineActive(st, ship) ? 0.5 : 1, ship.owner >= 0 ? tideOilMult(st, ship) : 1));
 }

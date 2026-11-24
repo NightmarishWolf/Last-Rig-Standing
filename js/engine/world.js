@@ -190,6 +190,12 @@ function startEvent(st, e) {
   if (e.kind === 'storm' || e.kind === 'fogbank' || e.kind === 'calm') tellAll(st, `${EVENTS[e.kind].icon} ${EVENTS[e.kind].name}${e.kind === 'calm' ? ': every ship gets +1 move this round.' : ' has arrived.'}`);
   ev.active.push(e);
 }
+// A mission's own weather (campaign): start an event right now, e.g. { kind: 'fogbank', x, y, r, until }.
+// Turns on the event machinery with nothing random in it if the game had events off.
+export function scriptEvent(st, e) {
+  st.events ||= { mode: 'script', kinds: [], gap: [999, 999], next: 1e9, pending: null, active: [], fields: 0 };
+  startEvent(st, { id: 'ev' + st.nextId++, start: st.round, ...e });
+}
 function endEvent(st, e) {
   const ev = st.events;
   ev.active = ev.active.filter(x => x !== e);

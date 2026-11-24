@@ -53,7 +53,7 @@ const metaOf = st => ({
 // ---------- recording ----------
 // Start (or carry on) recording a game. Safe to call often: a game already being recorded is left alone.
 export function track(st) {
-  if (!st || st.tutorial || st.replay || !st.gameId || recs.has(st)) return;
+  if (!st || st.tutorial || st.campaign || st.replay || !st.gameId || recs.has(st)) return;
   const seq = st.seq || 0;
   const rec = { lastRigStanding: 'replay', version: 1, gameId: st.gameId, start: pack(st), startSeq: seq, actions: [], seq, joining: true };
   recs.set(st, rec);

@@ -10,7 +10,7 @@ export function resize() {
   // when the panel, coach box or scrollbar changes.
   const vw = document.documentElement.clientWidth, vh = window.innerHeight;
   const avail = Math.max(300, vw <= 1000 ? vw - 32 : vw - 340 - 48);
-  const COACH_SPACE = S.st && S.st.tutorial ? 172 + 10 : 0; // fixed coach height + gap (see .coach in style.css)
+  const COACH_SPACE = S.st && (S.st.tutorial || S.st.campaign) ? 172 + 10 : 0; // fixed coach height + gap (see .coach in style.css)
   const maxH = vh - 150 - COACH_SPACE;
   const fitCell = Math.floor(Math.min((avail - MARGIN) / S.st.W, (maxH - MARGIN) / S.st.H));
   let w, h;

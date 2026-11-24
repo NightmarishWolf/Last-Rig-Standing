@@ -7,7 +7,7 @@ import { baseById, baseRadius } from './bases.js';
 import { dist, inBounds, isLand, shipCells } from './geometry.js';
 import { pstat, shipStat } from './modifiers.js';
 import { forwardPorts } from './stats.js';
-import { passives, rigAt, shipAt } from './util.js';
+import { alliesOf, passives, rigAt, shipAt } from './util.js';
 import { tideSources } from './factions.js';
 
 const platformAt = (st, x, y) => (st.platforms || []).find(o => o.x === x && o.y === y);
@@ -21,7 +21,9 @@ export function sightSources(st, p) {
     const b = r.center && baseById(st, r.baseId);
     src.push([[[r.x, r.y]], b && !b.wrecked ? baseRadius(st, b) + baseSight : RIG.sight]);
   }
-  for (const o of st.platforms || []) if (o.owner === p && !o.buildLeft) src.push([[[o.x, o.y]], PLATFORMS[o.kind].sight || 1]);
+  // (where automatic fire needs eyes on its target, st.campaign.identifyFirst, gun crews watch out to their guns' range)
+  const gunEyes = !!st.campaign?.identifyFirst;
+  for (const o of st.platforms || []) if (o.owner === p && !o.buildLeft) src.push([[[o.x, o.y]], Math.max(PLATFORMS[o.kind].sight || 1, gunEyes ? PLATFORMS[o.kind].range || 0 : 0)]);
   for (const o of forwardPorts(st, p)) src.push([[[o.x, o.y]], PORT.sight]);
   // the Free Tide sees across its rafts
   for (const o of tideSources(st, p)) src.push([[[o.x, o.y]], o.r]);
@@ -54,7 +56,9 @@ export function exploreAll(st) {
 export function visibility(st, p) {
   const mine = st.ships.filter(s => s.owner === p);
   const rev = st.players[p].reveals;
-  const src = sightSources(st, p);
+  // (allies under a truce share their eyes, and always see each other)
+  const friends = alliesOf(st, p);
+  const src = [...sightSources(st, p), ...friends.flatMap(a => sightSources(st, a))];
   // ident: enemy ships seen with your own eyes (in sight, or a sub right next to you), so you can tell
   // what they are; the rest of `ships` are contacts from scans, sonar, muzzle flashes or bumping into them
   const ships = new Set(), ident = new Set(), rigs = new Set(), ports = new Set(), platforms = new Set();
@@ -72,6 +76,7 @@ export function visibility(st, p) {
   };
   for (const e of st.ships) {
     if (e.owner === p) continue;
+    if (friends.includes(e.owner)) { ships.add(e.id); ident.add(e.id); continue; }
     const cells = shipCells(e);
     if (rev.ships.includes(e.id)) ships.add(e.id);
     if (passives(e).submerged) {
@@ -87,6 +92,7 @@ export function visibility(st, p) {
   }
   for (const r of st.rigs) {
     if (r.owner === p) continue;
+    if (friends.includes(r.owner)) { rigs.add(r.id); continue; }
     if (rev.rigs.includes(r.id) || seenBy([[r.x, r.y]])) rigs.add(r.id);
   }
   for (const o of st.ports || []) {
@@ -95,6 +101,7 @@ export function visibility(st, p) {
   }
   for (const o of st.platforms || []) {
     if (o.owner === p) continue;
+    if (friends.includes(o.owner)) { platforms.add(o.id); continue; }
     if (PLATFORMS[o.kind].public || (rev.platforms || []).includes(o.id) || seenBy([[o.x, o.y]])) platforms.add(o.id);
   }
   return { ships, ident, rigs, ports, platforms };

@@ -1,17 +1,21 @@
 // The main menu: a full-screen title page (no game showing behind it), with its sub-pages:
-//   main    Continue / Resume, New game, Load game, Tutorial, Rules (+ Save and Surrender in a game)
+//   main    Continue / Resume, New game, Load game, Campaign, Achievements, Rules (+ Save and Surrender in a game)
 //   setup   the new-game settings
 //   load    every save: load, rename, export to a file, delete; import a file
 //   over    the game-over screen (see gameover.js)
 // The in-game Menu button opens this same page; Resume (or Esc) goes back to the board.
+import { openMapMaker } from '../maker/maker.js';
 import { bindCommanders, commandersPage } from './commanders.js';
+import { bindCampaign, briefingPage, campaignPage } from './campaign.js';
+import { achievementsPage } from './achievements.js';
+import { MISSIONS } from '../campaign/index.js';
 import * as E from '../engine/index.js';
 import { gameOver, handoff, startTutorial } from './flow.js';
 import { TIMER_OPTIONS, commanderSelect, commanderTag, profileTable, factionButtons, fmt, myProfileId, profileSelect, resolveCommander, rollFaction, seatProfile, seedOf, setup } from './settings.js';
 import { activeProfile, getProfile } from './profile.js';
 import { COMMANDERS } from '../data/commanders.js';
 import { A } from './state.js';
-import { deleteSave, exportSave, importSave, latest, listSaves, loadSave, manualFull, newGameId, renameSave, save, saveAs } from './storage.js';
+import { deleteSave, exportSave, importSave, latest, listSaves, load, loadSave, manualFull, newGameId, renameSave, save, saveAs } from './storage.js';
 import { bindGameOver, downloadGameData, renderGameOver } from './gameover.js';
 import { MAP_SIZES, PLAYER_COLORS } from '../data/maps.js';
 import { VICTORIES } from '../data/victory.js';
@@ -68,7 +72,8 @@ export function showHome(view = 'main', opts = {}) {
   document.body.classList.add('at-home');
   home().classList.remove('hidden');
   home().dataset.view = view;
-  const body = { main: mainPage, setup: setupPage, load: loadPage, over: () => renderGameOver(A.state, A.xpResults), online: onlinePage, lobby: lobbyPage, lab: labPage, commanders: commandersPage }[view]();
+  const body = { main: mainPage, setup: setupPage, load: loadPage, over: () => renderGameOver(A.state, A.xpResults), online: onlinePage, lobby: lobbyPage, lab: labPage, commanders: commandersPage,
+    campaign: campaignPage, briefing: () => briefingPage(opts.id), achievements: achievementsPage }[view]();
   home().innerHTML = `
     <div class="home-sea"></div>
     ${RIG_ART}
@@ -106,24 +111,27 @@ function mainPage() {
   return `
     <nav class="home-menu">
       ${watching() ? '<button class="hm primary" data-resume>🎬 Back to the replay</button>' : ''}
-      ${inGame() ? `<button class="hm primary" data-resume>▶ Resume <small>${st.players[st.current].name} · round ${st.round}</small></button>` : ''}
+      ${inGame() ? `<button class="hm primary" data-resume>▶ Resume <small>${st.campaign ? `Mission ${MISSIONS[st.campaign.id].n}: ${MISSIONS[st.campaign.id].title}` : st.players[st.current].name} · round ${st.round}</small></button>` : ''}
       ${last ? `<button class="hm primary" data-continue>▶ Continue <small>round ${last.entry.round} · ${MAP_SIZES[last.entry.size]?.name || ''} map · saved ${ago(last.entry.savedAt)}</small></button>` : ''}
       <button class="hm ${inGame() || last ? '' : 'primary'}" data-new>⚓ New game</button>
       <button class="hm" data-load>📂 Load game</button>
       ${!online() && !N.s && lastJoined() ? `<button class="hm" data-rejoinlast="${lastJoined().code}">🔄 Rejoin online game <small>${lastJoined().code} · joined ${ago(lastJoined().at)}</small></button>` : ''}
       <button class="hm" data-online>🌐 Online <small>${online() ? `in game ${N.s.code}` : 'play with friends: host or join with a code'}</small></button>
-      ${inGame() ? `<button class="hm" data-save>💾 Save game <small>a named copy you can come back to</small></button>` : ''}
+      ${inGame() && !st.campaign ? `<button class="hm" data-save>💾 Save game <small>a named copy you can come back to</small></button>` : ''}
       ${A.state && !A.state.tutorial && A.state.phase === 'over' && A.state.history ? '<button class="hm" data-results>🏁 Results of your last game</button>' : ''}
       <button class="hm" data-commanders>🎖️ Commanders <small>${escapeHtml(activeProfile().name)}'s profile · levels, perks and unlocks</small></button>
-      <button class="hm" data-tutorial>🎓 Tutorial</button>
+      <button class="hm" data-campaign>🗺️ Campaign <small>the story of the oil war · learn to play as you go</small></button>
+      <button class="hm" data-achievements>🏅 Achievements <small>${Object.keys(activeProfile().achievements || {}).length} earned · 🪙 ${(activeProfile().dabloons || 0).toLocaleString()} Dabloons</small></button>
       <button class="hm" data-lab>📊 Balance lab <small>bot simulations and stats from real games</small></button>
       <button class="hm" data-rules>📖 Rules</button>
-      ${inGame() && (!online() || st.current === mySeat()) ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[online() ? mySeat() : st.current].name}</small></button>` : ''}
+      ${inGame() && st.campaign ? `<button class="hm danger" data-abandon>🚪 Abandon mission <small>back to the campaign</small></button>` : ''}
+      ${inGame() && !st.campaign && (!online() || st.current === mySeat()) ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[online() ? mySeat() : st.current].name}</small></button>` : ''}
       ${online() ? `<button class="hm danger" data-leaveonline>🚪 Leave online game <small>${onlineRole() === 'host' ? 'it stays saved: load it to host it again' : 'you can rejoin with the code'}</small></button>` : ''}
     </nav>
     ${last ? `<div class="home-card continue-card"><div class="muted small">Your last game</div><div class="cc-players">${playersLine(last.entry)}</div></div>` : ''}
     <div class="home-sound"><label>🔊 Sound <input type="range" min="0" max="1" step="0.05" value="${muted() ? 0 : volume()}" data-volume></label>
-      <button class="ghost" data-testsound>Test</button><div class="muted small" data-soundnote></div></div>
+      <button class="ghost" data-testsound>Test</button><div class="muted small" data-soundnote></div>
+      <div class="home-tools"><button class="ghost" data-mapmaker title="A design tool for campaign maps (password needed)">🗺️ Map maker 🔒</button></div></div>
     <div class="home-foot muted small">Games save automatically. Press <b>Esc</b> to go back to your game.</div>`;
 }
 
@@ -534,8 +542,11 @@ function bind(view) {
     on('[data-online]', () => showHome(online() || N.s ? 'lobby' : 'online'));
     on('[data-leaveonline]', () => showConfirm('Leave the online game?', onlineRole() === 'host' ? 'Everyone else will be disconnected. The game stays saved: load it from Load game to host it again with the same code.' : 'You can rejoin later with the code.', 'Leave', () => { leaveOnline(); A.sessionActive = false; showHome('main'); }, () => showHome('main')));
     on('[data-lab]', () => showHome('lab'));
+    on('[data-mapmaker]', () => openMapMaker());
     on('[data-commanders]', () => showHome('commanders'));
-    on('[data-tutorial]', () => { leaveOnline(); hideHome(); startTutorial(); });
+    on('[data-campaign]', () => showHome('campaign'));
+    on('[data-achievements]', () => showHome('achievements'));
+    on('[data-abandon]', () => showConfirm('Abandon the mission?', 'Your progress in this mission will be lost. (Achievements you already earned stay.)', 'Abandon', () => { A.sessionActive = false; A.state = load() || E.newGame(setup); setState(A.state); showHome('campaign'); }, () => showHome('main')));
     on('[data-rules]', () => showRules());
     on('[data-save]', () => {
       if (manualFull()) { toast('You have 12 saved games: delete one on the Load game page first.'); return; }
@@ -578,6 +589,7 @@ function bind(view) {
     h.querySelectorAll('[data-pers]').forEach(sel => sel.onchange = () => { setup.seats[sel.dataset.pers].personality = sel.value; re(); });
     on('[data-start]', () => startGame());
   }
+  if (view === 'campaign' || view === 'briefing' || view === 'achievements') bindCampaign(h, view);
   if (view === 'commanders') bindCommanders(h, () => { const y = home().scrollTop; showHome('commanders'); home().scrollTop = y; }, toast);
   if (view === 'lab') bindLab(h, () => { const y = home().scrollTop; showHome('lab'); home().scrollTop = y; });
   if (view === 'load') {
@@ -621,7 +633,8 @@ document.addEventListener('keydown', e => {
   if (!homeOpen() || !document.getElementById('overlay').classList.contains('hidden')) return;
   if (e.key !== 'Escape') return;
   const view = home().dataset.view;
-  if (view === 'setup' || view === 'load' || view === 'online' || view === 'lab' || view === 'commanders') showHome('main');
+  if (view === 'setup' || view === 'load' || view === 'online' || view === 'lab' || view === 'commanders' || view === 'campaign' || view === 'achievements') showHome('main');
+  else if (view === 'briefing') showHome('campaign');
   else if (view === 'main' && (inGame() || watching())) hideHome();
 });
 

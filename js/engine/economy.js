@@ -84,6 +84,24 @@ export function shipSaleProblem(st, ship) {
   if (!inside) return 'Sail it into your home waters or one of your rig bases\' claims to sell it.';
   return null;
 }
+// The bank takes ships back (most expensive first, at their sale value, wherever they are) until p is
+// out of the red. Returns what it took.
+export function repossess(st, p) {
+  const me = st.players[p], taken = [];
+  const cost = s => shipStat(st, p, s.type, 'cost');
+  const ships = st.ships.filter(s => s.owner === p && !s.onLoan).sort((a, b) => cost(b) - cost(a) || shipSaleValue(st, b) - shipSaleValue(st, a) || String(a.id).localeCompare(String(b.id)));
+  for (const s of ships) {
+    if (me.money >= 0) break;
+    const value = shipSaleValue(st, s);
+    st.ships = st.ships.filter(o => o !== s);
+    me.money = r2(me.money + value);
+    tally(st, p, 'shipsRepossessed');
+    taken.push({ type: s.type, value, x: s.x, y: s.y });
+    log(st, p, `Repossessed: the bank took your ${SHIPS[s.type].name} ($${fmt2(value)}).`, { k: 'hit', x: s.x, y: s.y });
+  }
+  return taken;
+}
+
 export function doSellShip(st, a) {
   const ship = st.ships.find(s => s.id === a.shipId);
   if (!ship || ship.owner !== st.current) return fail('Not your ship.');

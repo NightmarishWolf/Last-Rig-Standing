@@ -8,6 +8,9 @@
 // Profiles can be exported to a file and imported back (browser storage can be wiped).
 // ============================================================
 import { COMMANDERS, COMMANDER_ORDER, MASTERY_LEVEL, UNLOCK, XP, levelOf, perksAt, xpForLevel } from '../data/commanders.js';
+import { ACHIEVEMENTS } from '../data/achievements.js';
+import { COSMETICS } from '../data/cosmetics.js';
+import { RANK_DABLOONS, RANK_XP, REPLAY_XP_SHARE, rankIndex } from '../campaign/score.js';
 
 const KEY = 'lrs-profiles', ACTIVE = 'lrs-profile';
 const sameBrowser = () => typeof location !== 'undefined' && new URLSearchParams(location.search).get('net') === 'local';
@@ -16,6 +19,8 @@ const activeStore = () => (sameBrowser() ? sessionStorage : localStorage);
 const blank = (name) => ({
   id: 'u' + Math.random().toString(36).slice(2, 10), name: cleanName(name) || 'Admiral', created: Date.now(),
   commanders: {}, factions: {}, games: 0, wins: 0, history: [],
+  campaign: {}, achievements: {}, dabloons: 0, // (mission bests, achievements earned { id: time }, the shop currency)
+  cosmetics: {}, // (looks unlocked { id: time })
 });
 const cleanName = n => String(n || '').replace(/[<>]/g, '').trim().slice(0, 20);
 
@@ -124,6 +129,72 @@ export function awardGame(profId, st, p) {
   const levelAfter = c ? commanderLevel(after, c) : null;
   const perks = c && levelAfter > before ? perksAt(c, levelAfter, commanderMastery(after, c)).filter(k => k.level > before) : [];
   return { xp, commander: c, before, after: levelAfter, perks, unlocks: lockedBefore.filter(id => unlocked(after, id)) };
+}
+
+// ---------- campaign, achievements and Dabloons ----------
+export const dabloons = prof => prof?.dabloons || 0;
+export const campaignProgress = prof => prof?.campaign || {};
+// everything you decided across the campaign so far: { drilledBracken: true, ... } (latest play of each mission)
+// (plus _ach: the achievements earned so far, for a finale that looks back over the whole arc)
+export const campaignChoices = prof => Object.assign({}, ...Object.values(prof?.campaign || {}).map(e => e.choices || {}), { _ach: Object.keys(prof?.achievements || {}) });
+export const hasAchievement = (prof, id) => !!prof?.achievements?.[id];
+
+// XP into a commander (inside an update): returns the level before and after.
+function addXp(q, c, xp) {
+  if (!c || !COMMANDERS[c] || !xp) return null;
+  const k = ((q.commanders ||= {})[c] ||= { xp: 0, games: 0, wins: 0, mastery: 0 });
+  const before = levelOf(k.xp); k.xp += xp;
+  return { commander: c, before, after: levelOf(k.xp) };
+}
+
+// Achievements (each only once): XP to commander c (the one you were playing), plus Dabloons.
+// Returns the ones newly earned: [{ id, ...achievement }].
+export function grantAchievements(profId, ids, c) {
+  const got = [];
+  update(profId, q => {
+    q.achievements ||= {};
+    for (const id of ids) {
+      const a = ACHIEVEMENTS[id];
+      if (!a || q.achievements[id]) continue;
+      q.achievements[id] = Date.now();
+      q.dabloons = (q.dabloons || 0) + (a.dabloons || 0);
+      addXp(q, c, a.xp || 0);
+      got.push({ id, ...a });
+    }
+  });
+  return got;
+}
+
+// Cosmetics unlocked (e.g. for clearing a campaign milestone). Returns the ones that are new.
+export const hasCosmetic = (prof, id) => !!prof?.cosmetics?.[id];
+export function grantCosmetics(profId, ids) {
+  const got = [];
+  update(profId, q => {
+    q.cosmetics ||= {};
+    for (const id of ids || []) if (COSMETICS[id] && !q.cosmetics[id]) { q.cosmetics[id] = Date.now(); got.push({ id, ...COSMETICS[id] }); }
+  });
+  return got;
+}
+
+// A won mission: keep the best rank and pay for improving it (the difference between the old best's
+// rewards and the new one's; a replay that doesn't beat it pays a little XP). XP goes to the mission's commander.
+export function recordMission(profId, missionId, result, c) {
+  let out = null;
+  update(profId, q => {
+    const prev = (q.campaign ||= {})[missionId] || null;
+    const was = prev?.best || null, better = !was || rankIndex(result.rank) > rankIndex(was);
+    const xp = better ? RANK_XP[result.rank] - (was ? RANK_XP[was] : 0) : Math.round(RANK_XP[result.rank] * REPLAY_XP_SHARE);
+    const db = better ? RANK_DABLOONS[result.rank] - (was ? RANK_DABLOONS[was] : 0) : 0;
+    q.campaign[missionId] = {
+      best: better ? result.rank : was, score: Math.max(prev?.score || 0, result.score),
+      rounds: Math.min(prev?.rounds ?? Infinity, result.rounds), clears: (prev?.clears || 0) + 1, at: Date.now(),
+      choices: result.choices || prev?.choices || null, // (what you decided: later missions remember)
+    };
+    q.dabloons = (q.dabloons || 0) + db;
+    const lv = addXp(q, c, xp);
+    out = { xp, dabloons: db, prevBest: was, newBest: better, firstClear: !was, level: lv };
+  });
+  return out;
 }
 
 // ---------- backup ----------

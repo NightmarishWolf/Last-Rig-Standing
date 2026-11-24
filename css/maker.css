@@ -1,0 +1,67 @@
+/* ---------- Map Maker (js/maker/maker.js) ---------- */
+body.mk-open { overflow: hidden; }
+.mk { position: fixed; inset: 0; z-index: 900; background: var(--bg); display: flex; flex-direction: column; }
+.mk-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.mk-title { font-weight: 800; letter-spacing: .12em; display: flex; align-items: center; gap: 12px; }
+.mk-name { font: inherit; font-weight: 600; letter-spacing: 0; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; width: 260px; }
+.mk-topbtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.mk-body { flex: 1; display: flex; min-height: 0; }
+.mk-tools { width: 150px; padding: 10px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 5px; overflow-y: auto; }
+.mk-tool { display: flex; align-items: center; gap: 8px; text-align: left; padding: 5px 8px; }
+.mk-tool span { font-size: 17px; width: 22px; text-align: center; }
+.mk-tool small { font-size: 12px; }
+.mk-tool.on, .mk-seg button.on, .mk-oilpick button.on, .mk-tabs button.on, .mk-anchor button.on { border-color: var(--oil); box-shadow: inset 0 0 0 1px var(--oil); }
+.mk-sep { height: 1px; background: var(--line); margin: 6px 0; }
+.mk-lbl { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.mk-lbl b { color: var(--text); }
+.mk-lbl input[type=range] { width: 100%; accent-color: var(--mine); }
+.mk-oilpick { display: flex; flex-direction: column; gap: 4px; }
+.mk-oilpick button { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 6px; }
+.mk-oilpick i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.mk-seg { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.mk-seg button { font-size: 12px; padding: 4px 7px; }
+.mk-tools .mk-seg button { flex: 1; }
+.mk-stage { flex: 1; position: relative; min-width: 0; overflow: hidden; touch-action: none; }
+.mk-stage canvas { display: block; cursor: crosshair; }
+.mk-coord { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted); background: rgba(7,19,31,.75); padding: 2px 8px; border-radius: 6px; pointer-events: none; white-space: pre; }
+.mk-coord:empty { display: none; }
+.mk-note { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--mine); padding: 6px 14px; border-radius: 8px; pointer-events: none; }
+.mk-note.bad { border-color: var(--enemy); }
+.mk-side { width: 290px; padding: 10px; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.mk-box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.mk-box h4 { margin: 0 0 6px; font-size: 13px; letter-spacing: .04em; }
+.mk-box p { margin: 4px 0; }
+.mk-stat { display: flex; justify-content: space-between; font-size: 13px; padding: 1px 0; }
+.mk-stat span { color: var(--muted); }
+.small-btn { margin-top: 6px; font-size: 12px; padding: 4px 8px; }
+.mk-pin { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
+.mk-pin .text-in { flex: 1; min-width: 0; padding: 4px 6px; }
+.mk-pinch { width: 28px; padding: 3px 0; font-weight: 700; }
+.mk-pin.on .mk-pinch { border-color: #ffd666; color: #ffd666; }
+.mk-pin.bad .mk-pinch { border-color: var(--enemy); color: var(--enemy); }
+.mk-issues { margin: 6px 0 0; padding-left: 16px; font-size: 12px; }
+.mk-issues li { margin: 4px 0; }
+.mk-issues li.bad { color: #ff8a80; }
+.mk-issues li.warn { color: #ffb36b; }
+.mk-issues li.good { color: var(--money); }
+.mk-issues a { color: inherit; }
+.mk-keys { line-height: 1.5; }
+.mk-gate { position: fixed; inset: 0; z-index: 950; background: rgba(2,8,14,.7); display: flex; align-items: center; justify-content: center; }
+.mk-gate-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; width: 340px; display: flex; flex-direction: column; gap: 8px; }
+.mk-gate-card h3 { margin: 0; }
+.mk-gate-card .row { display: flex; gap: 8px; margin-top: 6px; }
+.mk-gate-err, .mk-warn { color: #ff8a80; min-height: 1em; }
+.mk-dlg { width: 560px; max-height: 86vh; overflow-y: auto; }
+.mk-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.mk-tabs button { font-size: 13px; }
+.mk-row { display: flex; gap: 10px; margin-top: 6px; }
+.mk-row label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); flex: 1; }
+.mk-mis, .mk-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.mk-mis button, .mk-li button:first-child { text-align: left; }
+.mk-li { display: flex; gap: 4px; }
+.mk-li button:first-child { flex: 1; }
+.mk-paste { width: 100%; height: 140px; font-family: ui-monospace, monospace; font-size: 11px; resize: vertical; }
+.mk-anchor { display: grid; grid-template-columns: repeat(3, 34px); gap: 3px; margin-top: 4px; }
+.mk-anchor button { padding: 4px 0; }
+.home-tools { margin-top: 10px; }
+.mk .hidden, .mk-gate .hidden { display: none !important; }

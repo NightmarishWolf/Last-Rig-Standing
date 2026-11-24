@@ -9,7 +9,7 @@ export const NEUTRAL_COLOR = '#d6455d';
 export const pcol = p => (p < 0 ? NEUTRAL_COLOR : PLAYER_COLORS[p]);
 
 // $122.78 / 52.51 (whole numbers without the decimals)
-export const usd = v => '$' + E.fmt2(v);
+export const usd = v => (v < 0 ? '−$' : '$') + E.fmt2(Math.abs(v));
 export const oil = v => E.fmt2(v);
 
 export const pname = p => E.pname(S.st, p);

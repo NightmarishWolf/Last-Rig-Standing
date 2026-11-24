@@ -68,3 +68,6 @@ export const STRIKES = { jamChance: 0.5, satellite: { size: 7, cooldown: 4, mone
 // how many rounds it must have been out of combat, and where it can be sold
 // (your home waters, or inside one of your rig bases' claims).
 export const SHIP_SALE = { share: 0.5, quietRounds: 3 };
+// Debt: upkeep you can't pay puts your money below $0 ("in the red"). Still in the red after this many
+// rounds and the bank repossesses ships, most expensive first, until you're back to $0 or more.
+export const REPO = { graceRounds: 3 };

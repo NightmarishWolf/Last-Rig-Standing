@@ -13,6 +13,8 @@ import { setup } from './app/settings.js';
 import { A } from './app/state.js';
 import { load, save } from './app/storage.js';
 import { tutorial } from './app/tutorialHost.js';
+import { afterRender as missionAfterRender } from './app/campaign.js';
+import { markers as missionMarkers, props as missionProps } from './campaign/runner.js';
 import { initReplayer } from './app/replayer.js';
 import './app/replay.js'; // starts listening for moves to record
 import { initUI, redraw, setState } from './ui/index.js';
@@ -27,12 +29,13 @@ initUI(A.state, {
   onAction: localAction,
   sendInstead,
   simulReady,
-  afterRender: (st, ui) => tutorial.afterRender(st, ui),
-  markers: () => (A.state.tutorial ? tutorial.markers() : []),
+  afterRender: (st, ui) => (st.campaign ? missionAfterRender(st, ui) : (missionAfterRender(st, ui), tutorial.afterRender(st, ui))),
+  markers: () => (A.state.campaign ? missionMarkers(A.state) : A.state.tutorial ? tutorial.markers() : []),
+  props: () => (A.state.campaign ? missionProps(A.state) : []),
 });
 
 // keep tutorial markers glowing
-(function tick() { if (A.state.tutorial || S.ping || S.animating) redraw(); requestAnimationFrame(tick); })();
+(function tick() { if (A.state.tutorial || A.state.campaign || S.ping || S.animating) redraw(); requestAnimationFrame(tick); })();
 
 setState(A.state);
 
