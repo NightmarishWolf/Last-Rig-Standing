@@ -7,9 +7,9 @@
 // ============================================================
 import * as E from '../../engine/index.js';
 
-const RIG7 = [22, 4];
+const RIG7 = [19, 3];
 const PAR = 8;
-const SKIFF_ROUTE = [[20, 3], [20, 1], [20, 0]]; // where the skiff runs, one leg a turn (it's heavy with stolen oil)
+const SKIFF_ROUTE = [[18, 4], [18, 2], [18, 0]]; // where the skiff runs, one leg a turn (it's heavy with stolen oil)
 
 const line = (who, text, mood = 'neutral') => ({ who, mood, text });
 const sato = (t, m) => line('sato', t, m), hale = (t, m) => line('hale', t, m), ortiz = (t, m) => line('ortiz', t, m);
@@ -26,34 +26,34 @@ export default {
   teaches: ['Moving ships', 'Gunnery', 'Rounds', 'Fog of war', 'Contacts'],
 
   map: `
-    ########..............####
-    ######.................###
-    #####.........#....#....##
-    ####.....#...............#
-    ###..............##...R...
-    ##.........##.......K.....
-    ##..............#...#.....
-    ##........................
-    ##...######......######...
-    #############..###########
-    #############..###########
-    #...........#..##.......##
-    ##..P.....................
-    #......##.......##........
-    #..A....#............#####
-    #........T........########
-    ##..P....##...############
+    ....................######
+    .....................#####
+    .......................###
+    ...................R....##
+    .....................K....
+    ..........................
+    ..######.........####.....
+    ###########....########...
+    #########........#########
+    ###...................####
+    ........................##
+    ....P....................#
+    ..A......................#
+    ....P....................#
+    #........T.....###......##
+    ###..#################.###
+    ##########################
     ##########################`,
   homes: [
-    { home: { x0: 1, y0: 11, x1: 9, y1: 16 }, spawn: { x0: 1, y0: 11, x1: 4, y1: 16 } },
-    { home: { x0: 23, y0: 0, x1: 25, y1: 1 }, spawn: { x0: 23, y0: 0, x1: 25, y1: 1 } },
+    { home: { x0: 0, y0: 9, x1: 9, y1: 15 }, spawn: { x0: 0, y0: 9, x1: 5, y1: 15 } },
+    { home: { x0: 0, y0: 0, x1: 2, y1: 1 }, spawn: { x0: 0, y0: 0, x1: 2, y1: 1 } },
   ],
   // things drawn on the map that aren't pieces: Rig 7, dark and stripped
   props: (st, M) => [{ kind: 'derelictRig', x: RIG7[0], y: RIG7[1], label: 'Rig 7', flag: !!M.wonRound }], // (the flag is only seen up close)
 
   setup(st, marks, H) {
     const [ax, ay] = marks.A[0];
-    const dep = { id: 'd_corrigan', x: ax, y: ay, type: 'medium', reserves: 60, max: 60 };
+    const dep = { id: 'd_corrigan', x: ax, y: ay, type: 'small', reserves: 60, max: 60 };
     st.deposits.push(dep);
     E.foundBase(st, 0, dep, true); // Corrigan Point outpost
     st.players[0].known[dep.id] = true;
@@ -102,7 +102,7 @@ export default {
         sato("Before we go hunting, the gun crews want a live run. The target barge is anchored off the Point."),
       ],
       do: 'Move a Picket Boat to within <b>3 squares</b> of the target barge. Hover a square to preview the move, click to go.',
-      markers: [{ x0: 9, y0: 15, x1: 11, y1: 15, label: 'Target barge' }],
+      markers: [{ x0: 9, y0: 14, x1: 11, y1: 14, label: 'Target barge' }],
       check: (st, M, H) => !H.get(st, 'target') || st.ships.some(s => s.owner === 0 && H.distTo(st, s, H.get(st, 'target')) <= 3),
     },
     {
@@ -110,7 +110,7 @@ export default {
       say: [sato("In range. Light Gun, in the ship panel, then pick your square on the barge.")],
       do: 'With that boat selected, click <b>Light Gun</b>, then click the target barge.',
       spot: '[data-act="gun"]',
-      markers: [{ x0: 9, y0: 15, x1: 11, y1: 15, label: 'Fire!' }],
+      markers: [{ x0: 9, y0: 14, x1: 11, y1: 14, label: 'Fire!' }],
       check: (st, M, H) => !H.get(st, 'target'),
       done: (st, M, H) => H.say(st, [
         sato("Direct hit. She's going down.", 'pleased'),
@@ -131,14 +131,14 @@ export default {
         sato("Past there the charts go dark. We see as far as our boats can see, and no further."),
       ],
       do: 'Sail <b>north through the Narrows</b>. The fog lifts wherever your ships can see.',
-      markers: [{ x0: 13, y0: 9, x1: 14, y1: 10, label: 'The Narrows' }],
-      check: (st) => st.ships.some(s => s.owner === 0 && E.shipCells(s).every(([, y]) => y <= 8)),
+      markers: [{ x0: 11, y0: 6, x1: 14, y1: 8, label: 'The Narrows' }],
+      check: (st) => st.ships.some(s => s.owner === 0 && E.shipCells(s).every(([, y]) => y <= 5)),
       done: (st, M) => { if (H_get(st, 'skiff')) M.track.push('skiff'); },
     },
     {
       id: 'contact',
       say: [
-        sato("Radar contact behind the reef. Small. Could be a fishing boat. Could be a rock.", 'worried'),
+        sato("Radar contact just past the rig. Small. Could be a fishing boat. Could be debris.", 'worried'),
         sato("It's the \"?\" on the map: we know something's there and roughly where, not what it is. We need eyes on it."),
       ],
       do: 'Close in until a ship can <b>see</b> the contact (3 squares) to identify it.',

@@ -56,7 +56,7 @@ export function claimAt(st, x, y) {
 export const oilCapOf = (st, p) => Math.round(pstat(st, p, 'oilCap') + activePlatforms(st, p, 'storage').length * PLATFORMS.storage.oilCap);
 export const sellMultOf = (st, p) => pstat(st, p, 'sellMult') * (1 + Math.min(0.3, activePlatforms(st, p, 'refinery').length * PLATFORMS.refinery.sell));
 export const platformUpkeep = (st, p) =>
-  Math.round((st.platforms || []).filter(o => o.owner === p).reduce((t, o) => t + PLATFORMS[o.kind].upkeep, 0) * pstat(st, p, 'platformUpkeepMult'));
+  Math.round((st.platforms || []).filter(o => o.owner === p && !o.onLoan).reduce((t, o) => t + PLATFORMS[o.kind].upkeep, 0) * pstat(st, p, 'platformUpkeepMult'));
 export function rigRate(st, r) {
   const d = st.deposits.find(d => d.id === r.depId);
   const b = r.baseId ? baseById(st, r.baseId) : null;

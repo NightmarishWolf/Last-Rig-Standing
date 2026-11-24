@@ -11,11 +11,11 @@ import * as E from '../../engine/index.js';
 import { edgeSquares, onEdge, waterField } from '../ai.js';
 
 const PAR = 12, DEADLINE = 18, QUOTA = 900;
-const VILLAGE = [25, 17];
+const VILLAGE = [25, 18];
 const AREAS = {
-  a: { x0: 4, y0: 2, x1: 8, y1: 6, dep: 'd_north', label: 'Survey area: North Reach' },
-  b: { x0: 15, y0: 8, x1: 19, y1: 12, dep: 'd_middle', label: 'Survey area: Middle Bank' },
-  c: { x0: 20, y0: 12, x1: 24, y1: 16, dep: 'd_bracken', label: 'Survey area: Bracken Point' },
+  a: { x0: 13, y0: 0, x1: 17, y1: 4, dep: 'd_north', label: 'Survey area: North Reach' },
+  b: { x0: 18, y0: 6, x1: 22, y1: 10, dep: 'd_middle', label: 'Survey area: Middle Bank' },
+  c: { x0: 21, y0: 13, x1: 25, y1: 17, dep: 'd_bracken', label: 'Survey area: Bracken Point' },
 };
 
 const line = (who, text, mood = 'neutral') => ({ who, mood, text });
@@ -37,33 +37,33 @@ export default {
   teaches: ['Selling oil', 'Upkeep and debt', 'Surveying', 'Building rigs', 'Storage', 'Siphoning'],
 
   map: `
-    #############.......########
-    ########...............#####
-    ####......................##
-    ##..........................
-    ##....a.............#.......
-    ##.................###......
-    ##.........#.......###......
-    ##........###...............
-    ##........####..........##..
-    ###......................#..
-    ####.............b..........
-    ####........................
-    ###............#............
-    ##......#.....###...........
-    ##...P.##.....####....c...##
-    ##.......................###
-    ##..A..................#####
-    ##....S..............#######
-    ##................##########
+    #####.......................
+    ###.........................
+    ##........#....a....###.....
+    ##.......###.......#####....
+    ##........###.......#####...
+    #....P....#..........####...
+    #......................#....
+    #...A.......................
+    #...................b.......
+    ##....S.....................
+    ##..............#...........
+    ###............###..........
+    #####...........###.........
+    #######.........##..........
+    ##########.......#..........
+    ###########............c....
+    ###########...............##
+    ############............####
+    #############........#######
     ############################`,
   homes: [
-    { home: { x0: 2, y0: 13, x1: 8, y1: 18 }, spawn: { x0: 2, y0: 13, x1: 6, y1: 18 } },
+    { home: { x0: 1, y0: 4, x1: 8, y1: 10 }, spawn: { x0: 1, y0: 4, x1: 6, y1: 10 } },
     { home: { x0: 26, y0: 3, x1: 27, y1: 4 }, spawn: { x0: 26, y0: 3, x1: 27, y1: 4 } },
   ],
   props: (st, M) => [
     { kind: 'village', x: VILLAGE[0], y: VILLAGE[1], label: 'Bracken Point' },
-    ...(M.flags.leftVillage ? [] : [{ kind: 'boats', x: 24, y: 15 }]), // the village's fishing boats, drawn up on the shore
+    ...(M.flags.leftVillage ? [] : [{ kind: 'boats', x: 24, y: 17 }]), // the village's fishing boats, drawn up on the shore
   ],
 
   setup(st, marks, H) {
@@ -73,7 +73,7 @@ export default {
     E.foundBase(st, 0, home, true);
     st.players[0].known[home.id] = true;
     const dep = (id, [x, y], type, reserves) => st.deposits.push({ id, x, y, type, reserves, max: reserves });
-    dep('d_north', marks.a[0], 'small', 50);
+    dep('d_north', marks.a[0], 'medium', 60);
     dep('d_middle', marks.b[0], 'medium', 70);
     dep('d_bracken', marks.c[0], 'rich', 110);
     H.ship(st, 0, 'patrol', ...marks.P[0], { id: 'pk1' });
@@ -158,7 +158,7 @@ export default {
   triggers: [
     {
       id: 'maren',
-      when: st => st.ships.some(s => s.owner === 0 && (E.dist(E.shipCells(s), [VILLAGE]) <= 4 || E.dist(E.shipCells(s), [[22, 14]]) <= 2)),
+      when: st => st.ships.some(s => s.owner === 0 && (E.dist(E.shipCells(s), [VILLAGE]) <= 4 || E.dist(E.shipCells(s), [[23, 15]]) <= 2)),
       say: [
         maren("That's our water you're sounding, Captain. My grandmother fished this bank before anyone drew quota lines on it.", 'stern'),
         ortiz("The Accords hold all the shelves in common, ma'am.", 'worried'),

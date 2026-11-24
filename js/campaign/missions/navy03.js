@@ -1,6 +1,6 @@
 // ============================================================
 // NAVY · MISSION 3 · CONVOY
-// The Saltpan Channel, May 2061. Commodore Vance hands Ortiz the Corrigan Point shipyard and one job:
+// The Saltpan Chain, May 2061. Commodore Vance hands Ortiz the Corrigan Point shipyard and one job:
 // see the tanker Hesper north to the Allocation Terminal. The Hesper sails herself; you escort her.
 // Teaches: the shipyard, research, fleets, the Escort standing order, fighting on the move.
 // Introduces Commodore Vance and Kade the Burner.
@@ -9,10 +9,10 @@
 // ============================================================
 import * as E from '../../engine/index.js';
 import { SHIPS } from '../../data/ships.js';
-import { fieldAt, fogSpot, moveAlong, moveBest, waterField } from '../ai.js';
+import { fieldAt, fogSpot, moveAlong, moveBest, shapeField, waterField } from '../ai.js';
 
 const PAR = 15, DEADLINE = 20, SAILS = 3;   // the Hesper casts off at the start of round 3
-const DOCK = [15, 1];                        // where she unloads, under the Terminal
+const DOCK = [2, 5];                         // where she unloads, at the foot of the Terminal's jetty
 const WARSHIP = s => s.owner === 0 && s.id !== 'hesper';
 
 const line = (who, text, mood = 'neutral') => ({ who, mood, text });
@@ -25,42 +25,42 @@ const hostiles = st => st.ships.filter(s => s.owner === 1);
 
 export default {
   id: 'navy-3', arc: 'navy', n: 3,
-  title: 'Convoy', place: 'Saltpan Channel', date: 'May 2061',
+  title: 'Convoy', place: 'The Saltpan Chain', date: 'May 2061',
   faction: 'navy', commander: { id: 'ortiz', level: 1 },
   enemy: { faction: 'tide', name: 'Free Tide' },
   par: PAR,
   hide: ['victory', 'world', 'commander'],
-  summary: 'Build a squadron and see the tanker Hesper safely up the Saltpan Channel.',
+  summary: 'Build a squadron and see the tanker Hesper safely up the Saltpan Chain.',
   teaches: ['Shipyard', 'Research', 'Fleets', 'Escort orders', 'Fighting on the move'],
 
   map: `
-    ############.......###########
-    #########......X......########
-    ##..........................##
-    ##.................###......##
-    ##.....###.........####.....##
-    ##....####.........###......##
-    ##.....###..................##
-    ##..................###.....##
-    ##......###.......#.###.....##
-    ##......###.........###.....##
-    ##......###.........###.....##
-    ##......###.................##
-    ##.................###......##
-    ##.....###........####......##
-    ##.....####........###......##
-    ##...P.###.........###......##
-    ##..........................##
-    ##..A.......................##
-    ##......T...P...............##
-    ##......................######
-    ######..............##########
-    ##############################`,
+    ..............................
+    ..#...........................
+    .###..........................
+    .###..........................
+    ...#..........................
+    ......#.......................
+    .....####.....................
+    ......###.....................
+    .......##.....................
+    ............##................
+    ...........####...............
+    ...........#####..............
+    .............##.....#.........
+    .............#....####........
+    ..................####.....##.
+    .................#####....####
+    ...P..............##.....#####
+    .........................#####
+    ....A...................######
+    ......T..................#####
+    ...........P..............##..
+    ..............................`,
   homes: [
-    { home: { x0: 2, y0: 15, x1: 12, y1: 20 }, spawn: { x0: 2, y0: 15, x1: 8, y1: 19 } },
+    { home: { x0: 0, y0: 14, x1: 12, y1: 21 }, spawn: { x0: 0, y0: 14, x1: 9, y1: 21 } },
     { home: { x0: 27, y0: 2, x1: 27, y1: 2 }, spawn: { x0: 27, y0: 2, x1: 27, y1: 2 } },
   ],
-  props: () => [{ kind: 'terminal', x: 14, y: 0 }], // (no label: the 'Unload here' marker sits right under it)
+  props: () => [{ kind: 'terminal', x: 1, y: 3 }], // (on the north-west island, its jetty running south; no label: the 'Unload here' marker sits right under it)
 
   setup(st, marks, H) {
     const [ax, ay] = marks.A[0];
@@ -86,7 +86,7 @@ export default {
       line('vance', "Captain Ortiz. Commodore Vance, escort group. I read your Bracken report. You left the best well on the bank in the ground for a fishing village.", 'stern'),
       line('vance', "Sentiment is how we lost three tankers this month. Don't make a habit of it."),
     ] : [line('vance', "Captain Ortiz. Commodore Vance, escort group.")]),
-    vance("The Tide has hit three of our tankers since April. The Hesper is next: full load, bound for the Allocation Terminal up the Saltpan Channel."),
+    vance("The Tide has hit three of our tankers since April. The Hesper is next: full load, bound for the Allocation Terminal up the Saltpan Chain."),
     vance("You have the Corrigan Point yard and a budget. Build an escort and see her through. She sails at the start of round three, and she won't move without a warship close by."),
     ortiz("And if they come at her in the channel?"),
     vance("They will. Make them regret it.", 'stern'),
@@ -160,19 +160,19 @@ export default {
   triggers: [
     { id: 'casting', when: st => st.round >= SAILS, say: [sato("The Hesper's loaded. She's casting off.")] },
     {
-      id: 'wave1', when: st => hesperTop(st) <= 15,
-      then: (st, M, H) => spawn(st, M, H, ['w1a', 'w1b'], { x0: 2, y0: 6, x1: 7, y1: 13 }),
-      say: [sato("Contacts to the west, coming out from behind the Saltpan islands! Two, small and fast.", 'worried')],
+      id: 'wave1', when: st => hesperTop(st) <= 16,
+      then: (st, M, H) => spawn(st, M, H, ['w1a', 'w1b'], { x0: 9, y0: 8, x1: 17, y1: 14 }),
+      say: [sato("Contacts to the east, coming out from behind the islands! Two, small and fast.", 'worried')],
     },
     {
-      id: 'wave2', when: st => hesperTop(st) <= 10,
-      then: (st, M, H) => spawn(st, M, H, ['w2a', 'w2b'], { x0: 22, y0: 2, x1: 27, y1: 9 }),
-      say: [sato("Two more, east side! They're going for the tanker.", 'worried')],
+      id: 'wave2', when: st => hesperTop(st) <= 12,
+      then: (st, M, H) => spawn(st, M, H, ['w2a', 'w2b'], { x0: 6, y0: 0, x1: 14, y1: 4 }),
+      say: [sato("Two more, up ahead to the north! They're going for the tanker.", 'worried')],
     },
     {
-      id: 'kade', when: (st, M) => hesperTop(st) <= 5 && M.fired.wave2 && st.round > M.fired.wave2,
+      id: 'kade', when: (st, M) => hesperTop(st) <= 9 && M.fired.wave2 && st.round > M.fired.wave2,
       then: (st, M, H) => {
-        const h = hesper(st), at = fogSpot(st, [h.x, h.y], 9, { x0: 2, y0: 2, x1: 27, y1: 8 });
+        const h = hesper(st), at = fogSpot(st, [h.x, h.y], 9, { x0: 0, y0: 0, x1: 16, y1: 10 });
         if (at) { H.ship(st, 1, 'fireship', at[0], at[1], { id: 'fireship' }); M.track.push('fireship'); M.flags.fireClosest = 99; }
       },
       say: [
@@ -208,7 +208,9 @@ export default {
     h.movesLeft = Math.min(h.movesLeft, 2); // (fully laden: two squares a turn)
     const D = waterField(st, [DOCK], { diag: false }); // (square by square, so every step north counts)
     // (bow first: she prefers to face north, up the channel, once she's turned into it)
-    const sail = () => moveBest(st, h, (x, y, rot) => Math.min(...E.shipCells({ ...h, x, y, rot }).map(([a, b]) => D[b * st.W + a])) + (rot === 3 ? 0 : 0.5), { script: true });
+    // (by the way her whole hull fits through the islands, not square by square, so she never noses into a dead end)
+    const SF = shapeField(st, h, [DOCK], 1);
+    const sail = () => moveBest(st, h, (x, y, rot) => SF(x, y, rot) * 2 + Math.min(...E.shipCells({ ...h, x, y, rot }).map(([a, b]) => D[b * st.W + a])) * 0.1 + (rot === 3 ? 0 : 0.05), { script: true });
     if (!sail() && fieldAt(st, D, h) > 1) {
       // one of your own ships is in her way: it stands aside, and she tries again
       const mine = fieldAt(st, D, h);
@@ -217,7 +219,34 @@ export default {
         if (spot) { s.x = spot.x; s.y = spot.y; s.rot = spot.rot; E.log(st, 0, `Your ${SHIPS[s.type].name} stood aside for the Hesper.`); }
       }
       h.movesLeft = Math.min(Math.max(h.movesLeft, 1), 2);
-      sail();
+      if (!sail()) {
+        // (still stuck turning between the islands: her tugs walk her round, a square or a quarter-turn on)
+        // (your own warships in the way are waved aside; anyone else's block her)
+        const here = SF(h.x, h.y, h.rot), busy = new Set(st.ships.filter(o => o !== h && !WARSHIP(o)).flatMap(o => E.shipCells(o).map(([a, b]) => a + ',' + b)));
+        let best = null;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (let rot = 0; rot < 4; rot++) {
+          const v = SF(h.x + dx, h.y + dy, rot);
+          if (v >= here || (best && v >= best.v)) continue;
+          if (E.shipCells({ ...h, x: h.x + dx, y: h.y + dy, rot }).some(([a, b]) => busy.has(a + ',' + b))) continue;
+          best = { x: h.x + dx, y: h.y + dy, rot, v };
+        }
+        if (best) {
+          const cells = E.shipCells({ ...h, x: best.x, y: best.y, rot: best.rot }), hits = o => E.shipCells(o).some(([a, b]) => cells.some(([x, y]) => x === a && y === b));
+          for (const o of st.ships.filter(o => WARSHIP(o) && hits(o))) {
+            // (out of the way: any free spot nearby that isn't under her new hull)
+            let spot = null;
+            for (let r = 1; r <= 4 && !spot; r++) for (let dy = -r; dy <= r && !spot; dy++) for (let dx = -r; dx <= r && !spot; dx++) for (const rot of [o.rot, (o.rot + 1) % 4]) {
+              const c = { ...o, x: o.x + dx, y: o.y + dy, rot }, cc = E.shipCells(c);
+              if (cc.some(([x, y]) => x < 0 || y < 0 || x >= st.W || y >= st.H || E.isLand(st, x, y) || cells.some(([a, b]) => a === x && b === y))) continue;
+              if (st.ships.some(q => q !== o && q !== h && E.shipCells(q).some(([a, b]) => cc.some(([x, y]) => x === a && y === b)))) continue;
+              spot = c; break;
+            }
+            if (!spot) { best = null; break; }
+            Object.assign(o, { x: spot.x, y: spot.y, rot: spot.rot }); E.log(st, 0, `Your ${SHIPS[o.type].name} stood aside for the Hesper.`);
+          }
+          if (best) Object.assign(h, { x: best.x, y: best.y, rot: best.rot });
+        }
+      }
     }
     if (fieldAt(st, D, h) <= 1) M.flags.arrived = true;
   },
