@@ -130,7 +130,8 @@ export function landArt(st) {
   const pal = st.mapType === 'polar' || st.ice ? PAL.polar : PAL.temperate;
   const { toSea, toLand } = distances(st);
   const at = (arr, x, y) => arr[Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))];
-  const isL = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : st.land[y * W + x] ? 1 : 0);
+  // (past the map's edge counts as whatever the edge square is, so land running off the map stays land to the edge)
+  const isL = (x, y) => (st.land[Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))] ? 1 : 0);
   // a smooth field over the squares: bilinear between square centres
   const field = (arr, fx, fy) => {
     const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
@@ -232,7 +233,7 @@ export function iceArt(st) {
   canvas.width = W * s; canvas.height = H * s;
   const g = canvas.getContext('2d'), img = g.createImageData(W * s, H * s), px = img.data;
   const seed = ((typeof st.seed === 'number' ? st.seed : 1) % 100000) + 77;
-  const isI = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : st.ice[y * W + x] && !st.land[y * W + x] ? 1 : 0);
+  const isI = (x, y) => { x = Math.min(W - 1, Math.max(0, x)); y = Math.min(H - 1, Math.max(0, y)); return st.ice[y * W + x] && !st.land[y * W + x] ? 1 : 0; };
   for (let py = 0; py < H * s; py++) {
     const fy = (py + 0.5) / s - 0.5, y0 = Math.floor(fy), ty = fy - y0;
     for (let pxi = 0; pxi < W * s; pxi++) {

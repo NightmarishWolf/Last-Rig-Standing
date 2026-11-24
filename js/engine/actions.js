@@ -142,6 +142,11 @@ export function getView(st, p) {
     builds: me.builds || [],
     // enemy bases are known once you've seen their central rig (or its wreck)
     enemyBases: (st.bases || []).filter(b => b.owner !== p && !allied(st, p, b.owner) && st.rigs.some(r => r.baseId === b.id && r.center && vis.rigs.has(r.id))),
+    // sides under truce with you: always in sight, shown for what they are
+    allyShips: st.ships.filter(s => allied(st, p, s.owner)),
+    allyRigs: st.rigs.filter(r => allied(st, p, r.owner)),
+    allyPlatforms: (st.platforms || []).filter(o => allied(st, p, o.owner)),
+    allyBases: (st.bases || []).filter(b => allied(st, p, b.owner)),
     deposits: st.deposits.filter(d => me.known[d.id]),
     wrecks: st.wrecks,
     // the Free Tide's raft network: your own, and enemy Tide around bases and ships you can see

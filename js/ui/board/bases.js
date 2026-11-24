@@ -17,7 +17,7 @@ function claimSquares(b, R) {
 
 export function drawClaims(v) {
   const R = visibleRange(), ctx = S.ctx;
-  for (const b of [...v.myBases, ...v.enemyBases]) {
+  for (const b of [...v.myBases, ...v.enemyBases, ...(v.allyBases || [])]) {
     if (b.wrecked) continue;
     const r = E.baseRadius(S.st, b);
     if (b.x + r < R.x0 - 1 || b.x - r > R.x1 + 1 || b.y + r < R.y0 - 1 || b.y - r > R.y1 + 1) continue;
@@ -35,6 +35,7 @@ export function drawBasePieces(v) {
   const inView = o => o.x >= R.x0 - 1 && o.x <= R.x1 + 1 && o.y >= R.y0 - 1 && o.y <= R.y1 + 1;
   for (const o of v.myPlatforms) if (inView(o)) drawPlatform(o, pcol(me()));
   for (const o of v.enemyPlatforms) if (inView(o)) drawPlatform(o, pcol(o.owner));
+  for (const o of v.allyPlatforms || []) if (inView(o)) drawPlatform(o, pcol(o.owner));
   // base markers: a star on your Admiralty, the level on other bases, a red cross on wrecked ones
   const ctx = S.ctx;
   for (const b of [...v.myBases, ...v.enemyBases]) {

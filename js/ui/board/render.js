@@ -209,6 +209,7 @@ function drawBoard() {
   }
   v.myRigs.forEach(r => inView(r.x, r.y) && drawRig(r, pcol(p)));
   v.enemyRigs.forEach(r => inView(r.x, r.y) && drawRig(r, pcol(r.owner)));
+  (v.allyRigs || []).forEach(r => inView(r.x, r.y) && drawRig(r, pcol(r.owner)));
   v.myPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(p)));
   v.enemyPorts.forEach(o => inView(o.x, o.y) && drawPort(o, pcol(o.owner)));
   drawBasePieces(v);
@@ -227,6 +228,12 @@ function drawBoard() {
     const alpha = s.acted && (s.movesLeft === 0 || s.shotsLeft === 0) ? 0.6 : 1, hp = s.hp / SHIPS[s.type].hp;
     if (sprite(s, cells, pcol(p), alpha)) drawShipMarks(cells, { sel: s.id === S.selectedId, hpFrac: hp });
     else { drawHull(cells, pcol(p), s.id === S.selectedId, alpha, CODES[s.type], hp); drawTurrets(s, cells, foes); }
+  }
+  // allies (a truce): their own colour, shown for what they are
+  for (const s of v.allyShips || []) {
+    const cells = tweenCells(s.id, E.shipCells(s)), hp = Math.min(1, s.hp / SHIPS[s.type].hp);
+    if (sprite(s, cells, pcol(s.owner), 1)) drawShipMarks(cells, { hpFrac: hp });
+    else drawHull(cells, pcol(s.owner), false, 1, CODES[s.type], hp);
   }
   drawUnitBadges(v);
   drawYardBadges();

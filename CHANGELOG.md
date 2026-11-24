@@ -357,3 +357,5 @@ Everything since the oil rig cost cap ($400 maximum for a new rig base), newest 
 - Navy pieces are grey steel; Free Tide pieces are planks, rust and patched plate.
 - Platforms under construction are drawn faded inside yellow scaffolding. Zoomed far out (under 10 px a square) the plain squares are still used.
 - The Map Maker uses the same sprites for bases and platforms.
+- Fix: ships, rigs, platforms and bases of a side under truce with you were never drawn (Vance's whole squadron was invisible in Mission 10, and Ruiz's fleet after you refuse). Allies now always show, in their own colour, as what they are.
+- Fix: land that runs off the edge of the map now reaches the edge (it used to get a thin coast of sea along the border). The same for pack ice.
