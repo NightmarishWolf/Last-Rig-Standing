@@ -343,3 +343,17 @@ Everything since the oil rig cost cap ($400 maximum for a new rig base), newest 
 - Check: water cut off from the open sea, sea only reachable through channels under 2 squares wide (no cruisers or carriers), pins and oil on land, lone specks of land. Each problem links to where it is.
 - Saved in the browser by name; the open map autosaves. Export as .txt (the format the missions read, pin labels in `;` comment lines), copy as text, or import a .txt or pasted text.
 - Mission maps can now have `;` comment lines.
+- **Map Maker: sides, ships, buildings and oil slicks.**
+  - Sides: up to four, each with a name, a faction (Navy or Free Tide) and a colour. Scenery is Neutral.
+  - 🚢 Ships: every ship of the side's faction, drawn with the game's sprites in the side's colour at their real footprint. Q / E turn them; they can't go on land, off the map or on top of anything.
+  - 🏗️ Buildings: bases (outpost or capital, levels 1–4, Free Tide bases can be raft-towns), all 15 platforms, and scenery (village, beached boats, Terminal, derelict rig, lighthouse, old wreck). Selecting a base shows its claim.
+  - ⚫ Oil slicks: size, how many rounds they last (or the whole mission), and on fire or not.
+  - 🖱️ Select / move: drag anything placed; change its side, name, rotation, level and so on in the Selected panel. Delete or right-click removes it. Everything can be undone.
+  - The check also flags ships or buildings on land, overlaps, platforms outside their side's base claims, two capitals on a side, and sides with nothing placed.
+  - Exported as readable `;` lines in the .txt (sides, ships, bases, platforms, scenery, slicks), and imported back.
+
+## 29. Rig and platform sprites
+- Oil rigs and all 15 platforms have proper top-down sprites now (js/ui/board/structart.js), in the owner's colour like the ships: a rig is a jacket on four legs with its derrick, helideck, crane and flare boom; each platform shows what it is (tanks, turrets, radar mast, dry dock, refinery columns, runway, fusion ring, launch hatches...).
+- Navy pieces are grey steel; Free Tide pieces are planks, rust and patched plate.
+- Platforms under construction are drawn faded inside yellow scaffolding. Zoomed far out (under 10 px a square) the plain squares are still used.
+- The Map Maker uses the same sprites for bases and platforms.

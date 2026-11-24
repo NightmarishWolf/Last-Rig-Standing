@@ -6,6 +6,9 @@ import { roundRect } from './canvas.js';
 import { COL } from '../constants.js';
 import { px, py } from '../helpers.js';
 import { S } from '../state.js';
+import { requestDraw } from './render.js';
+import { structSVG, hasStructArt } from './structart.js';
+import { factionOf } from '../../data/factions.js';
 
 export function drawHull(cells, color, sel, alpha, label, hpFrac, enemy = false) {
   S.ctx.globalAlpha = alpha;
@@ -100,8 +103,34 @@ export function drawShipMarks(cells, { sel = false, enemy = false, hpFrac, badge
   }
 }
 
+// a structure's sprite (rigs and platforms), rasterised once per kind, colour and size
+const structPics = new Map();
+function structPic(kind, color, tide) {
+  const size = [24, 40, 64, 96].find(z => z >= S.cell * (window.devicePixelRatio || 1)) || 96, key = kind + color + tide + size;
+  let e = structPics.get(key);
+  if (e) return e.ready ? e.c : null;
+  e = { ready: false }; structPics.set(key, e);
+  const img = new Image();
+  img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = size; c.getContext('2d').drawImage(img, 0, 0, size, size); e.c = c; e.ready = true; requestDraw(); };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(structSVG(kind, color, tide));
+  return null;
+}
+const tideOwner = o => o.owner != null && S.st.players[o.owner] && factionOf(S.st, o.owner) === 'tide';
+function drawStruct(kind, o, color) {
+  if (S.cell < 10 || !hasStructArt(kind)) return false;
+  const pic = structPic(kind, color, tideOwner(o));
+  if (!pic) return false;
+  S.ctx.imageSmoothingEnabled = true; S.ctx.imageSmoothingQuality = 'high';
+  S.ctx.drawImage(pic, px(o.x), py(o.y), S.cell, S.cell);
+  return true;
+}
 export function drawRig(r, color) {
   const x0 = px(r.x), y0 = py(r.y), u = S.cell / 10;
+  if (drawStruct('rig', r, color)) {
+    const b = r.center && (S.st.bases || []).find(b => b.id === r.baseId), max = b ? E.baseMaxHp(S.st, b) : RIG.hp;
+    if (r.hp < max) { S.ctx.fillStyle = '#ff4d4d'; S.ctx.fillRect(x0 + 4, y0 + S.cell - 5, (S.cell - 8) * r.hp / max, 3); }
+    return;
+  }
   if (S.cell < 10) { S.ctx.fillStyle = color; S.ctx.fillRect(x0, y0, S.cell, S.cell); S.ctx.fillStyle = '#f0a531'; S.ctx.fillRect(x0 + S.cell * .3, y0 + S.cell * .3, S.cell * .4, S.cell * .4); return; }
   S.ctx.fillStyle = '#0a1a26';
   roundRect(x0 + 2, y0 + 2, S.cell - 4, S.cell - 4, 3); S.ctx.fill();
@@ -144,14 +173,18 @@ export function drawPlatform(o, color) {
   const def = PLATFORMS[o.kind], x0 = px(o.x), y0 = py(o.y), c = S.cell, ctx = S.ctx;
   if (c < 10) { ctx.fillStyle = color; ctx.globalAlpha = o.buildLeft ? 0.5 : 1; ctx.fillRect(x0, y0, c, c); ctx.globalAlpha = 1; return; }
   const g = Math.max(2, c * 0.1);
-  ctx.globalAlpha = o.buildLeft ? 0.65 : 1;
-  ctx.fillStyle = '#0a1a26'; roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.fill();
-  ctx.strokeStyle = color; ctx.lineWidth = 2; if (o.buildLeft) ctx.setLineDash([3, 3]);
-  roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
-  ctx.fillStyle = o.kind === 'wellhead' ? '#f0a531' : '#e8eef4';
-  ctx.font = `bold ${Math.round(c * 0.42)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(def.code, x0 + c / 2, y0 + c / 2 + 1);
+  ctx.globalAlpha = o.buildLeft ? 0.5 : 1;
+  if (!drawStruct(o.kind, o, color)) {
+    ctx.fillStyle = '#0a1a26'; roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    roundRect(x0 + g, y0 + g, c - g * 2, c - g * 2, 4); ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = o.kind === 'wellhead' ? '#f0a531' : '#e8eef4';
+    ctx.font = `bold ${Math.round(c * 0.42)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(def.code, x0 + c / 2, y0 + c / 2 + 1);
+  }
   ctx.globalAlpha = 1;
+  // (still being built: scaffolding round it)
+  if (o.buildLeft) { ctx.strokeStyle = '#ffd666'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); roundRect(x0 + 1.5, y0 + 1.5, c - 3, c - 3, 4); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; }
   if (o.buildLeft && c >= 16) {
     ctx.fillStyle = '#ffd666'; ctx.font = `bold ${Math.round(c * 0.28)}px system-ui`;
     ctx.fillText(String(o.buildLeft), x0 + c - g - c * 0.12, y0 + c - g - c * 0.14);
