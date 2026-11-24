@@ -3,3 +3,20 @@
   .layout { flex-direction: column; }
   .panel { width: 100%; max-height: none; }
 }
+
+/* ---- the play screen: the board takes everything left of the side column; on wide screens the
+   story box (tutorial coach, campaign comms) sits at the top of that column, above the panel ---- */
+@media (min-width: 1001px) {
+  :root { --side: clamp(340px, 19vw, 480px); } /* (the side column grows a little on big screens) */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) var(--side); grid-template-rows: auto 1fr; grid-template-areas: "board coach" "board panel"; column-gap: 16px; align-items: start; }
+  .board-wrap { grid-area: board; }
+  .layout > .coach { grid-area: coach; max-width: none; height: auto; min-height: 150px; max-height: 320px; margin: 0 0 12px; }
+  .layout > .panel { grid-area: panel; width: auto; }
+  .layout:has(> .coach:not(.hidden)) > .panel { max-height: calc(100vh - 90px - 270px); }
+  .coach.comms { gap: 10px; padding: 10px 12px; }
+  .coach.comms .comms-portrait { width: 84px; height: 84px; }
+  .coach.comms .comms-text { font-size: 14px; }
+}
+@media (max-width: 1000px) {
+  .layout > .coach { order: -1; }
+}

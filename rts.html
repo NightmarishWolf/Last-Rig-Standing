@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last Rig Standing</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/research.css">
+  <link rel="stylesheet" href="css/rts.css">
+</head>
+<body>
+  <header class="rts-top">
+    <a class="brand" href="index.html" title="Main menu">LAST RIG <span>STANDING</span></a>
+    <div id="res" class="res"></div>
+    <div class="ctl">
+      <button id="pause" title="Pause (Space): you can still give orders">⏸ Pause</button>
+      <button data-speed="0.5">½×</button><button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="3">3×</button>
+      <button id="menu-btn" title="Menu (Esc)">☰</button>
+    </div>
+  </header>
+  <main class="rts-main">
+    <canvas id="rts"></canvas>
+    <div id="msgs" class="msgs"></div>
+    <button id="warn" class="warn hidden"></button>
+    <div id="events" class="events"></div>
+    <div id="cmdr" class="cmdr hidden"></div>
+    <div id="paused" class="paused hidden">PAUSED <small>You can still give orders. Space to resume.</small></div>
+  </main>
+  <footer class="rts-bottom">
+    <div class="mini-box"><canvas id="mini"></canvas></div>
+    <div id="sel" class="sel"></div>
+    <div id="card" class="card"></div>
+  </footer>
+  <div id="research" class="research hidden"></div>
+  <div id="tip" class="tip hidden"></div>
+  <div id="over" class="over hidden"><div class="over-card"><h2 id="over-title"></h2><p id="over-text"></p>
+    <button id="again" class="primary">Play again</button> <button id="watch" class="hidden">Keep watching</button> <a href="index.html">Main menu</a></div></div>
+  <div id="menu" class="over hidden"><div class="over-card menu">
+    <h2>Paused</h2>
+    <button id="m-resume" class="primary">▶ Resume</button>
+    <button id="m-help">⌨ Controls</button>
+    <button id="m-restart">↻ Restart (new map)</button>
+    <a class="btn" href="index.html">🏠 Quit to main menu</a></div></div>
+  <div id="help" class="over hidden"><div class="over-card help">
+    <h2>Controls</h2>
+    <p><b>Left-click / drag</b> select · <b>Shift</b> adds · <b>double-click</b>: every one of that kind on screen</p>
+    <p><b>Right-click</b> move · on an enemy: attack · workers on a free oil deposit: drill it (a new base, or a Wellhead inside a claim) · a yard selected: rally point</p>
+    <p><b>A</b> + click attack-move · <b>S</b> stop · <b>H</b> hold · <b>F</b> the selection's ability (scans, missile strikes, recon flights)</p>
+    <p><b>Workers:</b> <b>B</b> build menu, then <b>O</b> oil rig or a platform's letter (Shift-click to place several) · <b>.</b> next idle worker</p>
+    <p><b>Admiralty / Dry Dock:</b> each ship's letter queues it · <b>Bases:</b> <b>U</b> upgrade (bigger claim, more platform slots)</p>
+    <p><b>Tab</b> research (the tech tree) · <b>N</b>, <b>M</b> your commander's two powers</p>
+    <p><b>Ctrl+1–9</b> make a group, <b>1–9</b> select it (twice: jump to it) · <b>Home</b> your Admiralty</p>
+    <p><b>Space</b> pause (orders still work) · <b>Esc</b> cancel / menu · <b>wheel</b> zoom · <b>arrows</b>, screen edges or <b>middle-drag</b> scroll · minimap: click to look, right-click to send ships</p>
+    <p><b>Oil:</b> rigs pump it into storage; sell it on the market for money (each barrel sold knocks the price down; it recovers). Ships cost money and oil; ships and platforms cost upkeep.</p>
+    <p><b>Supply:</b> every ship costs supply. Your cap is 10 from the Admiralty, +5 per Crew Quarters, up to 100.</p>
+    <p><b>Research:</b> points come in every second (the Admiralty, Research Labs, and funding you pay for). Techs unlock ships, platforms and base levels, and make everything better. Crew Quarters, bigger claims and most warships need research first.</p>
+    <p><b>Winning:</b> destroy every enemy base, or finish a Deep-Sea Fusion Plant.</p>
+    <button id="help-close" class="primary">Got it</button></div></div>
+  <script type="module">
+    import './js/rts/main.js';
+    const help = document.getElementById('help');
+    document.getElementById('help-close').onclick = () => help.classList.add('hidden');
+  </script>
+</body>
+</html>

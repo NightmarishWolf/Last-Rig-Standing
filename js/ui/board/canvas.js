@@ -9,21 +9,22 @@ export function resize() {
   // Size from the window (not the page layout) so the board never changes size
   // when the panel, coach box or scrollbar changes.
   const vw = document.documentElement.clientWidth, vh = window.innerHeight;
-  const avail = Math.max(300, vw <= 1000 ? vw - 32 : vw - 340 - 48);
-  const COACH_SPACE = S.st && (S.st.tutorial || S.st.campaign) ? 172 + 10 : 0; // fixed coach height + gap (see .coach in style.css)
-  const maxH = vh - 150 - COACH_SPACE;
+  const wide = vw > 1000;
+  const side = Math.max(340, Math.min(480, vw * 0.19)); // (matches --side in responsive.css)
+  const avail = Math.max(300, wide ? vw - side - 48 : vw - 32);
+  // (wide screens: the story box sits in the side column, so the board gets the whole height;
+  // narrow ones stack it above the board)
+  const COACH_SPACE = !wide && S.st && (S.st.tutorial || S.st.campaign) ? 172 + 10 : 0;
+  const maxH = vh - 52 - 32 - 44 - COACH_SPACE; // (top bar, page padding, the status line under the board)
   const fitCell = Math.floor(Math.min((avail - MARGIN) / S.st.W, (maxH - MARGIN) / S.st.H));
-  let w, h;
-  if (fitCell >= 16) {
-    // small map: show it whole, like a board game
-    S.fit = true; S.cell = Math.min(40, fitCell); S.cam.x = 0; S.cam.y = 0;
-    w = S.cell * S.st.W + MARGIN; h = S.cell * S.st.H + MARGIN;
-  } else {
-    // big world: the board fills the space and the camera scrolls
-    S.fit = false; w = avail; h = Math.max(300, maxH);
-  }
+  // The board always fills the space it has (same size on every map, scaled to the window); a map small
+  // enough to show whole at a readable zoom is shown whole and centred in it, a bigger one scrolls.
+  let w = avail, h = Math.max(300, maxH);
+  if (fitCell >= 16) { S.fit = true; S.cell = Math.min(64, fitCell); w = S.cell * S.st.W + MARGIN; h = S.cell * S.st.H + MARGIN; } // (centred in its column: see .board-frame)
+  else S.fit = false;
   S.view.w = w - MARGIN; S.view.h = h - MARGIN;
-  if (!S.fit) { switchCameraTo(S.spectate ? 'all' : me()); clampCam(); }
+  if (!S.fit) switchCameraTo(S.spectate ? 'all' : me());
+  clampCam();
   const dpr = window.devicePixelRatio || 1;
   S.canvas.width = w * dpr; S.canvas.height = h * dpr;
   S.canvas.style.width = w + 'px'; S.canvas.style.height = h + 'px';

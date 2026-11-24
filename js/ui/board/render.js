@@ -83,7 +83,7 @@ function drawBoard() {
   ctx.clearRect(0, 0, S.canvas.width, S.canvas.height);
   ctx.save();
   ctx.beginPath(); ctx.rect(MARGIN, MARGIN, S.view.w, S.view.h); ctx.clip();
-  ctx.fillStyle = '#050d15'; ctx.fillRect(MARGIN, MARGIN, S.view.w, S.view.h); // beyond the map edge
+  ctx.fillStyle = '#0a1c2b'; ctx.fillRect(MARGIN, MARGIN, S.view.w, S.view.h); // beyond the map edge: open ocean, darker
 
   // ---- water and land ----
   // the sea (deeper further from land), ripples close up, then each home area as a soft tint of its colour

@@ -106,33 +106,19 @@ const ago = t => {
 const playersLine = e => e.players.map((pl, i) => `<span class="pchip ${pl.out ? 'out' : ''}" style="--c:${PLAYER_COLORS[i]}">${pl.seat === 'ai' ? '🤖 ' : ''}${pl.name}</span>`).join('');
 
 function mainPage() {
-  const last = !inGame() && latest();
-  const st = A.state;
   return `
     <nav class="home-menu">
-      ${watching() ? '<button class="hm primary" data-resume>🎬 Back to the replay</button>' : ''}
-      ${inGame() ? `<button class="hm primary" data-resume>▶ Resume <small>${st.campaign ? `Mission ${MISSIONS[st.campaign.id].n}: ${MISSIONS[st.campaign.id].title}` : st.players[st.current].name} · round ${st.round}</small></button>` : ''}
-      ${last ? `<button class="hm primary" data-continue>▶ Continue <small>round ${last.entry.round} · ${MAP_SIZES[last.entry.size]?.name || ''} map · saved ${ago(last.entry.savedAt)}</small></button>` : ''}
-      <button class="hm ${inGame() || last ? '' : 'primary'}" data-new>⚓ New game</button>
-      <button class="hm" data-load>📂 Load game</button>
-      ${!online() && !N.s && lastJoined() ? `<button class="hm" data-rejoinlast="${lastJoined().code}">🔄 Rejoin online game <small>${lastJoined().code} · joined ${ago(lastJoined().at)}</small></button>` : ''}
-      <button class="hm" data-online>🌐 Online <small>${online() ? `in game ${N.s.code}` : 'play with friends: host or join with a code'}</small></button>
-      ${inGame() && !st.campaign ? `<button class="hm" data-save>💾 Save game <small>a named copy you can come back to</small></button>` : ''}
-      ${A.state && !A.state.tutorial && A.state.phase === 'over' && A.state.history ? '<button class="hm" data-results>🏁 Results of your last game</button>' : ''}
+      <button class="hm primary" data-new>⚓ New game <small>real time with pause · 2–4 players · computer opponents</small></button>
+      <button class="hm" disabled title="Online play is being rebuilt for the real-time game">🌐 Online <small>being rebuilt for real time</small></button>
       <button class="hm" data-commanders>🎖️ Commanders <small>${escapeHtml(activeProfile().name)}'s profile · levels, perks and unlocks</small></button>
-      <button class="hm" data-campaign>🗺️ Campaign <small>the story of the oil war · learn to play as you go</small></button>
+      <button class="hm" disabled title="The missions are being converted to the real-time game, one at a time">🗺️ Campaign <small>being converted to real time</small></button>
       <button class="hm" data-achievements>🏅 Achievements <small>${Object.keys(activeProfile().achievements || {}).length} earned · 🪙 ${(activeProfile().dabloons || 0).toLocaleString()} Dabloons</small></button>
-      <button class="hm" data-lab>📊 Balance lab <small>bot simulations and stats from real games</small></button>
       <button class="hm" data-rules>📖 Rules</button>
-      ${inGame() && st.campaign ? `<button class="hm danger" data-abandon>🚪 Abandon mission <small>back to the campaign</small></button>` : ''}
-      ${inGame() && !st.campaign && (!online() || st.current === mySeat()) ? `<button class="hm danger" data-surrender>🏳 Surrender <small>${st.players[online() ? mySeat() : st.current].name}</small></button>` : ''}
-      ${online() ? `<button class="hm danger" data-leaveonline>🚪 Leave online game <small>${onlineRole() === 'host' ? 'it stays saved: load it to host it again' : 'you can rejoin with the code'}</small></button>` : ''}
     </nav>
-    ${last ? `<div class="home-card continue-card"><div class="muted small">Your last game</div><div class="cc-players">${playersLine(last.entry)}</div></div>` : ''}
     <div class="home-sound"><label>🔊 Sound <input type="range" min="0" max="1" step="0.05" value="${muted() ? 0 : volume()}" data-volume></label>
       <button class="ghost" data-testsound>Test</button><div class="muted small" data-soundnote></div>
       <div class="home-tools"><button class="ghost" data-mapmaker title="A design tool for campaign maps (password needed)">🗺️ Map maker 🔒</button></div></div>
-    <div class="home-foot muted small">Games save automatically. Press <b>Esc</b> to go back to your game.</div>`;
+    <div class="home-foot muted small">In a game: <b>Space</b> pauses, <b>Esc</b> opens the game menu.</div>`;
 }
 
 // ---------- new game ----------
@@ -143,7 +129,7 @@ function seatRow(i) {
   return `<div class="seat-row" style="--c:${PLAYER_COLORS[i]}">
     <span class="chip" style="--c:${PLAYER_COLORS[i]}">Player ${i + 1}</span>
     <div class="seg small-seg">
-      <button data-seat="${i}:human" class="${ai ? '' : 'on'}">🧑 Human</button>
+      <button data-seat="${i}:human" class="${ai ? '' : 'on'}" title="You (one person per screen: the others are computers)">🧑 You</button>
       <button data-seat="${i}:ai" class="${ai ? 'on' : ''}">🤖 CPU</button>
     </div>
     ${factionButtons('fac', i, o.faction)}
@@ -159,13 +145,12 @@ function seatRow(i) {
 function seatNote() {
   const humans = setup.seats.slice(0, setup.players).filter(o => o.seat !== 'ai').length;
   if (!humans) return '<b>Spectator mode:</b> every seat is a computer. Sit back and watch the admirals fight it out, with the whole map revealed.';
-  if (humans === 1) return 'You play against the computer. You\'ll see the bots\' moves play out, but only what your fleet can see.';
-  return 'Everyone shares one screen and passes the device between turns. Computer turns play out behind a curtain.';
+  return 'You play against the computer, in real time: pause any time with Space (you can still give orders while paused).';
 }
 function setupPage() {
   const max = MAP_SIZES[setup.size].maxPlayers;
-  const shared = setup.seats.slice(0, setup.players).filter(o => o.seat !== 'ai').length > 1; // several people, one screen
   if (setup.players > max) setup.players = max;
+  setup.seats.forEach((o, j) => { if (o.seat !== 'ai' && setup.seats.findIndex(x => x.seat !== 'ai') !== j) o.seat = 'ai'; }); // (one person per screen)
   return `<div class="home-card">
     <h2>New game</h2>
     <div class="setup-cols">
@@ -208,22 +193,11 @@ function setupPage() {
           </div>
         </div>
         <div class="setup-group">
-          <div class="label">Turn order</div>
-          <div class="seg">
-            <button data-order="turns" class="${setup.turnOrder !== 'simul' || shared ? 'on' : ''}" title="Players take turns, one after another.">⏯ Take turns<small>one player at a time</small></button>
-            <button data-order="simul" class="${setup.turnOrder === 'simul' && !shared ? 'on' : ''}" ${shared ? 'disabled title="Not with two or more people sharing this screen: you\'d see each other\'s moves."' : 'title="Everyone plays the round at once; it ends when all are ready."'}>⚡ Simultaneous<small>${shared ? 'not with a shared screen' : 'everyone at once'}</small></button>
-          </div>
-        </div>
-        <div class="setup-group">
-          <div class="label">Turn timer</div>
-          <div class="seg">${TIMER_OPTIONS.map(t => `
-            <button data-timer="${t}" class="${setup.turnTimer === t ? 'on' : ''}">${t ? fmt(t) : 'Off'}</button>`).join('')}
-          </div>
-        </div>
-        <div class="setup-group">
           <div class="label">Ways to win</div>
-          <div class="seg">${Object.entries(VICTORIES).map(([k, v]) => `
+          <div class="seg">${Object.entries(VICTORIES).filter(([k]) => k === 'conquest' || k === 'postoil').map(([k, v]) => `
             <button data-vic="${k}" class="${v.always || setup.victory[k] ? 'on' : ''}" ${v.always ? 'disabled' : ''} title="${v.text}">${v.icon} ${v.name}<small>${v.always ? 'always on' : setup.victory[k] ? 'on' : 'off'}</small></button>`).join('')}
+          </div>
+          <div class="muted small" style="margin-top:4px">Conquest: destroy every enemy base. Post-Oil: finish a Deep-Sea Fusion Plant at a Hub base.
           </div>
         </div>
       </div>
@@ -246,19 +220,16 @@ function setupPage() {
   </div>`;
 }
 function startGame() {
-  // random personalities are rolled here, so each bot keeps one for the whole game
-  const seats = setup.seats.slice(0, setup.players).map(o => {
+  // random personalities and factions are rolled here; the match itself runs on its own page (rts.html)
+  const seats = setup.seats.slice(0, setup.players).map((o, i) => {
     const faction = rollFaction(o.faction);
-    if (o.seat === 'ai') return { seat: 'ai', difficulty: o.difficulty, personality: o.personality === 'random' ? PERSONALITY_ORDER[Math.floor(Math.random() * PERSONALITY_ORDER.length)] : o.personality, faction, ...resolveCommander(o, faction, true) };
+    if (o.seat === 'ai') return { seat: 'ai', name: `${faction === 'tide' ? 'Free Tide' : 'Navy'} ${['I', 'II', 'III', 'IV'][i]}`, difficulty: o.difficulty, personality: o.personality === 'random' ? PERSONALITY_ORDER[Math.floor(Math.random() * PERSONALITY_ORDER.length)] : o.personality, faction, ...resolveCommander(o, faction, true) };
     const prof = seatProfile(o);
-    return { seat: 'human', faction, ...resolveCommander(o, faction, false, setup.commanderLevel1), ...(prof ? { profile: prof.id, name: prof.name } : {}) };
+    return { seat: 'human', faction, name: prof?.name || 'You', ...resolveCommander(o, faction, false, setup.commanderLevel1), ...(prof ? { profile: prof.id } : {}) };
   });
-  const shared = seats.filter(o => o.seat === 'human').length > 1;
-  A.state = E.newGame({ size: setup.size, mapType: setup.mapType, events: eventsOpt(setup.events), seed: seedOf(setup.seed), players: setup.players, turnTimer: setup.turnTimer, mirror: setup.mirror !== false, fog: fogMode(setup.fog), victory: { ...setup.victory }, seats, simultaneous: setup.turnOrder === 'simul' && !shared, commanderLevel1: !!setup.commanderLevel1 });
-  A.state.gameId = newGameId(); // its own save slot: the game you were playing stays saved
-  A.sessionActive = false;
-  leaveOnline();
-  save(A.state); hideHome(); setState(A.state); handoff(A.state);
+  const cfg = { size: setup.size, mapType: setup.mapType, seed: setup.seed ? seedOf(setup.seed) : undefined, mirror: setup.mirror !== false, fog: fogMode(setup.fog), events: eventsOpt(setup.events), victory: { postoil: setup.victory.postoil !== false }, commanderLevel1: !!setup.commanderLevel1, players: seats };
+  try { sessionStorage.setItem('lrs-rts', JSON.stringify(cfg)); } catch { /* (private mode: the page falls back to a quick 1-v-1) */ }
+  location.href = 'rts.html';
 }
 
 // ---------- load ----------
@@ -580,7 +551,7 @@ function bind(view) {
     on('[data-timer]', b => { setup.turnTimer = Number(b.dataset.timer); re(); });
     on('[data-order]', b => { setup.turnOrder = b.dataset.order; re(); });
     on('[data-players]', b => { setup.players = Number(b.dataset.players); re(); });
-    on('[data-seat]', b => { const [i, v] = b.dataset.seat.split(':'); setup.seats[i].seat = v; re(); });
+    on('[data-seat]', b => { const [i, v] = b.dataset.seat.split(':'); if (v === 'human') setup.seats.forEach((o, j) => { if (j !== +i && o.seat !== 'ai') o.seat = 'ai'; }); setup.seats[i].seat = v; re(); }); // (one person per screen)
     on('[data-diff]', b => { const [i, v] = b.dataset.diff.split(':'); setup.seats[i].difficulty = v; re(); });
     on('[data-fac]', b => { const [i, v] = b.dataset.fac.split(':'); setup.seats[i].faction = v; setup.seats[i].commander = 'auto'; re(); });
     h.querySelectorAll('[data-cmd]').forEach(s => s.onchange = () => { setup.seats[s.dataset.cmd].commander = s.value; re(); });

@@ -375,3 +375,68 @@ Everything since the oil rig cost cap ($400 maximum for a new rig base), newest 
 - **Open Water** (48 × 30): all open sea, no land at all. (Also fixed: the Leviathan started half off the map, and a cruiser started on top of a corvette.)
 - **The Allocation** (70 × 50): your capital in the north; Haven is your one great raft-town in the south-east lagoon with every platform you placed around it (56 of them). Its only way out is the Gate, the north-west mouth, held by the West and East forts and the Lighthouse; the Cinder Isle is north of the lagoon. Changes to fit: no districts any more (Obey: burn the Motherraft); the Needle is gone (boats can only leave once the Gate is clear of Vance); Vance's second group and Kade's later raids come in from the east; on Obey, Vance's carriers each destroy one of Haven's weapons a turn (AA, cruise batteries, guns, the airbase first), then you breach the wall of tanks and burn the Motherraft; lifeboats leave Haven two at a time while it burns. Haven's platforms cost Ruiz no upkeep, and Kade keeps at most eight raiders at sea.
 - Platforms can now be on loan like ships (no upkeep), for scripted strongholds.
+
+## 32. The play screen fits the window
+- The board now fills the space left of the side column at any window size. A map small enough to show whole is drawn as big as fits and centred; a bigger map scrolls in a board that fills the whole area.
+- On wide screens the story box (campaign comms, tutorial coach) moved to the top of the side column, so the board gets the full height of the window. Narrow screens still stack it above the board.
+- The side column grows a little on big screens (340–480 px).
+- When one of your ships takes a hit, on anyone's turn, the warning pop-up (the one you get for an order a ship can't take) tells you: "⚠ Under fire: Picket Boat −1 HP · Corvette sunk!". Boats leaving the map and ships used up by an ability don't count as sunk.
+
+## 33. RTS prototype (rts.html, "⚡ RTS prototype" on the main menu)
+- A separate experiment beside the turn-based game: free movement, real time with pause (Space; orders still work while paused), ½× / 1× / 2× speed.
+- Supply: every ship costs supply (1 for a Picket Boat or Skiff, up to 5–6 for a Cruiser or Mothership); your cap is 10 from the Admiralty, +5 per Crew Quarters, up to 100.
+- One mirrored natural map, 64 × 40, you (Coalition Navy) against the computer (the Free Tide). Oil deposits pay money once a worker builds a rig on them. The Admiralty builds ships in a queue of five with a rally point; workers also build Gun Platforms and Crew Quarters within 6 squares of your Admiralty or a rig.
+- Ships: Navy Survey Ship (worker), Picket Boat, Corvette, Destroyer, Cruiser; Tide Prospector (worker), Skiff, Gunboat, Fireship (rams for area damage), Mothership. They turn like ships, keep clear of land by their size, path round islands, push past each other, and fire on the move; shells fly, cruisers and motherships splash.
+- Controls: drag-select, Shift, double-click, right-click move/attack/build/rally, A attack-move, S stop, H hold, Ctrl+1–9 groups, wheel zoom, arrows / edges / middle-drag scroll, minimap (right-click it to send ships). Fog of war.
+- Win by sinking the enemy Admiralty.
+- js/rts/: data.js (numbers), map.js, path.js (A* plus straightened paths), sim.js (the world), ai.js, render.js, main.js. It reuses the game's land, water, ship and platform art.
+
+## 34. The real-time game replaces the turn-based one (stage 1 of 5: skirmish)
+
+**New game** on the main menu now starts a real-time match with pause (rts.html). The prototype is gone; this is the game.
+
+- **Setup:** the same New game page: map size and type, seed, mirrored or random layout, fog (On / Reveal / Off), commander levels, Post-Oil on or off, 2–4 players. One person per screen (the other seats are computers); all computers = spectator mode. Turn order, turn timer and world events are gone from the page for now.
+- **Economy (oil + market):** rigs pump oil into storage (180 to start, Storage Tanks add more; it spills past the cap). Sell it from the top bar (10, 50 or all): each barrel knocks the price down a little and it recovers over time; Refineries add to the price you get. Ships cost money and oil; ships and platforms cost upkeep; the Admiralty brings in $3/s. Deep in debt, the bank repossesses your priciest ship.
+- **Bases:** a worker founds a base on a free oil deposit (right-click it, or B → O). Bases have levels (U to upgrade), a claim (the dashed square) and platform slots. All 15 platforms are in the worker's build menu (B, then the platform's letter; Shift-click to place several). A worker right-clicking a deposit inside a claim builds a Wellhead.
+- **Supply:** every ship costs supply; 10 from the Admiralty, +5 per Crew Quarters, up to 100.
+- **Ships:** 12 per side for now (the rest come in stage 5). Each yard (the Admiralty, Dry Docks) queues five; letter keys queue, the queue buttons cancel with a full refund; right-click the sea to set a rally point. Abilities on **F**: radar pings, recon flights, missile strikes (Helipads and Airbases too); Cruise Batteries fire on their own.
+- **Controls:** box select, double-click for all of a kind, right-click move / attack, A attack-move, S stop, H hold, Ctrl+1–9 groups, Home your Admiralty, . next idle worker, Space pause (orders still work), Esc cancel / menu, ½× to 3× speed. Hover a button for its full stats.
+- **Warnings:** "⚠ Under fire" when something of yours off screen is hit (click it to look), with a ping on the minimap.
+- **Winning:** destroy every enemy base (Conquest), or finish a Deep-Sea Fusion Plant (Post-Oil).
+- **Main menu:** Campaign shows "being converted to real time" and Online "being rebuilt"; Continue, Load, Save and the Balance lab are gone with the turn-based game.
+- Still to come: research, commander powers and world events (stage 2), online (3), the campaign (4), the remaining ships (5).
+
+## 35. Real time, stage 2: research, commanders and world events
+
+- **Research** (Tab, or the 🔬 chip in the top bar): the full tech tree from the turn-based game, with the same layout and doctrine choices. Points come in every second: 4 a turn (a turn is 6 seconds) from the Admiralty, 3 per Research Lab, plus funding (− / + on the research screen; it costs money every second). An Era I tech takes about 18 seconds with the Admiralty alone. Click a bright tech to research it, or a dim one to queue it along with everything it needs. The game keeps running while the screen is open.
+- **Research now gates things,** as in the turn-based game:
+  - **Ships:** Destroyer Program, Air Defense, Guided Missiles and the rest. Locked buttons show 🔒 and what to research.
+  - **Platforms:** Crew Quarters, gun platforms, Labs, Dry Docks and the rest. Storage Tanks and Wellheads are open from the start.
+  - **Base levels:** Station needs Crew Quarters, Complex needs Base Complexes, Hub needs Mega-Platform Hubs.
+  - **Claims:** a new base claims 3×3, and the Pipelines line makes claims bigger.
+- **What research changes:** each player's ships use their own numbers, with research and commander perks added (HP, speed, sight, armor, cost, build time, weapon damage, range and shots), and so do platforms (cost, HP, upkeep, gun range, sight). Player-wide effects that work in real time:
+  - **Market and storage:** oil storage, sell price, how fast the price drops when you sell.
+  - **Costs:** upkeep, and the cost of bases and upgrades.
+  - **Rigs:** pump rate, Pump Station bonus, deeper wells (a dry rig strikes another layer), more oil in newly tapped deposits.
+  - **Bases:** claim size, platform slots.
+  - **Repair:** ships heal inside your claims, and platforms repair themselves.
+  - **Sight:** base sight, Stealth Doctrine (enemies must come closer to see your ships), worker sight.
+  - **The Tide:** how far it reaches, how big it grows, healing and speed on it.
+  - Effects for things not in real time yet (forward ports, plunder, boarding, Skiff Packs, muzzle flashes) say "—" on the research screen.
+- **The Tide:** Free Tide bases spread it (2 squares, growing over time; Leviathans carry their own). Tide ships on it sail faster and heal. It shows as a faint wash of the owner's colour.
+- **Commanders:**
+  - **Perks:** perks up to the commander's level apply. Bots get their commander by personality, at their difficulty's level.
+  - **Exclusive ships:** the Battlecruiser (Hale) and the Escort Carrier (Vance) are in, and the Incendiary Junk is now Kade's only. Each needs commander level 3.
+  - **Powers:** all twelve, on **N** and **M**, from the panel at the bottom left: Damage Control, Full Broadside, Carrier Strike, Recon Blanket, Beach Landing, Sabotage, Swarm Call, Tidal Surge, Ignite, Firestorm, Black Market Sale and Smuggling Run. Cooldowns are the turn-based ones × 6 seconds, and every power starts 18 seconds from ready. Bots use theirs too.
+- **Oil slicks:** a destroyed rig or Wellhead spills one. Nobody can drill inside a slick until it fades. Burning slicks hurt enemy ships; they come from Ignite, Firestorm and the Incendiary Junk's burning oil. Kade's Slicks Burn perk makes every slick hurt his enemies, and his Choking Smoke perk slows enemy rigs inside one.
+- **World events** are back on the New game page (Off / Light / Chaotic / Custom). A "round" is 12 seconds, so Light means an event every 2–3 minutes, the first after about 1½ minutes, each announced 12 seconds ahead. All eight are in:
+  - **Storm:** drifts across the map; ships in it sail at half speed, and nothing flies in or out of it (air strikes, recon, missiles).
+  - **Fog bank:** nothing inside sees more than a square or so.
+  - **Calm seas:** every ship sails faster for a while.
+  - **Oil shock:** the price jumps or crashes, then drifts back.
+  - **Super-rich field:** a 💎 circle in No Man's Sea with a big deposit somewhere inside.
+  - **Blowout:** a rig stops pumping until it's fixed for $60 (the base card has the button) or the time runs out.
+  - **Pirates:** they raid near the richest player, $140 bounty each.
+  - **Rogue sub:** it hunts No Man's Sea, $450 bounty.
+  - Active and coming events are listed at the top left; hover one for details.
+- **Computer players** follow a research plan for their faction, build Research Labs and a Dry Dock, fund research when they're rich, fix blowouts and use their powers.

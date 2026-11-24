@@ -11,6 +11,8 @@ import { cancelMode, onBoardClick, onKey, onPanelClick, onResearchClick } from '
 import { closeResearch, openResearch, renderResearch } from './research.js';
 import { renderPanel, renderTop } from './panel.js';
 import { S, asMe } from './state.js';
+import { me } from './helpers.js';
+import { SHIPS } from '../data/ships.js';
 import { toast, updateStatus } from './status.js';
 import { reopenSummary } from './summary.js';
 import { effectsForAction } from './board/weapons.js';
@@ -90,6 +92,26 @@ function refreshScreen() {
   S.reachCache = null; renderPanel(); renderTop();
   if (S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode })) { renderPanel(); S.hooks.afterRender?.(S.st, { selectedId: S.selectedId, mode: S.mode }); }
   resize(); draw(); updateStatus(); renderResearch();
+  hitWatch();
+}
+
+// When one of your ships takes a hit (on anyone's turn), the same warning pops up as for a refused order:
+// which ships, how much, and any that went down. Compared against the last look at your fleet.
+function hitWatch() {
+  const st = S.st, p = me();
+  if (!st || S.spectate || p == null || p < 0 || !st.players[p]) return;
+  const now = new Map(st.ships.filter(s => s.owner === p && !s.boat && !s.noncombatant).map(s => [s.id, { hp: s.hp, x: s.x, y: s.y, name: s.name || SHIPS[s.type]?.name || 'ship' }]));
+  const was = S.hpSnap;
+  S.hpSnap = { st, p, ships: now, wrecks: new Set(st.wrecks.map(w => w.id)) };
+  if (!was || was.st !== st || was.p !== p) return;
+  const hits = [];
+  for (const [id, o] of was.ships) {
+    const n = now.get(id);
+    // (gone with a wreck where she was: sunk; gone without one: she left the map or was used up, not a hit)
+    if (!n) { if (st.wrecks.some(w => w.cells?.some(([x, y]) => Math.abs(x - o.x) <= 4 && Math.abs(y - o.y) <= 4) && !was.wrecks.has(w.id))) hits.push(`${o.name} sunk!`); }
+    else if (n.hp < o.hp) hits.push(`${o.name} −${o.hp - n.hp} HP`);
+  }
+  if (hits.length) toast(`⚠ Under fire: ${hits.slice(0, 4).join(' · ')}${hits.length > 4 ? ` (+${hits.length - 4} more)` : ''}`);
 }
 
 export const redraw = () => draw();
